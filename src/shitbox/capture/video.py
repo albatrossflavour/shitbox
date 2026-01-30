@@ -25,6 +25,7 @@ class VideoRecorder:
         device: str = "/dev/video0",
         resolution: str = "1280x720",
         fps: int = 30,
+        audio_device: str = "default",
     ):
         """Initialise video recorder.
 
@@ -33,11 +34,13 @@ class VideoRecorder:
             device: Video device path (e.g., /dev/video0).
             resolution: Video resolution (e.g., 1280x720).
             fps: Frames per second.
+            audio_device: ALSA audio device (e.g., 'default', 'hw:1,0').
         """
         self.output_dir = Path(output_dir)
         self.device = device
         self.resolution = resolution
         self.fps = fps
+        self.audio_device = audio_device
 
         self._current_process: Optional[subprocess.Popen] = None
         self._current_output: Optional[Path] = None
@@ -83,17 +86,26 @@ class VideoRecorder:
                 break
             counter += 1
 
-        # Build ffmpeg command
+        # Build ffmpeg command with video + audio
         cmd = [
             "ffmpeg",
             "-y",  # Overwrite output
+            # Video input
             "-f", "v4l2",
             "-input_format", "mjpeg",
             "-video_size", self.resolution,
             "-framerate", str(self.fps),
             "-i", self.device,
+            # Audio input (ALSA)
+            "-f", "alsa",
+            "-i", self.audio_device,
+            # Video encoding
             "-c:v", "libx264",
             "-preset", "ultrafast",
+            # Audio encoding
+            "-c:a", "aac",
+            "-b:a", "128k",
+            # Duration
             "-t", str(duration_seconds),
             str(output_path),
         ]

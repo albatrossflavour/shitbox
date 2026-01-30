@@ -124,6 +124,7 @@ class VideoConfig:
     duration_seconds: int = 60
     resolution: str = "1280x720"
     fps: int = 30
+    audio_device: str = "default"
 
 
 @dataclass

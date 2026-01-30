@@ -98,6 +98,7 @@ class EngineConfig:
     capture_video_duration: int = 60
     capture_video_resolution: str = "1280x720"
     capture_video_fps: int = 30
+    capture_audio_device: str = "default"
     captures_dir: str = "/var/lib/shitbox/captures"
     max_capture_age_days: int = 14
 
@@ -147,6 +148,7 @@ class EngineConfig:
             capture_video_duration=config.capture.video.duration_seconds,
             capture_video_resolution=config.capture.video.resolution,
             capture_video_fps=config.capture.video.fps,
+            capture_audio_device=config.capture.video.audio_device,
             captures_dir=config.capture.captures_dir,
             max_capture_age_days=config.capture.max_capture_age_days,
         )
@@ -250,6 +252,7 @@ class UnifiedEngine:
                 device=config.capture_video_device,
                 resolution=config.capture_video_resolution,
                 fps=config.capture_video_fps,
+                audio_device=config.capture_audio_device,
             )
             self.button_handler = ButtonHandler(
                 gpio_pin=config.capture_gpio_pin,
