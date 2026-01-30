@@ -1,0 +1,41 @@
+[Unit]
+Description=Shitbox Rally Telemetry Service
+Documentation=https://github.com/tgreen/shitbox
+After=network.target gpsd.service
+Wants=gpsd.service
+
+[Service]
+Type=notify
+User=tgreen
+Group=tgreen
+WorkingDirectory=/home/tgreen/shitbox
+ExecStart=/home/tgreen/shitbox/.venv/bin/python -m shitbox.events.engine
+Restart=always
+RestartSec=5
+
+# Watchdog - service must ping within 30s or gets restarted
+WatchdogSec=30
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=shitbox
+
+# Security hardening
+ProtectSystem=strict
+ReadWritePaths=/var/lib/shitbox
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Device access for I2C and serial
+SupplementaryGroups=i2c dialout gpio
+
+[Install]
+WantedBy=multi-user.target

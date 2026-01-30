@@ -1,0 +1,73 @@
+# Shitbox Rally Telemetry Configuration
+
+app:
+  name: shitbox-telemetry
+  log_level: INFO
+  data_dir: /var/lib/shitbox
+
+sensors:
+  gps:
+    enabled: true
+    host: localhost  # gpsd host
+    port: 2947       # gpsd port
+    sample_rate_hz: 1
+
+  imu:
+    enabled: true
+    i2c_bus: 1
+    address: 0x68
+    sample_rate_hz: 10
+    # Accelerometer range: 2, 4, 8, or 16 (g)
+    accel_range: 4
+    # Gyroscope range: 250, 500, 1000, or 2000 (deg/s)
+    gyro_range: 500
+
+  temperature:
+    enabled: false  # Enable when MCP9808 is wired
+    i2c_bus: 1
+    address: 0x18
+    sample_rate_hz: 0.1
+
+storage:
+  database_path: /var/lib/shitbox/telemetry.db
+  backup_enabled: true
+  backup_interval_hours: 6
+  max_backups: 10
+
+sync:
+  # Master switch for all uplink - set false when going offline
+  uplink_enabled: true
+
+  mqtt:
+    enabled: false  # Disabled - using batch sync only to avoid duplicate metrics
+    broker_host: emqx.albatrossflavour.com
+    broker_port: 1883
+    username: mqtt
+    password: Mc2KMw2GHZgzpnnBcQqs
+    client_id: shitbox-car
+    qos: 1
+    topic_prefix: shitbox
+    # Reconnect settings
+    reconnect_delay_min: 1
+    reconnect_delay_max: 120
+
+  prometheus:
+    enabled: true
+    remote_write_url: http://prometheus.albatrossflavour.com/api/v1/write
+    batch_size: 2000
+    batch_interval_seconds: 15
+
+  connectivity:
+    # Check prometheus host - requires WireGuard to be up
+    check_host: prometheus.albatrossflavour.com
+    check_port: 80
+    check_interval_seconds: 30
+    timeout_seconds: 3
+
+health:
+  enabled: true
+  report_interval_seconds: 60
+  temp_warning_celsius: 70
+  temp_critical_celsius: 80
+  disk_warning_percent: 80
+  disk_critical_percent: 95
