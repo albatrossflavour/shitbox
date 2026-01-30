@@ -85,4 +85,4 @@ capture:
     duration_seconds: 60
     resolution: 1280x720
     fps: 30
-    audio_device: default
+    audio_device: hw:3,0
