@@ -18,6 +18,11 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 
+class DuplicateDataError(Exception):
+    """Raised when Prometheus rejects data as duplicate."""
+    pass
+
+
 class BatchSyncService:
     """Sync historical data to Prometheus in batches.
 
@@ -99,16 +104,25 @@ class BatchSyncService:
             return
 
         log.info("batch_sync_starting", count=len(readings))
+        last_id = readings[-1].id
 
         # Convert to Prometheus format and send
         try:
             self._send_to_prometheus(readings)
 
             # Update cursor on success
-            last_id = readings[-1].id
             self.db.update_sync_cursor(self._cursor_name, last_id)
-
             log.info("batch_sync_complete", count=len(readings), last_id=last_id)
+
+        except DuplicateDataError:
+            # Data already exists in Prometheus - skip this batch and continue
+            log.warning(
+                "batch_sync_duplicate_skipped",
+                count=len(readings),
+                last_id=last_id,
+                hint="Data already synced via another path",
+            )
+            self.db.update_sync_cursor(self._cursor_name, last_id)
 
         except Exception as e:
             log.error("batch_sync_send_failed", error=str(e))
@@ -205,12 +219,20 @@ class BatchSyncService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),
+        reraise=True,
+        retry=lambda retry_state: not isinstance(
+            retry_state.outcome.exception(), DuplicateDataError
+        ) if retry_state.outcome else True,
     )
     def _send_to_prometheus(self, readings: List[Reading]) -> None:
         """Send readings to Prometheus via remote_write API.
 
         Args:
             readings: List of readings to send.
+
+        Raises:
+            DuplicateDataError: If Prometheus rejects as duplicate (don't retry).
+            RuntimeError: For other errors (will retry).
         """
         metrics = self._readings_to_metrics(readings)
 
@@ -243,13 +265,23 @@ class BatchSyncService:
             raise RuntimeError(f"Prometheus request failed: {e}")
 
         if response.status_code not in (200, 204):
+            response_text = response.text[:500] if response.text else ""
+
+            # Check for duplicate sample error - don't retry, just skip
+            if response.status_code == 400 and "duplicate sample" in response_text.lower():
+                log.warning(
+                    "prometheus_duplicate_detected",
+                    response_text=response_text,
+                )
+                raise DuplicateDataError(response_text)
+
             log.error(
                 "prometheus_write_http_error",
                 status_code=response.status_code,
-                response_text=response.text[:500] if response.text else "",
+                response_text=response_text,
             )
             raise RuntimeError(
-                f"Prometheus write failed: {response.status_code} {response.text}"
+                f"Prometheus write failed: {response.status_code} {response_text}"
             )
 
         log.info("prometheus_write_success", metrics_count=len(metrics))
