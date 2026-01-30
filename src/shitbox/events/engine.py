@@ -102,6 +102,11 @@ class EngineConfig:
     captures_dir: str = "/var/lib/shitbox/captures"
     max_capture_age_days: int = 14
 
+    # Timelapse
+    timelapse_enabled: bool = True
+    timelapse_interval_seconds: int = 60
+    timelapse_min_speed_kmh: float = 5.0
+
     @classmethod
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
         """Create EngineConfig from the existing YAML config structure."""
@@ -151,6 +156,10 @@ class EngineConfig:
             capture_audio_device=config.capture.video.audio_device,
             captures_dir=config.capture.captures_dir,
             max_capture_age_days=config.capture.max_capture_age_days,
+            # Timelapse
+            timelapse_enabled=config.capture.timelapse.enabled,
+            timelapse_interval_seconds=config.capture.timelapse.interval_seconds,
+            timelapse_min_speed_kmh=config.capture.timelapse.min_speed_kmh,
         )
 
 
@@ -265,10 +274,13 @@ class UnifiedEngine:
         self._telemetry_thread: Optional[threading.Thread] = None
         self._pending_post_capture: dict = {}
         self._manual_capture_count = 0
+        self._last_timelapse_time = 0.0
+        self._current_speed_kmh = 0.0
 
         # Stats
         self.telemetry_readings = 0
         self.events_captured = 0
+        self.timelapse_images = 0
 
     def _init_gps(self) -> bool:
         """Initialise GPS connection."""
@@ -291,13 +303,31 @@ class UnifiedEngine:
         """Called for each high-rate IMU sample."""
         self.detector.process_sample(sample)
 
+    # Event types that should trigger video recording
+    VIDEO_CAPTURE_EVENTS = {EventType.HIGH_G, EventType.BIG_CORNER}
+
     def _on_event(self, event: Event) -> None:
         """Called when an event is detected."""
+        # Start video recording for significant events
+        video_path = None
+        if event.event_type in self.VIDEO_CAPTURE_EVENTS and self.video_recorder:
+            if not self.video_recorder.is_recording:
+                video_path = self.video_recorder.start_recording(
+                    duration_seconds=self.config.capture_video_duration,
+                    filename_prefix=event.event_type.value,
+                )
+                log.info(
+                    "auto_event_video_started",
+                    event_type=event.event_type.value,
+                    video_path=str(video_path) if video_path else None,
+                )
+
         # Schedule post-event capture
         post_capture_until = time.time() + self.config.detector.post_event_seconds
         self._pending_post_capture[id(event)] = {
             "event": event,
             "capture_until": post_capture_until,
+            "video_path": video_path,
         }
 
         # Publish event to MQTT
@@ -539,6 +569,9 @@ class UnifiedEngine:
             # Check for completed event captures
             self._check_post_captures()
 
+            # Timelapse capture when moving
+            self._check_timelapse(now)
+
             # Periodic cleanup (every hour)
             if (now - last_cleanup) >= 3600:
                 self._do_cleanup()
@@ -555,6 +588,9 @@ class UnifiedEngine:
             gps_reading = self._read_gps()
             if gps_reading:
                 readings.append(gps_reading)
+                # Track current speed for timelapse
+                if gps_reading.speed_kmh is not None:
+                    self._current_speed_kmh = gps_reading.speed_kmh
 
         # IMU snapshot
         imu_reading = self._read_imu_snapshot()
@@ -579,6 +615,37 @@ class UnifiedEngine:
                     self.mqtt.publish_reading(reading)
                 except Exception as e:
                     log.error("mqtt_publish_error", error=str(e))
+
+    def _check_timelapse(self, now: float) -> None:
+        """Capture timelapse image if moving and interval elapsed."""
+        if not self.config.timelapse_enabled:
+            return
+
+        if not self.video_recorder:
+            return
+
+        # Check if enough time has passed
+        if (now - self._last_timelapse_time) < self.config.timelapse_interval_seconds:
+            return
+
+        # Check if we're moving fast enough
+        if self._current_speed_kmh < self.config.timelapse_min_speed_kmh:
+            return
+
+        # Don't capture during video recording (camera busy)
+        if self.video_recorder.is_recording:
+            return
+
+        # Capture image
+        path = self.video_recorder.capture_image()
+        if path:
+            self.timelapse_images += 1
+            self._last_timelapse_time = now
+            log.debug(
+                "timelapse_captured",
+                image_number=self.timelapse_images,
+                speed_kmh=round(self._current_speed_kmh, 1),
+            )
 
     def _do_cleanup(self) -> None:
         """Run periodic cleanup tasks."""
@@ -685,6 +752,7 @@ class UnifiedEngine:
             "unified_engine_stopped",
             telemetry_readings=self.telemetry_readings,
             events_captured=self.events_captured,
+            timelapse_images=self.timelapse_images,
             imu_samples=self.sampler.samples_total,
             imu_dropped=self.sampler.samples_dropped,
         )

@@ -195,6 +195,61 @@ class VideoRecorder:
 
         self._current_process = None
 
+    def capture_image(self, filename_prefix: str = "timelapse") -> Optional[Path]:
+        """Capture a single image from the webcam.
+
+        Args:
+            filename_prefix: Prefix for output filename.
+
+        Returns:
+            Path to output file, or None if failed.
+        """
+        # Create output directory with date subdirectory
+        today = datetime.now().strftime("%Y-%m-%d")
+        output_subdir = self.output_dir / "timelapse" / today
+        output_subdir.mkdir(parents=True, exist_ok=True)
+
+        # Generate unique filename
+        timestamp = datetime.now().strftime("%H%M%S")
+        filename = f"{filename_prefix}_{timestamp}.jpg"
+        output_path = output_subdir / filename
+
+        # Use ffmpeg to capture single frame
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-f", "v4l2",
+            "-input_format", "mjpeg",
+            "-video_size", self.resolution,
+            "-i", self.device,
+            "-frames:v", "1",
+            "-q:v", "2",  # High quality JPEG
+            str(output_path),
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                timeout=10,
+            )
+
+            if result.returncode == 0 and output_path.exists():
+                log.debug("timelapse_image_captured", output=str(output_path))
+                return output_path
+            else:
+                stderr = result.stderr.decode()[-200:] if result.stderr else ""
+                log.warning("timelapse_capture_failed", stderr=stderr)
+                return None
+
+        except subprocess.TimeoutExpired:
+            log.warning("timelapse_capture_timeout")
+            return None
+        except Exception as e:
+            log.error("timelapse_capture_error", error=str(e))
+            return None
+
     def cleanup_old_captures(self, max_age_days: int = 14) -> int:
         """Remove captures older than max_age_days.
 
@@ -210,13 +265,15 @@ class VideoRecorder:
         deleted = 0
         cutoff = time.time() - (max_age_days * 86400)
 
-        for video_file in self.output_dir.rglob("*.mp4"):
-            try:
-                if video_file.stat().st_mtime < cutoff:
-                    video_file.unlink()
-                    deleted += 1
-            except Exception as e:
-                log.warning("cleanup_file_error", file=str(video_file), error=str(e))
+        # Clean up videos and timelapse images
+        for pattern in ("*.mp4", "*.jpg"):
+            for media_file in self.output_dir.rglob(pattern):
+                try:
+                    if media_file.stat().st_mtime < cutoff:
+                        media_file.unlink()
+                        deleted += 1
+                except Exception as e:
+                    log.warning("cleanup_file_error", file=str(media_file), error=str(e))
 
         # Remove empty date directories
         for subdir in self.output_dir.iterdir():

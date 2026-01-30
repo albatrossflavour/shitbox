@@ -86,3 +86,7 @@ capture:
     resolution: 1280x720
     fps: 30
     audio_device: hw:3,0
+  timelapse:
+    enabled: true
+    interval_seconds: 60
+    min_speed_kmh: 5.0

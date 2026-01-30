@@ -128,6 +128,15 @@ class VideoConfig:
 
 
 @dataclass
+class TimelapseConfig:
+    """Timelapse image capture configuration."""
+
+    enabled: bool = True
+    interval_seconds: int = 60
+    min_speed_kmh: float = 5.0
+
+
+@dataclass
 class CaptureConfig:
     """Manual capture (button + video) configuration."""
 
@@ -139,6 +148,7 @@ class CaptureConfig:
     captures_dir: str = "/var/lib/shitbox/captures"
     max_capture_age_days: int = 14
     video: VideoConfig = field(default_factory=VideoConfig)
+    timelapse: TimelapseConfig = field(default_factory=TimelapseConfig)
 
 
 @dataclass
@@ -225,6 +235,7 @@ def load_config(config_path: str | Path | None = None) -> Config:
         captures_dir=capture_data.get("captures_dir", "/var/lib/shitbox/captures"),
         max_capture_age_days=capture_data.get("max_capture_age_days", 14),
         video=_dict_to_dataclass(VideoConfig, capture_data.get("video", {})),
+        timelapse=_dict_to_dataclass(TimelapseConfig, capture_data.get("timelapse", {})),
     )
 
     return Config(
