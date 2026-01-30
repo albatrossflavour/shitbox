@@ -220,9 +220,11 @@ class BatchSyncService:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),
         reraise=True,
-        retry=lambda retry_state: not isinstance(
-            retry_state.outcome.exception(), DuplicateDataError
-        ) if retry_state.outcome else True,
+        retry=lambda retry_state: (
+            retry_state.outcome is not None
+            and retry_state.outcome.exception() is not None
+            and not isinstance(retry_state.outcome.exception(), DuplicateDataError)
+        ),
     )
     def _send_to_prometheus(self, readings: List[Reading]) -> None:
         """Send readings to Prometheus via remote_write API.
