@@ -17,7 +17,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from shitbox.events.detector import DetectorConfig, Event, EventDetector
+from shitbox.capture.button import ButtonHandler
+from shitbox.capture.video import VideoRecorder
+from shitbox.events.detector import DetectorConfig, Event, EventDetector, EventType
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
 from shitbox.events.sampler import HighRateSampler
 from shitbox.events.storage import EventStorage
@@ -86,6 +88,19 @@ class EngineConfig:
     # Uplink master switch
     uplink_enabled: bool = True
 
+    # Manual capture (button + video)
+    capture_enabled: bool = True
+    capture_gpio_pin: int = 17
+    capture_debounce_ms: int = 50
+    capture_pre_seconds: float = 30.0
+    capture_post_seconds: float = 30.0
+    capture_video_device: str = "/dev/video0"
+    capture_video_duration: int = 60
+    capture_video_resolution: str = "1280x720"
+    capture_video_fps: int = 30
+    captures_dir: str = "/var/lib/shitbox/captures"
+    max_capture_age_days: int = 14
+
     @classmethod
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
         """Create EngineConfig from the existing YAML config structure."""
@@ -122,6 +137,18 @@ class EngineConfig:
             connectivity_check_interval_seconds=config.sync.connectivity.check_interval_seconds,
             # Uplink
             uplink_enabled=config.sync.uplink_enabled,
+            # Capture
+            capture_enabled=config.capture.enabled,
+            capture_gpio_pin=config.capture.gpio_pin,
+            capture_debounce_ms=config.capture.debounce_ms,
+            capture_pre_seconds=config.capture.pre_capture_seconds,
+            capture_post_seconds=config.capture.post_capture_seconds,
+            capture_video_device=config.capture.video.device,
+            capture_video_duration=config.capture.video.duration_seconds,
+            capture_video_resolution=config.capture.video.resolution,
+            capture_video_fps=config.capture.video.fps,
+            captures_dir=config.capture.captures_dir,
+            max_capture_age_days=config.capture.max_capture_age_days,
         )
 
 
@@ -213,10 +240,28 @@ class UnifiedEngine:
             )
             self.batch_sync = BatchSyncService(prom_config, self.database, self.connection)
 
+        # Manual capture components
+        self.button_handler: Optional[ButtonHandler] = None
+        self.video_recorder: Optional[VideoRecorder] = None
+
+        if config.capture_enabled:
+            self.video_recorder = VideoRecorder(
+                output_dir=config.captures_dir,
+                device=config.capture_video_device,
+                resolution=config.capture_video_resolution,
+                fps=config.capture_video_fps,
+            )
+            self.button_handler = ButtonHandler(
+                gpio_pin=config.capture_gpio_pin,
+                on_press=self.trigger_manual_capture,
+                debounce_ms=config.capture_debounce_ms,
+            )
+
         # State
         self._running = False
         self._telemetry_thread: Optional[threading.Thread] = None
         self._pending_post_capture: dict = {}
+        self._manual_capture_count = 0
 
         # Stats
         self.telemetry_readings = 0
@@ -261,6 +306,75 @@ class UnifiedEngine:
                 self.mqtt._publish(topic, json.dumps(event_payload))
             except Exception as e:
                 log.error("mqtt_event_publish_error", error=str(e))
+
+    def trigger_manual_capture(self) -> None:
+        """Trigger manual capture via button press or API call.
+
+        Captures:
+        - Video from webcam (configurable duration)
+        - IMU data from ring buffer (pre + post capture)
+        """
+        self._manual_capture_count += 1
+        now = time.time()
+
+        log.info(
+            "manual_capture_triggered",
+            capture_number=self._manual_capture_count,
+        )
+
+        # Start video recording
+        video_path = None
+        if self.video_recorder:
+            video_path = self.video_recorder.start_recording(
+                duration_seconds=self.config.capture_video_duration,
+                filename_prefix="manual_capture",
+            )
+
+        # Grab pre-event IMU samples from ring buffer
+        pre_samples = self.ring_buffer.get_window(self.config.capture_pre_seconds)
+
+        # Get current IMU reading for peak values
+        latest = self.ring_buffer.get_latest(1)
+        peak_ax = latest[0].ax if latest else 0.0
+        peak_ay = latest[0].ay if latest else 0.0
+        peak_az = latest[0].az if latest else 0.0
+
+        # Create manual capture event
+        event = Event(
+            event_type=EventType.MANUAL_CAPTURE,
+            start_time=now - self.config.capture_pre_seconds,
+            end_time=now,  # Will be updated when post-capture completes
+            peak_value=1.0,  # Placeholder for manual captures
+            peak_ax=peak_ax,
+            peak_ay=peak_ay,
+            peak_az=peak_az,
+            samples=list(pre_samples),
+        )
+
+        # Schedule post-event capture (same pattern as auto-detected events)
+        post_capture_until = now + self.config.capture_post_seconds
+        self._pending_post_capture[id(event)] = {
+            "event": event,
+            "capture_until": post_capture_until,
+            "video_path": video_path,
+        }
+
+        # Publish to MQTT
+        if self.mqtt and self.mqtt.is_connected:
+            try:
+                import json
+                payload = {
+                    "type": "manual_capture",
+                    "timestamp": now,
+                    "capture_number": self._manual_capture_count,
+                    "video_path": str(video_path) if video_path else None,
+                }
+                self.mqtt._publish(
+                    f"{self.config.mqtt_topic_prefix}/manual_capture",
+                    json.dumps(payload),
+                )
+            except Exception as e:
+                log.error("mqtt_manual_capture_publish_error", error=str(e))
 
     def _check_post_captures(self) -> None:
         """Complete any pending post-event captures."""
@@ -471,6 +585,15 @@ class UnifiedEngine:
         except Exception as e:
             log.error("cleanup_error", error=str(e))
 
+        # Clean up old video captures
+        if self.video_recorder:
+            try:
+                self.video_recorder.cleanup_old_captures(
+                    max_age_days=self.config.max_capture_age_days
+                )
+            except Exception as e:
+                log.error("video_cleanup_error", error=str(e))
+
     def start(self) -> None:
         """Start the unified engine."""
         if self._running:
@@ -514,6 +637,10 @@ class UnifiedEngine:
         )
         self._telemetry_thread.start()
 
+        # Start button handler (if GPIO available)
+        if self.button_handler:
+            self.button_handler.start()
+
         log.info("unified_engine_started")
 
     def stop(self) -> None:
@@ -521,6 +648,14 @@ class UnifiedEngine:
         log.info("unified_engine_stopping")
 
         self._running = False
+
+        # Stop button handler
+        if self.button_handler:
+            self.button_handler.stop()
+
+        # Stop any active video recording
+        if self.video_recorder and self.video_recorder.is_recording:
+            self.video_recorder.stop_recording()
 
         # Stop components
         self.sampler.stop()

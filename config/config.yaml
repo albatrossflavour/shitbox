@@ -71,3 +71,17 @@ health:
   temp_critical_celsius: 80
   disk_warning_percent: 80
   disk_critical_percent: 95
+
+capture:
+  enabled: true
+  gpio_pin: 17
+  debounce_ms: 50
+  pre_capture_seconds: 30
+  post_capture_seconds: 30
+  captures_dir: /var/lib/shitbox/captures
+  max_capture_age_days: 14
+  video:
+    device: /dev/video0
+    duration_seconds: 60
+    resolution: 1280x720
+    fps: 30

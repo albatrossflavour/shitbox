@@ -117,6 +117,30 @@ class HealthConfig:
 
 
 @dataclass
+class VideoConfig:
+    """Video capture configuration."""
+
+    device: str = "/dev/video0"
+    duration_seconds: int = 60
+    resolution: str = "1280x720"
+    fps: int = 30
+
+
+@dataclass
+class CaptureConfig:
+    """Manual capture (button + video) configuration."""
+
+    enabled: bool = True
+    gpio_pin: int = 17
+    debounce_ms: int = 50
+    pre_capture_seconds: float = 30.0
+    post_capture_seconds: float = 30.0
+    captures_dir: str = "/var/lib/shitbox/captures"
+    max_capture_age_days: int = 14
+    video: VideoConfig = field(default_factory=VideoConfig)
+
+
+@dataclass
 class AppConfig:
     """Application configuration."""
 
@@ -134,6 +158,7 @@ class Config:
     storage: StorageConfig = field(default_factory=StorageConfig)
     sync: SyncConfig = field(default_factory=SyncConfig)
     health: HealthConfig = field(default_factory=HealthConfig)
+    capture: CaptureConfig = field(default_factory=CaptureConfig)
 
 
 def _dict_to_dataclass(cls: type, data: dict[str, Any]) -> Any:
@@ -189,6 +214,18 @@ def load_config(config_path: str | Path | None = None) -> Config:
         data = yaml.safe_load(f) or {}
 
     # Build config from nested dataclasses
+    capture_data = data.get("capture", {})
+    capture_config = CaptureConfig(
+        enabled=capture_data.get("enabled", True),
+        gpio_pin=capture_data.get("gpio_pin", 17),
+        debounce_ms=capture_data.get("debounce_ms", 50),
+        pre_capture_seconds=capture_data.get("pre_capture_seconds", 30.0),
+        post_capture_seconds=capture_data.get("post_capture_seconds", 30.0),
+        captures_dir=capture_data.get("captures_dir", "/var/lib/shitbox/captures"),
+        max_capture_age_days=capture_data.get("max_capture_age_days", 14),
+        video=_dict_to_dataclass(VideoConfig, capture_data.get("video", {})),
+    )
+
     return Config(
         app=_dict_to_dataclass(AppConfig, data.get("app", {})),
         sensors=SensorsConfig(
@@ -210,4 +247,5 @@ def load_config(config_path: str | Path | None = None) -> Config:
             ),
         ),
         health=_dict_to_dataclass(HealthConfig, data.get("health", {})),
+        capture=capture_config,
     )

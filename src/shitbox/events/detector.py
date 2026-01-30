@@ -19,6 +19,7 @@ class EventType(Enum):
     BIG_CORNER = "big_corner"
     ROUGH_ROAD = "rough_road"
     HIGH_G = "high_g"
+    MANUAL_CAPTURE = "manual_capture"
 
 
 @dataclass
