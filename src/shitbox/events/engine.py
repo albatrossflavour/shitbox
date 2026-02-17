@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 from shitbox.capture.button import ButtonHandler
+from shitbox.capture.ring_buffer import VideoRingBuffer
 from shitbox.capture.video import VideoRecorder
 from shitbox.events.detector import DetectorConfig, Event, EventDetector, EventType
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
@@ -25,11 +26,10 @@ from shitbox.events.sampler import HighRateSampler
 from shitbox.events.storage import EventStorage
 from shitbox.storage.database import Database
 from shitbox.storage.models import Reading, SensorType
-from pathlib import Path
 from shitbox.sync.batch_sync import BatchSyncService
 from shitbox.sync.connection import ConnectionMonitor
 from shitbox.sync.mqtt_publisher import MQTTPublisher
-from shitbox.utils.config import load_config, Config
+from shitbox.utils.config import Config, load_config
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -54,6 +54,10 @@ class EngineConfig:
     gps_port: int = 2947
     temp_enabled: bool = False
     temp_i2c_address: int = 0x18
+    power_enabled: bool = False
+    power_i2c_address: int = 0x40
+    environment_enabled: bool = False
+    environment_i2c_address: int = 0x77
 
     # Event detection
     detector: DetectorConfig = field(default_factory=DetectorConfig)
@@ -107,6 +111,13 @@ class EngineConfig:
     timelapse_interval_seconds: int = 60
     timelapse_min_speed_kmh: float = 5.0
 
+    # Video ring buffer
+    video_buffer_enabled: bool = True
+    video_buffer_dir: str = "/var/lib/shitbox/video_buffer"
+    video_buffer_segment_seconds: int = 10
+    video_buffer_segments: int = 5
+    overlay_enabled: bool = True
+
     @classmethod
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
         """Create EngineConfig from the existing YAML config structure."""
@@ -123,6 +134,12 @@ class EngineConfig:
             # Temp settings
             temp_enabled=config.sensors.temperature.enabled,
             temp_i2c_address=config.sensors.temperature.address,
+            # Power settings
+            power_enabled=config.sensors.power.enabled,
+            power_i2c_address=config.sensors.power.address,
+            # Environment settings
+            environment_enabled=config.sensors.environment.enabled,
+            environment_i2c_address=config.sensors.environment.address,
             # Storage
             database_path=config.storage.database_path,
             # MQTT
@@ -160,6 +177,12 @@ class EngineConfig:
             timelapse_enabled=config.capture.timelapse.enabled,
             timelapse_interval_seconds=config.capture.timelapse.interval_seconds,
             timelapse_min_speed_kmh=config.capture.timelapse.min_speed_kmh,
+            # Video ring buffer
+            video_buffer_enabled=config.capture.video_buffer.enabled,
+            video_buffer_dir=config.capture.video_buffer.buffer_dir,
+            video_buffer_segment_seconds=config.capture.video_buffer.segment_seconds,
+            video_buffer_segments=config.capture.video_buffer.buffer_segments,
+            overlay_enabled=config.capture.video_buffer.overlay_enabled,
         )
 
 
@@ -213,6 +236,38 @@ class UnifiedEngine:
         self._gps = None
         self._gps_available = False
 
+        # Power collector (lazy init)
+        self._power_collector = None
+        if config.power_enabled:
+            try:
+                from shitbox.collectors.power import PowerCollector
+                from shitbox.utils.config import PowerConfig
+
+                power_config = PowerConfig(
+                    enabled=True,
+                    i2c_bus=config.i2c_bus,
+                    address=config.power_i2c_address,
+                )
+                self._power_collector = PowerCollector(power_config)
+            except Exception as e:
+                log.warning("power_collector_init_failed", error=str(e))
+
+        # Environment collector (lazy init)
+        self._environment_collector = None
+        if config.environment_enabled:
+            try:
+                from shitbox.collectors.environment import EnvironmentCollector
+                from shitbox.utils.config import EnvironmentConfig
+
+                env_config = EnvironmentConfig(
+                    enabled=True,
+                    i2c_bus=config.i2c_bus,
+                    address=config.environment_i2c_address,
+                )
+                self._environment_collector = EnvironmentCollector(env_config)
+            except Exception as e:
+                log.warning("environment_collector_init_failed", error=str(e))
+
         # Connection monitor
         from shitbox.utils.config import ConnectivityConfig
         connectivity_config = ConnectivityConfig(
@@ -254,15 +309,34 @@ class UnifiedEngine:
         # Manual capture components
         self.button_handler: Optional[ButtonHandler] = None
         self.video_recorder: Optional[VideoRecorder] = None
+        self.video_ring_buffer: Optional[VideoRingBuffer] = None
 
         if config.capture_enabled:
-            self.video_recorder = VideoRecorder(
-                output_dir=config.captures_dir,
-                device=config.capture_video_device,
-                resolution=config.capture_video_resolution,
-                fps=config.capture_video_fps,
-                audio_device=config.capture_audio_device,
-            )
+            if config.video_buffer_enabled:
+                overlay = (
+                    "/dev/shm/shitbox_overlay.txt"
+                    if config.overlay_enabled else None
+                )
+                self.video_ring_buffer = VideoRingBuffer(
+                    buffer_dir=config.video_buffer_dir,
+                    output_dir=config.captures_dir,
+                    device=config.capture_video_device,
+                    resolution=config.capture_video_resolution,
+                    fps=config.capture_video_fps,
+                    audio_device=config.capture_audio_device,
+                    segment_seconds=config.video_buffer_segment_seconds,
+                    buffer_segments=config.video_buffer_segments,
+                    post_event_seconds=int(config.capture_post_seconds),
+                    overlay_path=overlay,
+                )
+            else:
+                self.video_recorder = VideoRecorder(
+                    output_dir=config.captures_dir,
+                    device=config.capture_video_device,
+                    resolution=config.capture_video_resolution,
+                    fps=config.capture_video_fps,
+                    audio_device=config.capture_audio_device,
+                )
             self.button_handler = ButtonHandler(
                 gpio_pin=config.capture_gpio_pin,
                 on_press=self.trigger_manual_capture,
@@ -276,6 +350,11 @@ class UnifiedEngine:
         self._manual_capture_count = 0
         self._last_timelapse_time = 0.0
         self._current_speed_kmh = 0.0
+        self._current_lat: Optional[float] = None
+        self._current_lon: Optional[float] = None
+        self._current_heading: Optional[float] = None
+        self._current_altitude: Optional[float] = None
+        self._current_satellites: Optional[int] = None
 
         # Stats
         self.telemetry_readings = 0
@@ -308,10 +387,19 @@ class UnifiedEngine:
 
     def _on_event(self, event: Event) -> None:
         """Called when an event is detected."""
-        # Start video recording for significant events
+        # Start video recording/save for significant events
         video_path = None
-        if event.event_type in self.VIDEO_CAPTURE_EVENTS and self.video_recorder:
-            if not self.video_recorder.is_recording:
+        if event.event_type in self.VIDEO_CAPTURE_EVENTS:
+            if self.video_ring_buffer and self.video_ring_buffer.is_running:
+                self.video_ring_buffer.save_event(
+                    prefix=event.event_type.value,
+                    post_seconds=int(self.config.capture_post_seconds),
+                )
+                log.info(
+                    "auto_event_video_save_triggered",
+                    event_type=event.event_type.value,
+                )
+            elif self.video_recorder and not self.video_recorder.is_recording:
                 video_path = self.video_recorder.start_recording(
                     duration_seconds=self.config.capture_video_duration,
                     filename_prefix=event.event_type.value,
@@ -355,9 +443,15 @@ class UnifiedEngine:
             capture_number=self._manual_capture_count,
         )
 
-        # Start video recording
+        # Start video recording / save from ring buffer
         video_path = None
-        if self.video_recorder:
+        if self.video_ring_buffer and self.video_ring_buffer.is_running:
+            self.video_ring_buffer.save_event(
+                prefix="manual_capture",
+                post_seconds=int(self.config.capture_post_seconds),
+            )
+            log.info("manual_capture_video_save_triggered")
+        elif self.video_recorder:
             video_path = self.video_recorder.start_recording(
                 duration_seconds=self.config.capture_video_duration,
                 filename_prefix="manual_capture",
@@ -588,14 +682,36 @@ class UnifiedEngine:
             gps_reading = self._read_gps()
             if gps_reading:
                 readings.append(gps_reading)
-                # Track current speed for timelapse
                 if gps_reading.speed_kmh is not None:
                     self._current_speed_kmh = gps_reading.speed_kmh
+                self._current_lat = gps_reading.latitude
+                self._current_lon = gps_reading.longitude
+                self._current_heading = gps_reading.heading_deg
+                self._current_altitude = gps_reading.altitude_m
+                self._current_satellites = gps_reading.satellites
 
         # IMU snapshot
         imu_reading = self._read_imu_snapshot()
         if imu_reading:
             readings.append(imu_reading)
+
+        # Power reading
+        if self._power_collector:
+            try:
+                power_data = self._power_collector.read()
+                if power_data:
+                    readings.append(self._power_collector.to_reading(power_data))
+            except Exception as e:
+                log.error("power_read_error", error=str(e))
+
+        # Environment reading
+        if self._environment_collector:
+            try:
+                env_data = self._environment_collector.read()
+                if env_data:
+                    readings.append(self._environment_collector.to_reading(env_data))
+            except Exception as e:
+                log.error("environment_read_error", error=str(e))
 
         # System status (Pi temp)
         system_reading = self._read_system_status()
@@ -616,12 +732,51 @@ class UnifiedEngine:
                 except Exception as e:
                     log.error("mqtt_publish_error", error=str(e))
 
+        # Update video overlay
+        if self.config.overlay_enabled and self.video_ring_buffer:
+            self._update_overlay()
+
+    def _update_overlay(self) -> None:
+        """Write current telemetry to the overlay text file for ffmpeg drawtext."""
+        import math
+        import os
+
+        overlay_path = "/dev/shm/shitbox_overlay.txt"
+        tmp_path = overlay_path + ".tmp"
+
+        # Current G-force from IMU
+        g_force = 0.0
+        samples = self.ring_buffer.get_latest(1)
+        if samples:
+            s = samples[0]
+            g_force = math.sqrt(s.ax * s.ax + s.ay * s.ay)
+
+        # Format values with fallbacks for no GPS fix
+        speed = f"{self._current_speed_kmh:.0f}" if self._current_speed_kmh else "--"
+        heading = f"{self._current_heading:.0f}" if self._current_heading is not None else "--"
+        altitude = f"{self._current_altitude:.0f}" if self._current_altitude is not None else "--"
+        lat = f"{self._current_lat:.4f}" if self._current_lat is not None else "--"
+        lon = f"{self._current_lon:.4f}" if self._current_lon is not None else "--"
+        sats = str(self._current_satellites) if self._current_satellites is not None else "--"
+        now_str = datetime.now().strftime("%H:%M:%S")
+
+        line1 = f"{speed} km/h  |  {g_force:.1f}g  |  {heading}\u00b0  |  {altitude}m"
+        line2 = f"{lat}, {lon}  |  sats {sats}  |  {now_str}"
+
+        try:
+            with open(tmp_path, "w") as f:
+                f.write(f"{line1}\n{line2}")
+            os.rename(tmp_path, overlay_path)
+        except Exception as e:
+            log.debug("overlay_write_error", error=str(e))
+
     def _check_timelapse(self, now: float) -> None:
         """Capture timelapse image if moving and interval elapsed."""
         if not self.config.timelapse_enabled:
             return
 
-        if not self.video_recorder:
+        has_capture_source = self.video_ring_buffer or self.video_recorder
+        if not has_capture_source:
             return
 
         # Check if enough time has passed
@@ -632,12 +787,16 @@ class UnifiedEngine:
         if self._current_speed_kmh < self.config.timelapse_min_speed_kmh:
             return
 
-        # Don't capture during video recording (camera busy)
-        if self.video_recorder.is_recording:
-            return
+        # Capture frame from ring buffer or camera directly
+        path: Optional[Path] = None
+        if self.video_ring_buffer and self.video_ring_buffer.is_running:
+            path = self.video_ring_buffer.capture_frame()
+        elif self.video_recorder:
+            # Don't capture during video recording (camera busy)
+            if self.video_recorder.is_recording:
+                return
+            path = self.video_recorder.capture_image()
 
-        # Capture image
-        path = self.video_recorder.capture_image()
         if path:
             self.timelapse_images += 1
             self._last_timelapse_time = now
@@ -656,7 +815,14 @@ class UnifiedEngine:
             log.error("cleanup_error", error=str(e))
 
         # Clean up old video captures
-        if self.video_recorder:
+        if self.video_ring_buffer:
+            try:
+                self.video_ring_buffer.cleanup_old_saves(
+                    max_age_days=self.config.max_capture_age_days
+                )
+            except Exception as e:
+                log.error("video_cleanup_error", error=str(e))
+        elif self.video_recorder:
             try:
                 self.video_recorder.cleanup_old_captures(
                     max_age_days=self.config.max_capture_age_days
@@ -686,6 +852,24 @@ class UnifiedEngine:
         if self.config.gps_enabled:
             self._init_gps()
 
+        # Initialise power sensor
+        if self._power_collector:
+            try:
+                self._power_collector.setup()
+                log.info("power_sensor_ready")
+            except Exception as e:
+                log.warning("power_sensor_setup_failed", error=str(e))
+                self._power_collector = None
+
+        # Initialise environment sensor
+        if self._environment_collector:
+            try:
+                self._environment_collector.setup()
+                log.info("environment_sensor_ready")
+            except Exception as e:
+                log.warning("environment_sensor_setup_failed", error=str(e))
+                self._environment_collector = None
+
         # Start connection monitor
         if self.config.uplink_enabled:
             self.connection.start()
@@ -697,6 +881,22 @@ class UnifiedEngine:
         # Start batch sync
         if self.batch_sync:
             self.batch_sync.start()
+
+        # Write initial overlay file before ffmpeg starts
+        if self.config.overlay_enabled and self.video_ring_buffer:
+            try:
+                init_text = (
+                    "-- km/h  |  0.0g  |  --\u00b0  |  --m\n"
+                    "--, --  |  sats --  |  --:--:--"
+                )
+                with open("/dev/shm/shitbox_overlay.txt", "w") as f:
+                    f.write(init_text)
+            except Exception as e:
+                log.warning("overlay_init_error", error=str(e))
+
+        # Start video ring buffer
+        if self.video_ring_buffer:
+            self.video_ring_buffer.start()
 
         # Start high-rate sampler
         self.sampler.start()
@@ -723,7 +923,13 @@ class UnifiedEngine:
         if self.button_handler:
             self.button_handler.stop()
 
-        # Stop any active video recording
+        # Stop video ring buffer or active recording
+        if self.video_ring_buffer:
+            self.video_ring_buffer.stop()
+        # Clean up overlay file
+        overlay_path = Path("/dev/shm/shitbox_overlay.txt")
+        if overlay_path.exists():
+            overlay_path.unlink(missing_ok=True)
         if self.video_recorder and self.video_recorder.is_recording:
             self.video_recorder.stop_recording()
 
@@ -735,6 +941,12 @@ class UnifiedEngine:
 
         if self.mqtt:
             self.mqtt.disconnect()
+
+        if self._power_collector:
+            self._power_collector.cleanup()
+
+        if self._environment_collector:
+            self._environment_collector.cleanup()
 
         self.connection.stop()
 
@@ -763,8 +975,13 @@ class UnifiedEngine:
             log.info("received_signal", signal=signum)
             self._running = False
 
+        def capture_signal_handler(signum, frame):
+            log.info("manual_capture_signal_received")
+            self.trigger_manual_capture()
+
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGUSR1, capture_signal_handler)
 
         # Notify systemd we're ready
         self._notify_systemd("READY=1")

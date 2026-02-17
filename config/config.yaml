@@ -28,6 +28,18 @@ sensors:
     address: 0x18
     sample_rate_hz: 0.1
 
+  power:
+    enabled: true
+    i2c_bus: 1
+    address: 0x40
+    sample_rate_hz: 1.0
+
+  environment:
+    enabled: true
+    i2c_bus: 1
+    address: 0x77
+    sample_rate_hz: 1.0
+
 storage:
   database_path: /var/lib/shitbox/telemetry.db
   backup_enabled: true
@@ -85,8 +97,14 @@ capture:
     duration_seconds: 60
     resolution: 1280x720
     fps: 30
-    audio_device: hw:3,0
+    audio_device: plughw:CARD=Camera,DEV=0
   timelapse:
     enabled: true
     interval_seconds: 60
     min_speed_kmh: 5.0
+  video_buffer:
+    enabled: true
+    buffer_dir: /var/lib/shitbox/video_buffer
+    segment_seconds: 10
+    buffer_segments: 5
+    overlay_enabled: true

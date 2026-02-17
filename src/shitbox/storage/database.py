@@ -13,7 +13,7 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 # Database schema version for migrations
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -41,6 +41,16 @@ CREATE TABLE IF NOT EXISTS readings (
 
     -- Temperature fields
     temp_celsius REAL,
+
+    -- Power fields (INA219)
+    bus_voltage_v REAL,
+    current_ma REAL,
+    power_mw REAL,
+
+    -- Environment fields (BME280)
+    pressure_hpa REAL,
+    humidity_pct REAL,
+    env_temp_celsius REAL,
 
     -- System fields (Pi health)
     cpu_temp_celsius REAL,
@@ -124,15 +134,36 @@ class Database:
         row = cursor.fetchone()
         current_version = row["version"] if row else 0
 
+        if current_version < 2:
+            self._migrate_to_v2(conn)
+
         if current_version < SCHEMA_VERSION:
             conn.execute(
                 "INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
             )
             conn.commit()
-            log.info("schema_initialised", version=SCHEMA_VERSION)
+            log.info("schema_updated", version=SCHEMA_VERSION)
 
         self._initialized = True
         log.info("database_connected", wal_mode=True)
+
+    def _migrate_to_v2(self, conn: sqlite3.Connection) -> None:
+        """Add power and environment sensor columns."""
+        new_columns = [
+            ("bus_voltage_v", "REAL"),
+            ("current_ma", "REAL"),
+            ("power_mw", "REAL"),
+            ("pressure_hpa", "REAL"),
+            ("humidity_pct", "REAL"),
+            ("env_temp_celsius", "REAL"),
+        ]
+        for col_name, col_type in new_columns:
+            try:
+                conn.execute(f"ALTER TABLE readings ADD COLUMN {col_name} {col_type}")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+        conn.commit()
+        log.info("migrated_to_v2", columns=[c[0] for c in new_columns])
 
     def close(self) -> None:
         """Close database connection for current thread."""
@@ -181,8 +212,11 @@ class Database:
                     latitude, longitude, altitude_m, speed_kmh, heading_deg,
                     satellites, fix_quality,
                     accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z,
-                    temp_celsius, cpu_temp_celsius
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    temp_celsius,
+                    bus_voltage_v, current_ma, power_mw,
+                    pressure_hpa, humidity_pct, env_temp_celsius,
+                    cpu_temp_celsius
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     reading.timestamp_utc.isoformat(),
@@ -201,6 +235,12 @@ class Database:
                     reading.gyro_y,
                     reading.gyro_z,
                     reading.temp_celsius,
+                    reading.bus_voltage_v,
+                    reading.current_ma,
+                    reading.power_mw,
+                    reading.pressure_hpa,
+                    reading.humidity_pct,
+                    reading.env_temp_celsius,
                     reading.cpu_temp_celsius,
                 ),
             )
@@ -231,8 +271,14 @@ class Database:
                             latitude, longitude, altitude_m, speed_kmh, heading_deg,
                             satellites, fix_quality,
                             accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z,
-                            temp_celsius, cpu_temp_celsius
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            temp_celsius,
+                            bus_voltage_v, current_ma, power_mw,
+                            pressure_hpa, humidity_pct, env_temp_celsius,
+                            cpu_temp_celsius
+                        ) VALUES (
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        )
                         """,
                         (
                             reading.timestamp_utc.isoformat(),
@@ -251,6 +297,12 @@ class Database:
                             reading.gyro_y,
                             reading.gyro_z,
                             reading.temp_celsius,
+                            reading.bus_voltage_v,
+                            reading.current_ma,
+                            reading.power_mw,
+                            reading.pressure_hpa,
+                            reading.humidity_pct,
+                            reading.env_temp_celsius,
                             reading.cpu_temp_celsius,
                         ),
                     )
@@ -416,6 +468,7 @@ class Database:
 
     def _row_to_reading(self, row: sqlite3.Row) -> Reading:
         """Convert a database row to a Reading object."""
+        keys = row.keys()
         return Reading(
             id=row["id"],
             timestamp_utc=datetime.fromisoformat(row["timestamp_utc"]).replace(
@@ -436,7 +489,13 @@ class Database:
             gyro_y=row["gyro_y"],
             gyro_z=row["gyro_z"],
             temp_celsius=row["temp_celsius"],
-            cpu_temp_celsius=row["cpu_temp_celsius"] if "cpu_temp_celsius" in row.keys() else None,
+            bus_voltage_v=row["bus_voltage_v"] if "bus_voltage_v" in keys else None,
+            current_ma=row["current_ma"] if "current_ma" in keys else None,
+            power_mw=row["power_mw"] if "power_mw" in keys else None,
+            pressure_hpa=row["pressure_hpa"] if "pressure_hpa" in keys else None,
+            humidity_pct=row["humidity_pct"] if "humidity_pct" in keys else None,
+            env_temp_celsius=row["env_temp_celsius"] if "env_temp_celsius" in keys else None,
+            cpu_temp_celsius=row["cpu_temp_celsius"] if "cpu_temp_celsius" in keys else None,
         )
 
     def vacuum(self) -> None:

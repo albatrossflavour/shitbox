@@ -40,12 +40,34 @@ class TemperatureConfig:
 
 
 @dataclass
+class PowerConfig:
+    """INA219 power sensor configuration."""
+
+    enabled: bool = False
+    i2c_bus: int = 1
+    address: int = 0x40
+    sample_rate_hz: float = 1.0
+
+
+@dataclass
+class EnvironmentConfig:
+    """BME280 environment sensor configuration."""
+
+    enabled: bool = False
+    i2c_bus: int = 1
+    address: int = 0x77
+    sample_rate_hz: float = 1.0
+
+
+@dataclass
 class SensorsConfig:
     """All sensors configuration."""
 
     gps: GPSConfig = field(default_factory=GPSConfig)
     imu: IMUConfig = field(default_factory=IMUConfig)
     temperature: TemperatureConfig = field(default_factory=TemperatureConfig)
+    power: PowerConfig = field(default_factory=PowerConfig)
+    environment: EnvironmentConfig = field(default_factory=EnvironmentConfig)
 
 
 @dataclass
@@ -137,6 +159,17 @@ class TimelapseConfig:
 
 
 @dataclass
+class VideoBufferConfig:
+    """Video ring buffer configuration for dashcam-style pre-event capture."""
+
+    enabled: bool = True
+    buffer_dir: str = "/var/lib/shitbox/video_buffer"
+    segment_seconds: int = 10
+    buffer_segments: int = 5
+    overlay_enabled: bool = True
+
+
+@dataclass
 class CaptureConfig:
     """Manual capture (button + video) configuration."""
 
@@ -149,6 +182,7 @@ class CaptureConfig:
     max_capture_age_days: int = 14
     video: VideoConfig = field(default_factory=VideoConfig)
     timelapse: TimelapseConfig = field(default_factory=TimelapseConfig)
+    video_buffer: VideoBufferConfig = field(default_factory=VideoBufferConfig)
 
 
 @dataclass
@@ -236,6 +270,9 @@ def load_config(config_path: str | Path | None = None) -> Config:
         max_capture_age_days=capture_data.get("max_capture_age_days", 14),
         video=_dict_to_dataclass(VideoConfig, capture_data.get("video", {})),
         timelapse=_dict_to_dataclass(TimelapseConfig, capture_data.get("timelapse", {})),
+        video_buffer=_dict_to_dataclass(
+            VideoBufferConfig, capture_data.get("video_buffer", {})
+        ),
     )
 
     return Config(
@@ -245,6 +282,12 @@ def load_config(config_path: str | Path | None = None) -> Config:
             imu=_dict_to_dataclass(IMUConfig, data.get("sensors", {}).get("imu", {})),
             temperature=_dict_to_dataclass(
                 TemperatureConfig, data.get("sensors", {}).get("temperature", {})
+            ),
+            power=_dict_to_dataclass(
+                PowerConfig, data.get("sensors", {}).get("power", {})
+            ),
+            environment=_dict_to_dataclass(
+                EnvironmentConfig, data.get("sensors", {}).get("environment", {})
             ),
         ),
         storage=_dict_to_dataclass(StorageConfig, data.get("storage", {})),

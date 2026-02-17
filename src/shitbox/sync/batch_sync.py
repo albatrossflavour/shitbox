@@ -23,6 +23,11 @@ class DuplicateDataError(Exception):
     pass
 
 
+class TooOldSampleError(Exception):
+    """Raised when Prometheus rejects data as too old."""
+    pass
+
+
 class BatchSyncService:
     """Sync historical data to Prometheus in batches.
 
@@ -124,6 +129,16 @@ class BatchSyncService:
             )
             self.db.update_sync_cursor(self._cursor_name, last_id)
 
+        except TooOldSampleError:
+            # Data is too old for Prometheus to accept - skip and advance
+            log.warning(
+                "batch_sync_too_old_skipped",
+                count=len(readings),
+                last_id=last_id,
+                oldest_reading=readings[0].timestamp_utc.isoformat(),
+            )
+            self.db.update_sync_cursor(self._cursor_name, last_id)
+
         except Exception as e:
             log.error("batch_sync_send_failed", error=str(e))
             raise
@@ -208,6 +223,34 @@ class BatchSyncService:
                         ("shitbox_temp", labels, reading.temp_celsius, timestamp_ms)
                     )
 
+            elif reading.sensor_type.value == "power":
+                if reading.bus_voltage_v is not None:
+                    metrics.append(
+                        ("shitbox_bus_voltage", labels, reading.bus_voltage_v, timestamp_ms)
+                    )
+                if reading.current_ma is not None:
+                    metrics.append(
+                        ("shitbox_current", labels, reading.current_ma, timestamp_ms)
+                    )
+                if reading.power_mw is not None:
+                    metrics.append(
+                        ("shitbox_power", labels, reading.power_mw, timestamp_ms)
+                    )
+
+            elif reading.sensor_type.value == "environment":
+                if reading.pressure_hpa is not None:
+                    metrics.append(
+                        ("shitbox_pressure", labels, reading.pressure_hpa, timestamp_ms)
+                    )
+                if reading.humidity_pct is not None:
+                    metrics.append(
+                        ("shitbox_humidity", labels, reading.humidity_pct, timestamp_ms)
+                    )
+                if reading.env_temp_celsius is not None:
+                    metrics.append(
+                        ("shitbox_env_temp", labels, reading.env_temp_celsius, timestamp_ms)
+                    )
+
             elif reading.sensor_type.value == "system":
                 if reading.cpu_temp_celsius is not None:
                     metrics.append(
@@ -223,7 +266,9 @@ class BatchSyncService:
         retry=lambda retry_state: (
             retry_state.outcome is not None
             and retry_state.outcome.exception() is not None
-            and not isinstance(retry_state.outcome.exception(), DuplicateDataError)
+            and not isinstance(
+                retry_state.outcome.exception(), (DuplicateDataError, TooOldSampleError)
+            )
         ),
     )
     def _send_to_prometheus(self, readings: List[Reading]) -> None:
@@ -276,6 +321,14 @@ class BatchSyncService:
                     response_text=response_text,
                 )
                 raise DuplicateDataError(response_text)
+
+            # Check for too old sample error - don't retry, just skip
+            if response.status_code == 400 and "too old sample" in response_text.lower():
+                log.warning(
+                    "prometheus_too_old_detected",
+                    response_text=response_text,
+                )
+                raise TooOldSampleError(response_text)
 
             log.error(
                 "prometheus_write_http_error",

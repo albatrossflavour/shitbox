@@ -13,6 +13,8 @@ class SensorType(str, Enum):
     IMU = "imu"
     TEMPERATURE = "temp"
     SYSTEM = "system"
+    POWER = "power"
+    ENVIRONMENT = "environment"
 
 
 @dataclass
@@ -66,6 +68,26 @@ class TemperatureReading:
 
 
 @dataclass
+class PowerReading:
+    """INA219 power sensor reading."""
+
+    timestamp: datetime
+    bus_voltage_v: float
+    current_ma: float
+    power_mw: float
+
+
+@dataclass
+class EnvironmentReading:
+    """BME280 environment sensor reading."""
+
+    timestamp: datetime
+    pressure_hpa: float
+    humidity_pct: float
+    env_temp_celsius: float
+
+
+@dataclass
 class Reading:
     """Generic reading that can hold any sensor type's data.
 
@@ -95,6 +117,16 @@ class Reading:
 
     # Temperature fields
     temp_celsius: Optional[float] = None
+
+    # Power fields (INA219)
+    bus_voltage_v: Optional[float] = None
+    current_ma: Optional[float] = None
+    power_mw: Optional[float] = None
+
+    # Environment fields (BME280)
+    pressure_hpa: Optional[float] = None
+    humidity_pct: Optional[float] = None
+    env_temp_celsius: Optional[float] = None
 
     # System fields (Pi health)
     cpu_temp_celsius: Optional[float] = None
@@ -141,6 +173,28 @@ class Reading:
             temp_celsius=reading.temp_celsius,
         )
 
+    @classmethod
+    def from_power(cls, reading: PowerReading) -> "Reading":
+        """Create a Reading from a PowerReading."""
+        return cls(
+            timestamp_utc=reading.timestamp,
+            sensor_type=SensorType.POWER,
+            bus_voltage_v=reading.bus_voltage_v,
+            current_ma=reading.current_ma,
+            power_mw=reading.power_mw,
+        )
+
+    @classmethod
+    def from_environment(cls, reading: EnvironmentReading) -> "Reading":
+        """Create a Reading from an EnvironmentReading."""
+        return cls(
+            timestamp_utc=reading.timestamp,
+            sensor_type=SensorType.ENVIRONMENT,
+            pressure_hpa=reading.pressure_hpa,
+            humidity_pct=reading.humidity_pct,
+            env_temp_celsius=reading.env_temp_celsius,
+        )
+
     def to_mqtt_payload(self) -> dict:
         """Convert to MQTT JSON payload."""
         ts = self.timestamp_utc.isoformat()
@@ -170,6 +224,20 @@ class Reading:
             return {
                 "ts": ts,
                 "temp": self.temp_celsius,
+            }
+        elif self.sensor_type == SensorType.POWER:
+            return {
+                "ts": ts,
+                "bus_v": self.bus_voltage_v,
+                "cur_ma": self.current_ma,
+                "pwr_mw": self.power_mw,
+            }
+        elif self.sensor_type == SensorType.ENVIRONMENT:
+            return {
+                "ts": ts,
+                "press": self.pressure_hpa,
+                "hum": self.humidity_pct,
+                "env_temp": self.env_temp_celsius,
             }
         elif self.sensor_type == SensorType.SYSTEM:
             return {
