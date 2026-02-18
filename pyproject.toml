@@ -20,6 +20,7 @@ dependencies = [
     "requests>=2.28.0",
     "python-snappy>=0.6.0",
     "protobuf>=4.0.0",
+    "piicodev>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +40,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+shitbox = ["capture/assets/*.png"]
 
 [tool.ruff]
 line-length = 100

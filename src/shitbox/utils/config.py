@@ -167,6 +167,7 @@ class VideoBufferConfig:
     segment_seconds: int = 10
     buffer_segments: int = 5
     overlay_enabled: bool = True
+    intro_video: str = ""
 
 
 @dataclass
@@ -180,6 +181,7 @@ class CaptureConfig:
     post_capture_seconds: float = 30.0
     captures_dir: str = "/var/lib/shitbox/captures"
     max_capture_age_days: int = 14
+    buzzer_enabled: bool = True
     video: VideoConfig = field(default_factory=VideoConfig)
     timelapse: TimelapseConfig = field(default_factory=TimelapseConfig)
     video_buffer: VideoBufferConfig = field(default_factory=VideoBufferConfig)
@@ -268,6 +270,7 @@ def load_config(config_path: str | Path | None = None) -> Config:
         post_capture_seconds=capture_data.get("post_capture_seconds", 30.0),
         captures_dir=capture_data.get("captures_dir", "/var/lib/shitbox/captures"),
         max_capture_age_days=capture_data.get("max_capture_age_days", 14),
+        buzzer_enabled=capture_data.get("buzzer_enabled", True),
         video=_dict_to_dataclass(VideoConfig, capture_data.get("video", {})),
         timelapse=_dict_to_dataclass(TimelapseConfig, capture_data.get("timelapse", {})),
         video_buffer=_dict_to_dataclass(

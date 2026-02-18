@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from shitbox.capture import buzzer, overlay
 from shitbox.capture.button import ButtonHandler
 from shitbox.capture.ring_buffer import VideoRingBuffer
 from shitbox.capture.video import VideoRecorder
@@ -30,7 +31,7 @@ from shitbox.sync.batch_sync import BatchSyncService
 from shitbox.sync.connection import ConnectionMonitor
 from shitbox.sync.mqtt_publisher import MQTTPublisher
 from shitbox.utils.config import Config, load_config
-from shitbox.utils.logging import get_logger
+from shitbox.utils.logging import get_logger, setup_logging
 
 log = get_logger(__name__)
 
@@ -94,6 +95,7 @@ class EngineConfig:
 
     # Manual capture (button + video)
     capture_enabled: bool = True
+    buzzer_enabled: bool = True
     capture_gpio_pin: int = 17
     capture_debounce_ms: int = 50
     capture_pre_seconds: float = 30.0
@@ -117,6 +119,7 @@ class EngineConfig:
     video_buffer_segment_seconds: int = 10
     video_buffer_segments: int = 5
     overlay_enabled: bool = True
+    video_buffer_intro_video: str = ""
 
     @classmethod
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
@@ -162,6 +165,7 @@ class EngineConfig:
             uplink_enabled=config.sync.uplink_enabled,
             # Capture
             capture_enabled=config.capture.enabled,
+            buzzer_enabled=config.capture.buzzer_enabled,
             capture_gpio_pin=config.capture.gpio_pin,
             capture_debounce_ms=config.capture.debounce_ms,
             capture_pre_seconds=config.capture.pre_capture_seconds,
@@ -183,6 +187,7 @@ class EngineConfig:
             video_buffer_segment_seconds=config.capture.video_buffer.segment_seconds,
             video_buffer_segments=config.capture.video_buffer.buffer_segments,
             overlay_enabled=config.capture.video_buffer.overlay_enabled,
+            video_buffer_intro_video=config.capture.video_buffer.intro_video,
         )
 
 
@@ -313,10 +318,7 @@ class UnifiedEngine:
 
         if config.capture_enabled:
             if config.video_buffer_enabled:
-                overlay = (
-                    "/dev/shm/shitbox_overlay.txt"
-                    if config.overlay_enabled else None
-                )
+                overlay_path = "drawtext" if config.overlay_enabled else None
                 self.video_ring_buffer = VideoRingBuffer(
                     buffer_dir=config.video_buffer_dir,
                     output_dir=config.captures_dir,
@@ -327,7 +329,8 @@ class UnifiedEngine:
                     segment_seconds=config.video_buffer_segment_seconds,
                     buffer_segments=config.video_buffer_segments,
                     post_event_seconds=int(config.capture_post_seconds),
-                    overlay_path=overlay,
+                    overlay_path=overlay_path,
+                    intro_video=config.video_buffer_intro_video,
                 )
             else:
                 self.video_recorder = VideoRecorder(
@@ -391,9 +394,11 @@ class UnifiedEngine:
         video_path = None
         if event.event_type in self.VIDEO_CAPTURE_EVENTS:
             if self.video_ring_buffer and self.video_ring_buffer.is_running:
+                buzzer.beep_capture_start()
                 self.video_ring_buffer.save_event(
                     prefix=event.event_type.value,
                     post_seconds=int(self.config.capture_post_seconds),
+                    callback=self._on_capture_complete,
                 )
                 log.info(
                     "auto_event_video_save_triggered",
@@ -444,11 +449,13 @@ class UnifiedEngine:
         )
 
         # Start video recording / save from ring buffer
+        buzzer.beep_capture_start()
         video_path = None
         if self.video_ring_buffer and self.video_ring_buffer.is_running:
             self.video_ring_buffer.save_event(
                 prefix="manual_capture",
                 post_seconds=int(self.config.capture_post_seconds),
+                callback=self._on_capture_complete,
             )
             log.info("manual_capture_video_save_triggered")
         elif self.video_recorder:
@@ -502,6 +509,14 @@ class UnifiedEngine:
                 )
             except Exception as e:
                 log.error("mqtt_manual_capture_publish_error", error=str(e))
+
+    def _on_capture_complete(self, path: Optional[Path]) -> None:
+        """Called when a video ring buffer save finishes."""
+        buzzer.beep_capture_end()
+        if path:
+            log.info("capture_complete", path=str(path))
+        else:
+            log.warning("capture_failed")
 
     def _check_post_captures(self) -> None:
         """Complete any pending post-event captures."""
@@ -732,43 +747,29 @@ class UnifiedEngine:
                 except Exception as e:
                     log.error("mqtt_publish_error", error=str(e))
 
-        # Update video overlay
+        # Update video HUD overlay text files
         if self.config.overlay_enabled and self.video_ring_buffer:
             self._update_overlay()
 
     def _update_overlay(self) -> None:
-        """Write current telemetry to the overlay text file for ffmpeg drawtext."""
-        import math
-        import os
-
-        overlay_path = "/dev/shm/shitbox_overlay.txt"
-        tmp_path = overlay_path + ".tmp"
-
-        # Current G-force from IMU
-        g_force = 0.0
+        """Write overlay text files for ffmpeg drawtext filters."""
+        g_lat = 0.0
+        g_lon = 0.0
         samples = self.ring_buffer.get_latest(1)
         if samples:
             s = samples[0]
-            g_force = math.sqrt(s.ax * s.ax + s.ay * s.ay)
+            g_lat = s.ay  # lateral (left/right cornering)
+            g_lon = s.ax  # longitudinal (braking/acceleration)
 
-        # Format values with fallbacks for no GPS fix
-        speed = f"{self._current_speed_kmh:.0f}" if self._current_speed_kmh else "--"
-        heading = f"{self._current_heading:.0f}" if self._current_heading is not None else "--"
-        altitude = f"{self._current_altitude:.0f}" if self._current_altitude is not None else "--"
-        lat = f"{self._current_lat:.4f}" if self._current_lat is not None else "--"
-        lon = f"{self._current_lon:.4f}" if self._current_lon is not None else "--"
-        sats = str(self._current_satellites) if self._current_satellites is not None else "--"
-        now_str = datetime.now().strftime("%H:%M:%S")
-
-        line1 = f"{speed} km/h  |  {g_force:.1f}g  |  {heading}\u00b0  |  {altitude}m"
-        line2 = f"{lat}, {lon}  |  sats {sats}  |  {now_str}"
-
-        try:
-            with open(tmp_path, "w") as f:
-                f.write(f"{line1}\n{line2}")
-            os.rename(tmp_path, overlay_path)
-        except Exception as e:
-            log.debug("overlay_write_error", error=str(e))
+        overlay.update(
+            speed=self._current_speed_kmh if self._current_speed_kmh else None,
+            g_lat=g_lat,
+            g_lon=g_lon,
+            heading=self._current_heading,
+            lat=self._current_lat,
+            lon=self._current_lon,
+            satellites=self._current_satellites,
+        )
 
     def _check_timelapse(self, now: float) -> None:
         """Capture timelapse image if moving and interval elapsed."""
@@ -882,17 +883,9 @@ class UnifiedEngine:
         if self.batch_sync:
             self.batch_sync.start()
 
-        # Write initial overlay file before ffmpeg starts
+        # Initialise overlay text files before ffmpeg starts
         if self.config.overlay_enabled and self.video_ring_buffer:
-            try:
-                init_text = (
-                    "-- km/h  |  0.0g  |  --\u00b0  |  --m\n"
-                    "--, --  |  sats --  |  --:--:--"
-                )
-                with open("/dev/shm/shitbox_overlay.txt", "w") as f:
-                    f.write(init_text)
-            except Exception as e:
-                log.warning("overlay_init_error", error=str(e))
+            overlay.init()
 
         # Start video ring buffer
         if self.video_ring_buffer:
@@ -911,6 +904,20 @@ class UnifiedEngine:
         if self.button_handler:
             self.button_handler.start()
 
+        # Initialise buzzer
+        if self.config.buzzer_enabled:
+            buzzer.init()
+            buzzer.beep_boot()
+
+        # Boot capture — record the start of the session
+        if self.video_ring_buffer and self.video_ring_buffer.is_running:
+            buzzer.beep_capture_start()
+            self.video_ring_buffer.save_event(
+                prefix="boot",
+                callback=self._on_capture_complete,
+            )
+            log.info("boot_capture_triggered")
+
         log.info("unified_engine_started")
 
     def stop(self) -> None:
@@ -926,12 +933,15 @@ class UnifiedEngine:
         # Stop video ring buffer or active recording
         if self.video_ring_buffer:
             self.video_ring_buffer.stop()
-        # Clean up overlay file
-        overlay_path = Path("/dev/shm/shitbox_overlay.txt")
-        if overlay_path.exists():
-            overlay_path.unlink(missing_ok=True)
         if self.video_recorder and self.video_recorder.is_recording:
             self.video_recorder.stop_recording()
+
+        # Clean up overlay text files
+        if self.config.overlay_enabled:
+            overlay.cleanup()
+
+        # Clean up buzzer
+        buzzer.cleanup()
 
         # Stop components
         self.sampler.stop()
@@ -1035,6 +1045,7 @@ def main():
 
     # Load config
     yaml_config = load_config(args.config)
+    setup_logging(yaml_config.app.log_level)
 
     # Create engine config from YAML
     config = EngineConfig.from_yaml_config(yaml_config)
