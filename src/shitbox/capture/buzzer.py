@@ -89,3 +89,8 @@ def beep_capture_end() -> None:
 def beep_boot() -> None:
     """Three quick ascending tones: 440/100, 660/100, 880/200."""
     _play_async([(440, 100), (660, 100), (880, 200)], name="buzzer-boot")
+
+
+def beep_alarm() -> None:
+    """Two low 220 Hz tones (300 ms each) — distinct from higher-pitched beeps."""
+    _play_async([(220, 300), (220, 300)], name="buzzer-alarm")

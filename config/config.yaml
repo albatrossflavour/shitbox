@@ -76,6 +76,19 @@ sync:
     check_interval_seconds: 30
     timeout_seconds: 3
 
+  grafana:
+    enabled: false
+    url: "https://shit-of-theseus.com"
+    api_token: ""
+    video_base_url: "https://shit-of-theseus.com/captures"
+    timeout_seconds: 5
+
+  capture_sync:
+    enabled: true
+    remote_dest: "tgreen@192.168.1.22:/volume2/apps/shitbox/"
+    rsync_path: "/opt/bin/rsync"
+    interval_seconds: 300
+
 health:
   enabled: true
   report_interval_seconds: 60

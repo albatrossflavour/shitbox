@@ -20,6 +20,7 @@ class EventType(Enum):
     ROUGH_ROAD = "rough_road"
     HIGH_G = "high_g"
     MANUAL_CAPTURE = "manual_capture"
+    BOOT = "boot"
 
 
 @dataclass
@@ -34,6 +35,9 @@ class Event:
     peak_ay: float
     peak_az: float
     samples: List[IMUSample] = field(default_factory=list)
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    speed_kmh: Optional[float] = None
 
     @property
     def duration(self) -> float:
@@ -42,7 +46,7 @@ class Event:
 
     def to_dict(self) -> dict:
         """Convert to JSON-serialisable dict."""
-        return {
+        d: dict = {
             "type": self.event_type.value,
             "start_time": self.start_time,
             "end_time": self.end_time,
@@ -53,6 +57,13 @@ class Event:
             "peak_az": round(self.peak_az, 3),
             "sample_count": len(self.samples),
         }
+        if self.lat is not None:
+            d["lat"] = round(self.lat, 6)
+        if self.lng is not None:
+            d["lng"] = round(self.lng, 6)
+        if self.speed_kmh is not None:
+            d["speed_kmh"] = round(self.speed_kmh, 1)
+        return d
 
 
 @dataclass

@@ -36,6 +36,7 @@ class EventStorage:
         base_dir: str = "/var/lib/shitbox/events",
         max_age_days: int = 14,
         max_size_mb: int = 500,
+        captures_dir: Optional[str] = None,
     ):
         """Initialise event storage.
 
@@ -43,10 +44,12 @@ class EventStorage:
             base_dir: Base directory for event files.
             max_age_days: Delete events older than this.
             max_size_mb: Maximum total storage size.
+            captures_dir: Directory where captures/videos live (for events.json).
         """
         self.base_dir = Path(base_dir)
         self.max_age_days = max_age_days
         self.max_size_mb = max_size_mb
+        self.captures_dir = Path(captures_dir) if captures_dir else None
 
         self._event_counter = 0
         self._ensure_dir()
@@ -70,11 +73,14 @@ class EventStorage:
         self._event_counter += 1
         return f"{event.event_type.value}_{time_str}_{self._event_counter:03d}"
 
-    def save_event(self, event: Event) -> tuple[Path, Path]:
+    def save_event(
+        self, event: Event, video_path: Optional[Path] = None
+    ) -> tuple[Path, Path]:
         """Save an event to disk.
 
         Args:
             event: The event to save.
+            video_path: Path to the associated video capture, if any.
 
         Returns:
             Tuple of (json_path, csv_path).
@@ -89,6 +95,8 @@ class EventStorage:
         metadata = event.to_dict()
         metadata["csv_file"] = csv_path.name
         metadata["saved_at"] = datetime.now(timezone.utc).isoformat()
+        if video_path:
+            metadata["video_path"] = str(video_path)
 
         with open(json_path, "w") as f:
             json.dump(metadata, f, indent=2)
@@ -104,6 +112,29 @@ class EventStorage:
         )
 
         return json_path, csv_path
+
+    def update_event_video(
+        self, json_path: Path, video_path: Path
+    ) -> None:
+        """Update a saved event's JSON with a video path.
+
+        Args:
+            json_path: Path to the event's JSON metadata file.
+            video_path: Path to the video file.
+        """
+        try:
+            with open(json_path) as f:
+                metadata = json.load(f)
+            metadata["video_path"] = str(video_path)
+            with open(json_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+            log.info(
+                "event_video_updated",
+                json=str(json_path),
+                video=str(video_path),
+            )
+        except (json.JSONDecodeError, IOError) as e:
+            log.error("event_video_update_error", error=str(e))
 
     def _write_csv(self, path: Path, samples: List[IMUSample]) -> None:
         """Write samples to CSV file."""
@@ -232,3 +263,78 @@ class EventStorage:
 
         events.sort(key=lambda e: e.get("start_time", 0), reverse=True)
         return events
+
+    def generate_events_json(self, video_base_url: str = "/captures") -> Optional[Path]:
+        """Generate events.json index in captures_dir for the website.
+
+        Scans all stored event JSON files and writes a consolidated index
+        with fields the website expects: type, timestamp, peak_g, duration_ms,
+        speed_kmh, lat, lng, video_url.
+
+        Args:
+            video_base_url: URL prefix for video links.
+
+        Returns:
+            Path to the generated events.json, or None if no captures_dir.
+        """
+        if not self.captures_dir:
+            return None
+
+        self.captures_dir.mkdir(parents=True, exist_ok=True)
+        events_json_path = self.captures_dir / "events.json"
+
+        entries = []
+        for json_file in self.base_dir.rglob("*.json"):
+            try:
+                with open(json_file) as f:
+                    meta = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                continue
+
+            start_time = meta.get("start_time")
+            if not start_time:
+                continue
+
+            dt = datetime.fromtimestamp(start_time, tz=timezone.utc)
+
+            # Build video URL from stored path
+            video_url = None
+            stored_video = meta.get("video_path")
+            if stored_video:
+                vp = Path(stored_video)
+                if vp.exists():
+                    # Use date_dir/filename as relative path
+                    video_url = (
+                        f"{video_base_url}/{vp.parent.name}/{vp.name}"
+                    )
+
+            entry: dict = {
+                "type": meta.get("type", "unknown").upper(),
+                "timestamp": dt.isoformat(),
+                "peak_g": meta.get("peak_value"),
+                "duration_ms": meta.get("duration_ms"),
+            }
+            if meta.get("speed_kmh") is not None:
+                entry["speed_kmh"] = meta["speed_kmh"]
+            if meta.get("lat") is not None:
+                entry["lat"] = meta["lat"]
+            if meta.get("lng") is not None:
+                entry["lng"] = meta["lng"]
+            if video_url:
+                entry["video_url"] = video_url
+
+            entries.append(entry)
+
+        entries.sort(key=lambda e: e["timestamp"], reverse=True)
+
+        tmp_path = events_json_path.with_suffix(".tmp")
+        with open(tmp_path, "w") as f:
+            json.dump(entries, f, indent=2)
+        os.replace(tmp_path, events_json_path)
+
+        log.info(
+            "events_json_generated",
+            path=str(events_json_path),
+            count=len(entries),
+        )
+        return events_json_path

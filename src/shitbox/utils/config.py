@@ -117,6 +117,27 @@ class ConnectivityConfig:
 
 
 @dataclass
+class GrafanaConfig:
+    """Grafana annotation configuration."""
+
+    enabled: bool = False
+    url: str = ""
+    api_token: str = ""
+    video_base_url: str = ""
+    timeout_seconds: int = 5
+
+
+@dataclass
+class CaptureSyncConfig:
+    """Capture rsync configuration."""
+
+    enabled: bool = False
+    remote_dest: str = ""
+    rsync_path: str = "/opt/bin/rsync"
+    interval_seconds: int = 300
+
+
+@dataclass
 class SyncConfig:
     """Sync services configuration."""
 
@@ -124,6 +145,8 @@ class SyncConfig:
     mqtt: MQTTConfig = field(default_factory=MQTTConfig)
     prometheus: PrometheusConfig = field(default_factory=PrometheusConfig)
     connectivity: ConnectivityConfig = field(default_factory=ConnectivityConfig)
+    grafana: GrafanaConfig = field(default_factory=GrafanaConfig)
+    capture_sync: CaptureSyncConfig = field(default_factory=CaptureSyncConfig)
 
 
 @dataclass
@@ -302,6 +325,12 @@ def load_config(config_path: str | Path | None = None) -> Config:
             ),
             connectivity=_dict_to_dataclass(
                 ConnectivityConfig, data.get("sync", {}).get("connectivity", {})
+            ),
+            grafana=_dict_to_dataclass(
+                GrafanaConfig, data.get("sync", {}).get("grafana", {})
+            ),
+            capture_sync=_dict_to_dataclass(
+                CaptureSyncConfig, data.get("sync", {}).get("capture_sync", {})
             ),
         ),
         health=_dict_to_dataclass(HealthConfig, data.get("health", {})),

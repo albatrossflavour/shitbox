@@ -9,6 +9,7 @@ Low-rate path (1 Hz):
 - GPS, IMU snapshot, temperature → SQLite → MQTT → Prometheus batch sync
 """
 
+import shutil
 import signal
 import threading
 import time
@@ -28,9 +29,11 @@ from shitbox.events.storage import EventStorage
 from shitbox.storage.database import Database
 from shitbox.storage.models import Reading, SensorType
 from shitbox.sync.batch_sync import BatchSyncService
+from shitbox.sync.capture_sync import CaptureSyncService
 from shitbox.sync.connection import ConnectionMonitor
+from shitbox.sync.grafana import GrafanaAnnotator
 from shitbox.sync.mqtt_publisher import MQTTPublisher
-from shitbox.utils.config import Config, load_config
+from shitbox.utils.config import CaptureSyncConfig, Config, GrafanaConfig, load_config
 from shitbox.utils.logging import get_logger, setup_logging
 
 log = get_logger(__name__)
@@ -121,6 +124,19 @@ class EngineConfig:
     overlay_enabled: bool = True
     video_buffer_intro_video: str = ""
 
+    # Grafana annotations
+    grafana_enabled: bool = False
+    grafana_url: str = ""
+    grafana_api_token: str = ""
+    grafana_video_base_url: str = ""
+    grafana_timeout_seconds: int = 5
+
+    # Capture sync (rsync to NAS)
+    capture_sync_enabled: bool = False
+    capture_sync_remote_dest: str = ""
+    capture_sync_rsync_path: str = "/opt/bin/rsync"
+    capture_sync_interval_seconds: int = 300
+
     @classmethod
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
         """Create EngineConfig from the existing YAML config structure."""
@@ -188,6 +204,17 @@ class EngineConfig:
             video_buffer_segments=config.capture.video_buffer.buffer_segments,
             overlay_enabled=config.capture.video_buffer.overlay_enabled,
             video_buffer_intro_video=config.capture.video_buffer.intro_video,
+            # Grafana annotations
+            grafana_enabled=config.sync.grafana.enabled,
+            grafana_url=config.sync.grafana.url,
+            grafana_api_token=config.sync.grafana.api_token,
+            grafana_video_base_url=config.sync.grafana.video_base_url,
+            grafana_timeout_seconds=config.sync.grafana.timeout_seconds,
+            # Capture sync
+            capture_sync_enabled=config.sync.capture_sync.enabled,
+            capture_sync_remote_dest=config.sync.capture_sync.remote_dest,
+            capture_sync_rsync_path=config.sync.capture_sync.rsync_path,
+            capture_sync_interval_seconds=config.sync.capture_sync.interval_seconds,
         )
 
 
@@ -232,6 +259,7 @@ class UnifiedEngine:
             base_dir=config.events_dir,
             max_age_days=config.max_event_age_days,
             max_size_mb=config.max_event_storage_mb,
+            captures_dir=config.captures_dir,
         )
 
         # Low-rate components
@@ -311,6 +339,38 @@ class UnifiedEngine:
             )
             self.batch_sync = BatchSyncService(prom_config, self.database, self.connection)
 
+        # Grafana annotator
+        self.grafana: Optional[GrafanaAnnotator] = None
+        if config.grafana_enabled and config.uplink_enabled and config.grafana_url:
+            grafana_config = GrafanaConfig(
+                enabled=True,
+                url=config.grafana_url,
+                api_token=config.grafana_api_token,
+                video_base_url=config.grafana_video_base_url,
+                timeout_seconds=config.grafana_timeout_seconds,
+            )
+            self.grafana = GrafanaAnnotator(grafana_config, config.captures_dir)
+
+        # Capture sync (rsync to NAS)
+        self.capture_sync: Optional[CaptureSyncService] = None
+        if (
+            config.capture_sync_enabled
+            and config.uplink_enabled
+            and config.capture_sync_remote_dest
+        ):
+            capture_sync_config = CaptureSyncConfig(
+                enabled=True,
+                remote_dest=config.capture_sync_remote_dest,
+                rsync_path=config.capture_sync_rsync_path,
+                interval_seconds=config.capture_sync_interval_seconds,
+            )
+            self.capture_sync = CaptureSyncService(
+                capture_sync_config,
+                self.connection,
+                config.captures_dir,
+                self.event_storage,
+            )
+
         # Manual capture components
         self.button_handler: Optional[ButtonHandler] = None
         self.video_recorder: Optional[VideoRecorder] = None
@@ -350,6 +410,8 @@ class UnifiedEngine:
         self._running = False
         self._telemetry_thread: Optional[threading.Thread] = None
         self._pending_post_capture: dict = {}
+        self._event_json_paths: dict[int, Path] = {}
+        self._event_video_paths: dict[int, Path] = {}
         self._manual_capture_count = 0
         self._last_timelapse_time = 0.0
         self._current_speed_kmh = 0.0
@@ -363,6 +425,12 @@ class UnifiedEngine:
         self.telemetry_readings = 0
         self.events_captured = 0
         self.timelapse_images = 0
+
+        # Health watchdog
+        self._last_health_time = 0.0
+        self._last_sample_count = 0
+        self._health_failures = 0
+        self._engine_start_time = 0.0
 
     def _init_gps(self) -> bool:
         """Initialise GPS connection."""
@@ -386,19 +454,38 @@ class UnifiedEngine:
         self.detector.process_sample(sample)
 
     # Event types that should trigger video recording
-    VIDEO_CAPTURE_EVENTS = {EventType.HIGH_G, EventType.BIG_CORNER}
+    VIDEO_CAPTURE_EVENTS = {
+        EventType.HIGH_G,
+        EventType.BIG_CORNER,
+        EventType.MANUAL_CAPTURE,
+        EventType.BOOT,
+    }
+
+    # Health watchdog
+    HEALTH_CHECK_INTERVAL = 30.0
+    HEALTH_GRACE_PERIOD = 60.0  # skip checks during startup
+    DISK_LOW_PCT = 10.0
+    DISK_CRITICAL_PCT = 5.0
 
     def _on_event(self, event: Event) -> None:
         """Called when an event is detected."""
+        # Attach current GPS state to the event
+        event.lat = self._current_lat
+        event.lng = self._current_lon
+        event.speed_kmh = self._current_speed_kmh if self._current_speed_kmh else None
+
         # Start video recording/save for significant events
         video_path = None
         if event.event_type in self.VIDEO_CAPTURE_EVENTS:
             if self.video_ring_buffer and self.video_ring_buffer.is_running:
                 buzzer.beep_capture_start()
+                eid = id(event)
                 self.video_ring_buffer.save_event(
                     prefix=event.event_type.value,
                     post_seconds=int(self.config.capture_post_seconds),
-                    callback=self._on_capture_complete,
+                    callback=lambda path, _eid=eid: self._on_video_complete(
+                        _eid, path
+                    ),
                 )
                 log.info(
                     "auto_event_video_save_triggered",
@@ -436,9 +523,8 @@ class UnifiedEngine:
     def trigger_manual_capture(self) -> None:
         """Trigger manual capture via button press or API call.
 
-        Captures:
-        - Video from webcam (configurable duration)
-        - IMU data from ring buffer (pre + post capture)
+        Creates a MANUAL_CAPTURE event and routes it through the
+        standard _on_event pipeline.
         """
         self._manual_capture_count += 1
         now = time.time()
@@ -448,24 +534,10 @@ class UnifiedEngine:
             capture_number=self._manual_capture_count,
         )
 
-        # Start video recording / save from ring buffer
-        buzzer.beep_capture_start()
-        video_path = None
-        if self.video_ring_buffer and self.video_ring_buffer.is_running:
-            self.video_ring_buffer.save_event(
-                prefix="manual_capture",
-                post_seconds=int(self.config.capture_post_seconds),
-                callback=self._on_capture_complete,
-            )
-            log.info("manual_capture_video_save_triggered")
-        elif self.video_recorder:
-            video_path = self.video_recorder.start_recording(
-                duration_seconds=self.config.capture_video_duration,
-                filename_prefix="manual_capture",
-            )
-
         # Grab pre-event IMU samples from ring buffer
-        pre_samples = self.ring_buffer.get_window(self.config.capture_pre_seconds)
+        pre_samples = self.ring_buffer.get_window(
+            self.config.capture_pre_seconds
+        )
 
         # Get current IMU reading for peak values
         latest = self.ring_buffer.get_latest(1)
@@ -473,50 +545,48 @@ class UnifiedEngine:
         peak_ay = latest[0].ay if latest else 0.0
         peak_az = latest[0].az if latest else 0.0
 
-        # Create manual capture event
         event = Event(
             event_type=EventType.MANUAL_CAPTURE,
             start_time=now - self.config.capture_pre_seconds,
-            end_time=now,  # Will be updated when post-capture completes
-            peak_value=1.0,  # Placeholder for manual captures
+            end_time=now,
+            peak_value=1.0,
             peak_ax=peak_ax,
             peak_ay=peak_ay,
             peak_az=peak_az,
             samples=list(pre_samples),
         )
 
-        # Schedule post-event capture (same pattern as auto-detected events)
-        post_capture_until = now + self.config.capture_post_seconds
-        self._pending_post_capture[id(event)] = {
-            "event": event,
-            "capture_until": post_capture_until,
-            "video_path": video_path,
-        }
+        # Route through standard event pipeline
+        self._on_event(event)
 
-        # Publish to MQTT
-        if self.mqtt and self.mqtt.is_connected:
-            try:
-                import json
-                payload = {
-                    "type": "manual_capture",
-                    "timestamp": now,
-                    "capture_number": self._manual_capture_count,
-                    "video_path": str(video_path) if video_path else None,
-                }
-                self.mqtt._publish(
-                    f"{self.config.mqtt_topic_prefix}/manual_capture",
-                    json.dumps(payload),
-                )
-            except Exception as e:
-                log.error("mqtt_manual_capture_publish_error", error=str(e))
+    def _on_video_complete(
+        self, event_id: int, path: Optional[Path]
+    ) -> None:
+        """Called when a video ring buffer save finishes.
 
-    def _on_capture_complete(self, path: Optional[Path]) -> None:
-        """Called when a video ring buffer save finishes."""
+        Updates the saved event metadata with the video path and
+        regenerates events.json.
+
+        Args:
+            event_id: The id() of the Event object, used to look up
+                      the saved JSON path.
+            path: Path to the saved video file, or None on failure.
+        """
         buzzer.beep_capture_end()
-        if path:
-            log.info("capture_complete", path=str(path))
+        if not path:
+            log.warning("capture_failed", event_id=event_id)
+            return
+
+        log.info("capture_complete", path=str(path), event_id=event_id)
+
+        json_path = self._event_json_paths.get(event_id)
+        if json_path:
+            self.event_storage.update_event_video(json_path, path)
+            self.event_storage.generate_events_json()
         else:
-            log.warning("capture_failed")
+            # Event hasn't been saved yet — stash path for
+            # _check_post_captures to pick up.
+            self._event_video_paths[event_id] = path
 
     def _check_post_captures(self) -> None:
         """Complete any pending post-event captures."""
@@ -534,17 +604,45 @@ class UnifiedEngine:
                     s for s in additional if s.timestamp > event.end_time
                 )
 
+                # Check if video callback already fired
+                eid = id(event)
+                video_path = self._event_video_paths.pop(eid, None)
+                if not video_path:
+                    video_path = self._find_capture_video(event)
+
                 # Save to disk
                 try:
-                    self.event_storage.save_event(event)
+                    json_path, _ = self.event_storage.save_event(
+                        event, video_path=video_path
+                    )
                     self.events_captured += 1
+                    # Store json_path so late video callbacks can
+                    # update this event.
+                    self._event_json_paths[eid] = json_path
+                    self.event_storage.generate_events_json()
                 except Exception as e:
                     log.error("event_save_error", error=str(e))
+
+                # Post Grafana annotation
+                if self.grafana:
+                    self.grafana.annotate_event(event, video_path)
 
                 completed.append(event_id)
 
         for event_id in completed:
             del self._pending_post_capture[event_id]
+
+    def _find_capture_video(self, event: Event) -> Optional[Path]:
+        """Find the most recent video capture matching an event."""
+        captures = Path(self.config.captures_dir)
+        event_date = datetime.fromtimestamp(event.start_time, tz=timezone.utc)
+        date_dir = captures / event_date.strftime("%Y-%m-%d")
+        if not date_dir.is_dir():
+            return None
+
+        pattern = f"{event.event_type.value}_*.mp4"
+        matches = sorted(date_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+        return matches[0] if matches else None
 
     def _read_gps(self) -> Optional[Reading]:
         """Read current GPS data."""
@@ -668,23 +766,26 @@ class UnifiedEngine:
         last_cleanup = time.time()
 
         while self._running:
-            now = time.time()
+            try:
+                now = time.time()
 
-            # Telemetry at configured interval
-            if (now - last_telemetry) >= self.config.telemetry_interval_seconds:
-                self._record_telemetry()
-                last_telemetry = now
+                # Telemetry at configured interval
+                if (now - last_telemetry) >= self.config.telemetry_interval_seconds:
+                    self._record_telemetry()
+                    last_telemetry = now
 
-            # Check for completed event captures
-            self._check_post_captures()
+                # Check for completed event captures
+                self._check_post_captures()
 
-            # Timelapse capture when moving
-            self._check_timelapse(now)
+                # Timelapse capture when moving
+                self._check_timelapse(now)
 
-            # Periodic cleanup (every hour)
-            if (now - last_cleanup) >= 3600:
-                self._do_cleanup()
-                last_cleanup = now
+                # Periodic cleanup (every hour)
+                if (now - last_cleanup) >= 3600:
+                    self._do_cleanup()
+                    last_cleanup = now
+            except Exception as e:
+                log.error("telemetry_loop_error", error=str(e))
 
             time.sleep(0.1)
 
@@ -836,6 +937,8 @@ class UnifiedEngine:
         if self._running:
             return
 
+        self._engine_start_time = time.time()
+
         log.info(
             "unified_engine_starting",
             imu_rate=self.config.imu_sample_rate_hz,
@@ -883,6 +986,10 @@ class UnifiedEngine:
         if self.batch_sync:
             self.batch_sync.start()
 
+        # Start capture sync
+        if self.capture_sync:
+            self.capture_sync.start()
+
         # Initialise overlay text files before ffmpeg starts
         if self.config.overlay_enabled and self.video_ring_buffer:
             overlay.init()
@@ -909,13 +1016,24 @@ class UnifiedEngine:
             buzzer.init()
             buzzer.beep_boot()
 
-        # Boot capture — record the start of the session
+        # Regenerate events.json from any previously stored events
+        try:
+            self.event_storage.generate_events_json()
+        except Exception as e:
+            log.warning("events_json_boot_generate_error", error=str(e))
+
+        # Boot capture — route through standard event pipeline
         if self.video_ring_buffer and self.video_ring_buffer.is_running:
-            buzzer.beep_capture_start()
-            self.video_ring_buffer.save_event(
-                prefix="boot",
-                callback=self._on_capture_complete,
+            boot_event = Event(
+                event_type=EventType.BOOT,
+                start_time=time.time(),
+                end_time=time.time(),
+                peak_value=0.0,
+                peak_ax=0.0,
+                peak_ay=0.0,
+                peak_az=0.0,
             )
+            self._on_event(boot_event)
             log.info("boot_capture_triggered")
 
         log.info("unified_engine_started")
@@ -948,6 +1066,9 @@ class UnifiedEngine:
 
         if self.batch_sync:
             self.batch_sync.stop()
+
+        if self.capture_sync:
+            self.capture_sync.stop()
 
         if self.mqtt:
             self.mqtt.disconnect()
@@ -1001,9 +1122,100 @@ class UnifiedEngine:
         # Main loop with watchdog
         while self._running:
             self._notify_systemd("WATCHDOG=1")
+            now = time.time()
+            elapsed = now - self._engine_start_time
+            if elapsed > self.HEALTH_GRACE_PERIOD:
+                if (now - self._last_health_time) >= self.HEALTH_CHECK_INTERVAL:
+                    self._health_check()
+                    self._last_health_time = now
             time.sleep(1.0)
 
         self.stop()
+
+    def _health_check(self) -> None:
+        """Check subsystem health and attempt recovery."""
+        issues: list[str] = []
+        recovered: list[str] = []
+
+        # 1. IMU sampler data flow
+        current_count = self.sampler.samples_total
+        if current_count == self._last_sample_count:
+            if self.sampler._thread and self.sampler._thread.is_alive():
+                log.warning("imu_sampler_stalled", samples_total=current_count)
+                issues.append("imu_stalled")
+            else:
+                log.error("imu_sampler_thread_dead", restarting=True)
+                issues.append("imu_thread_dead")
+                try:
+                    self.sampler.stop()
+                    self.sampler.start()
+                    recovered.append("imu_sampler")
+                except Exception as e:
+                    log.error("imu_sampler_restart_failed", error=str(e))
+        self._last_sample_count = current_count
+
+        # 2. Telemetry thread
+        if self._telemetry_thread and not self._telemetry_thread.is_alive():
+            log.error("telemetry_thread_dead", restarting=True)
+            issues.append("telemetry_thread_dead")
+            self._telemetry_thread = threading.Thread(
+                target=self._telemetry_loop, daemon=True
+            )
+            self._telemetry_thread.start()
+            recovered.append("telemetry_thread")
+
+        # 3. Video ring buffer
+        if self.video_ring_buffer and not self.video_ring_buffer.is_running:
+            log.error("video_ring_buffer_dead", restarting=True)
+            issues.append("video_ring_buffer_dead")
+            try:
+                self.video_ring_buffer.stop()
+                self.video_ring_buffer.start()
+                recovered.append("video_ring_buffer")
+            except Exception as e:
+                log.error("video_ring_buffer_restart_failed", error=str(e))
+
+        # 4. GPS reconnection
+        if self.config.gps_enabled and not self._gps_available:
+            issues.append("gps_unavailable")
+            if self._init_gps():
+                recovered.append("gps")
+
+        # 5. Disk space
+        try:
+            usage = shutil.disk_usage(self.config.captures_dir)
+            free_pct = (usage.free / usage.total) * 100.0
+            if free_pct < self.DISK_CRITICAL_PCT:
+                log.error("disk_space_critical", free_pct=round(free_pct, 1))
+                issues.append("disk_critical")
+                self._do_cleanup()
+            elif free_pct < self.DISK_LOW_PCT:
+                log.warning("disk_space_low", free_pct=round(free_pct, 1))
+                issues.append("disk_low")
+                self._do_cleanup()
+        except OSError as e:
+            log.warning("disk_usage_check_failed", error=str(e))
+
+        # Alarm logic
+        if issues:
+            self._health_failures += 1
+            log.warning(
+                "health_check_issues",
+                issues=issues,
+                consecutive_failures=self._health_failures,
+            )
+            if self._health_failures >= 2:
+                buzzer.beep_alarm()
+        else:
+            if self._health_failures > 0:
+                log.info(
+                    "health_check_all_clear",
+                    previous_failures=self._health_failures,
+                )
+            self._health_failures = 0
+
+        if recovered:
+            log.info("health_check_recovered", subsystems=recovered)
 
     @staticmethod
     def _notify_systemd(state: str) -> None:
