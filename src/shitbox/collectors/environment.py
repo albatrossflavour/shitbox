@@ -1,4 +1,4 @@
-"""Environment data collector for BME280 sensor."""
+"""Environment data collector for BME680 sensor."""
 
 from typing import Callable, Optional
 
@@ -11,9 +11,10 @@ log = get_logger(__name__)
 
 
 class EnvironmentCollector(BaseCollector[EnvironmentReading]):
-    """Collector for BME280 I2C environment sensor.
+    """Collector for BME680 I2C environment sensor.
 
-    Reads barometric pressure (hPa), relative humidity (%), and temperature (C).
+    Reads barometric pressure (hPa), relative humidity (%), temperature (C),
+    and gas resistance (ohms) for VOC/air quality measurement.
     """
 
     def __init__(
@@ -31,11 +32,11 @@ class EnvironmentCollector(BaseCollector[EnvironmentReading]):
         self._i2c = None
 
     def setup(self) -> None:
-        """Initialise BME280 hardware."""
+        """Initialise BME680 hardware."""
         try:
             import board
             import busio
-            from adafruit_bme280.basic import Adafruit_BME280_I2C
+            from adafruit_bme680 import Adafruit_BME680_I2C
 
             log.info(
                 "initialising_environment_sensor",
@@ -44,15 +45,15 @@ class EnvironmentCollector(BaseCollector[EnvironmentReading]):
             )
 
             self._i2c = busio.I2C(board.SCL, board.SDA)
-            self._sensor = Adafruit_BME280_I2C(self._i2c, address=self.config.address)
+            self._sensor = Adafruit_BME680_I2C(self._i2c, address=self.config.address)
 
             log.info("environment_sensor_initialised")
 
         except ImportError as e:
             log.error("environment_import_error", error=str(e))
             raise RuntimeError(
-                "BME280 library not installed. "
-                "Run: pip install adafruit-circuitpython-bme280"
+                "BME680 library not installed. "
+                "Run: pip install adafruit-circuitpython-bme680"
             ) from e
         except Exception as e:
             log.error("environment_setup_error", error=str(e))
@@ -67,12 +68,14 @@ class EnvironmentCollector(BaseCollector[EnvironmentReading]):
             pressure = self._sensor.pressure
             humidity = self._sensor.relative_humidity
             temperature = self._sensor.temperature
+            gas = self._sensor.gas
 
             reading = EnvironmentReading(
                 timestamp=self.now_utc(),
                 pressure_hpa=pressure,
                 humidity_pct=humidity,
                 env_temp_celsius=temperature,
+                gas_resistance_ohms=gas,
             )
 
             log.debug(
@@ -80,6 +83,7 @@ class EnvironmentCollector(BaseCollector[EnvironmentReading]):
                 pressure_hpa=f"{pressure:.1f}",
                 humidity_pct=f"{humidity:.1f}",
                 temp_c=f"{temperature:.1f}",
+                gas_ohms=gas,
             )
 
             return reading

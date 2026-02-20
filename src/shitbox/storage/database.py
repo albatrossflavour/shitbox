@@ -13,7 +13,7 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 # Database schema version for migrations
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -47,10 +47,11 @@ CREATE TABLE IF NOT EXISTS readings (
     current_ma REAL,
     power_mw REAL,
 
-    -- Environment fields (BME280)
+    -- Environment fields (BME680)
     pressure_hpa REAL,
     humidity_pct REAL,
     env_temp_celsius REAL,
+    gas_resistance_ohms REAL,
 
     -- System fields (Pi health)
     cpu_temp_celsius REAL,
@@ -137,6 +138,9 @@ class Database:
         if current_version < 2:
             self._migrate_to_v2(conn)
 
+        if current_version < 3:
+            self._migrate_to_v3(conn)
+
         if current_version < SCHEMA_VERSION:
             conn.execute(
                 "INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
@@ -164,6 +168,15 @@ class Database:
                 pass  # Column already exists
         conn.commit()
         log.info("migrated_to_v2", columns=[c[0] for c in new_columns])
+
+    def _migrate_to_v3(self, conn: sqlite3.Connection) -> None:
+        """Add gas resistance column for BME680 sensor."""
+        try:
+            conn.execute("ALTER TABLE readings ADD COLUMN gas_resistance_ohms REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        conn.commit()
+        log.info("migrated_to_v3", columns=["gas_resistance_ohms"])
 
     def close(self) -> None:
         """Close database connection for current thread."""
@@ -215,8 +228,9 @@ class Database:
                     temp_celsius,
                     bus_voltage_v, current_ma, power_mw,
                     pressure_hpa, humidity_pct, env_temp_celsius,
+                    gas_resistance_ohms,
                     cpu_temp_celsius
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     reading.timestamp_utc.isoformat(),
@@ -241,6 +255,7 @@ class Database:
                     reading.pressure_hpa,
                     reading.humidity_pct,
                     reading.env_temp_celsius,
+                    reading.gas_resistance_ohms,
                     reading.cpu_temp_celsius,
                 ),
             )
@@ -274,10 +289,11 @@ class Database:
                             temp_celsius,
                             bus_voltage_v, current_ma, power_mw,
                             pressure_hpa, humidity_pct, env_temp_celsius,
+                            gas_resistance_ohms,
                             cpu_temp_celsius
                         ) VALUES (
                             ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
                         """,
                         (
@@ -303,6 +319,7 @@ class Database:
                             reading.pressure_hpa,
                             reading.humidity_pct,
                             reading.env_temp_celsius,
+                            reading.gas_resistance_ohms,
                             reading.cpu_temp_celsius,
                         ),
                     )
@@ -495,6 +512,9 @@ class Database:
             pressure_hpa=row["pressure_hpa"] if "pressure_hpa" in keys else None,
             humidity_pct=row["humidity_pct"] if "humidity_pct" in keys else None,
             env_temp_celsius=row["env_temp_celsius"] if "env_temp_celsius" in keys else None,
+            gas_resistance_ohms=(
+                row["gas_resistance_ohms"] if "gas_resistance_ohms" in keys else None
+            ),
             cpu_temp_celsius=row["cpu_temp_celsius"] if "cpu_temp_celsius" in keys else None,
         )
 

@@ -79,12 +79,13 @@ class PowerReading:
 
 @dataclass
 class EnvironmentReading:
-    """BME280 environment sensor reading."""
+    """BME680 environment sensor reading."""
 
     timestamp: datetime
     pressure_hpa: float
     humidity_pct: float
     env_temp_celsius: float
+    gas_resistance_ohms: Optional[float] = None
 
 
 @dataclass
@@ -123,10 +124,11 @@ class Reading:
     current_ma: Optional[float] = None
     power_mw: Optional[float] = None
 
-    # Environment fields (BME280)
+    # Environment fields (BME680)
     pressure_hpa: Optional[float] = None
     humidity_pct: Optional[float] = None
     env_temp_celsius: Optional[float] = None
+    gas_resistance_ohms: Optional[float] = None
 
     # System fields (Pi health)
     cpu_temp_celsius: Optional[float] = None
@@ -193,6 +195,7 @@ class Reading:
             pressure_hpa=reading.pressure_hpa,
             humidity_pct=reading.humidity_pct,
             env_temp_celsius=reading.env_temp_celsius,
+            gas_resistance_ohms=reading.gas_resistance_ohms,
         )
 
     def to_mqtt_payload(self) -> dict:
@@ -238,6 +241,7 @@ class Reading:
                 "press": self.pressure_hpa,
                 "hum": self.humidity_pct,
                 "env_temp": self.env_temp_celsius,
+                "gas_ohms": self.gas_resistance_ohms,
             }
         elif self.sensor_type == SensorType.SYSTEM:
             return {

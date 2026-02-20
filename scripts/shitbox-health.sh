@@ -123,6 +123,22 @@ else
     warn "cpu temp" "sensor not found"
 fi
 
+# --- Sensors (data flowing?) ---
+if command -v sqlite3 >/dev/null 2>&1 && [ -f "$DB" ]; then
+    for stype in imu environment power; do
+        age=$(sqlite3 "$DB" "SELECT CAST((strftime('%s','now') - strftime('%s', timestamp_utc)) AS INTEGER) FROM readings WHERE sensor_type = '${stype}' ORDER BY id DESC LIMIT 1;" 2>/dev/null || echo "")
+        if [ -z "$age" ]; then
+            fail "sensor" "${stype}: no data"
+        elif [ "$age" -gt 300 ]; then
+            fail "sensor" "${stype}: stale (${age}s ago)"
+        elif [ "$age" -gt 60 ]; then
+            warn "sensor" "${stype}: ${age}s ago"
+        else
+            ok "sensor" "${stype}: ${age}s ago"
+        fi
+    done
+fi
+
 # --- Prometheus ---
 if (echo >/dev/tcp/"$PROMETHEUS_HOST"/"$PROMETHEUS_PORT") 2>/dev/null; then
     ok "prometheus" "${PROMETHEUS_HOST} reachable"

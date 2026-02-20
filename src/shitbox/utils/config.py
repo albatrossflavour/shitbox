@@ -211,6 +211,23 @@ class CaptureConfig:
 
 
 @dataclass
+class OLEDConfig:
+    """OLED display configuration."""
+
+    enabled: bool = False
+    i2c_bus: int = 1
+    address: int = 0x3C
+    update_interval_seconds: float = 1.0
+
+
+@dataclass
+class DisplayConfig:
+    """Display configuration."""
+
+    oled: OLEDConfig = field(default_factory=OLEDConfig)
+
+
+@dataclass
 class AppConfig:
     """Application configuration."""
 
@@ -229,6 +246,7 @@ class Config:
     sync: SyncConfig = field(default_factory=SyncConfig)
     health: HealthConfig = field(default_factory=HealthConfig)
     capture: CaptureConfig = field(default_factory=CaptureConfig)
+    display: DisplayConfig = field(default_factory=DisplayConfig)
 
 
 def _dict_to_dataclass(cls: type, data: dict[str, Any]) -> Any:
@@ -335,4 +353,9 @@ def load_config(config_path: str | Path | None = None) -> Config:
         ),
         health=_dict_to_dataclass(HealthConfig, data.get("health", {})),
         capture=capture_config,
+        display=DisplayConfig(
+            oled=_dict_to_dataclass(
+                OLEDConfig, data.get("display", {}).get("oled", {})
+            ),
+        ),
     )

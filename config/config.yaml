@@ -97,6 +97,13 @@ health:
   disk_warning_percent: 80
   disk_critical_percent: 95
 
+display:
+  oled:
+    enabled: true
+    i2c_bus: 1
+    address: 0x3C
+    update_interval_seconds: 1.0
+
 capture:
   enabled: true
   buzzer_enabled: true

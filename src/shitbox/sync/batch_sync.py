@@ -250,6 +250,13 @@ class BatchSyncService:
                     metrics.append(
                         ("shitbox_env_temp", labels, reading.env_temp_celsius, timestamp_ms)
                     )
+                if reading.gas_resistance_ohms is not None:
+                    metrics.append((
+                        "shitbox_gas_resistance",
+                        labels,
+                        reading.gas_resistance_ohms,
+                        timestamp_ms,
+                    ))
 
             elif reading.sensor_type.value == "system":
                 if reading.cpu_temp_celsius is not None:

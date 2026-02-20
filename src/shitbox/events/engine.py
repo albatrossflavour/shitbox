@@ -22,6 +22,7 @@ from shitbox.capture import buzzer, overlay
 from shitbox.capture.button import ButtonHandler
 from shitbox.capture.ring_buffer import VideoRingBuffer
 from shitbox.capture.video import VideoRecorder
+from shitbox.display.oled import OLEDDisplayService
 from shitbox.events.detector import DetectorConfig, Event, EventDetector, EventType
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
 from shitbox.events.sampler import HighRateSampler
@@ -33,7 +34,13 @@ from shitbox.sync.capture_sync import CaptureSyncService
 from shitbox.sync.connection import ConnectionMonitor
 from shitbox.sync.grafana import GrafanaAnnotator
 from shitbox.sync.mqtt_publisher import MQTTPublisher
-from shitbox.utils.config import CaptureSyncConfig, Config, GrafanaConfig, load_config
+from shitbox.utils.config import (
+    CaptureSyncConfig,
+    Config,
+    GrafanaConfig,
+    OLEDConfig,
+    load_config,
+)
 from shitbox.utils.logging import get_logger, setup_logging
 
 log = get_logger(__name__)
@@ -137,6 +144,12 @@ class EngineConfig:
     capture_sync_rsync_path: str = "/opt/bin/rsync"
     capture_sync_interval_seconds: int = 300
 
+    # OLED display
+    oled_enabled: bool = False
+    oled_i2c_bus: int = 1
+    oled_i2c_address: int = 0x3C
+    oled_update_interval: float = 1.0
+
     @classmethod
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
         """Create EngineConfig from the existing YAML config structure."""
@@ -215,6 +228,11 @@ class EngineConfig:
             capture_sync_remote_dest=config.sync.capture_sync.remote_dest,
             capture_sync_rsync_path=config.sync.capture_sync.rsync_path,
             capture_sync_interval_seconds=config.sync.capture_sync.interval_seconds,
+            # OLED display
+            oled_enabled=config.display.oled.enabled,
+            oled_i2c_bus=config.display.oled.i2c_bus,
+            oled_i2c_address=config.display.oled.address,
+            oled_update_interval=config.display.oled.update_interval_seconds,
         )
 
 
@@ -283,7 +301,7 @@ class UnifiedEngine:
                 )
                 self._power_collector = PowerCollector(power_config)
             except Exception as e:
-                log.warning("power_collector_init_failed", error=str(e))
+                log.error("power_collector_init_failed", error=str(e))
 
         # Environment collector (lazy init)
         self._environment_collector = None
@@ -299,7 +317,7 @@ class UnifiedEngine:
                 )
                 self._environment_collector = EnvironmentCollector(env_config)
             except Exception as e:
-                log.warning("environment_collector_init_failed", error=str(e))
+                log.error("environment_collector_init_failed", error=str(e))
 
         # Connection monitor
         from shitbox.utils.config import ConnectivityConfig
@@ -371,6 +389,17 @@ class UnifiedEngine:
                 self.event_storage,
             )
 
+        # OLED display
+        self.oled_display: Optional[OLEDDisplayService] = None
+        if config.oled_enabled:
+            oled_config = OLEDConfig(
+                enabled=True,
+                i2c_bus=config.oled_i2c_bus,
+                address=config.oled_i2c_address,
+                update_interval_seconds=config.oled_update_interval,
+            )
+            self.oled_display = OLEDDisplayService(oled_config, self)
+
         # Manual capture components
         self.button_handler: Optional[ButtonHandler] = None
         self.video_recorder: Optional[VideoRecorder] = None
@@ -420,6 +449,7 @@ class UnifiedEngine:
         self._current_heading: Optional[float] = None
         self._current_altitude: Optional[float] = None
         self._current_satellites: Optional[int] = None
+        self._gps_has_fix = False
 
         # Stats
         self.telemetry_readings = 0
@@ -445,7 +475,7 @@ class UnifiedEngine:
             log.info("gps_connected", host=self.config.gps_host)
             return True
         except Exception as e:
-            log.warning("gps_init_failed", error=str(e))
+            log.error("gps_init_failed", error=str(e))
             self._gps_available = False
             return False
 
@@ -748,6 +778,40 @@ class UnifiedEngine:
             log.debug("pi_temp_read_error", error=str(e))
         return None
 
+    def get_status(self) -> dict:
+        """Return current system status for the OLED display."""
+        # Peak G from latest IMU sample
+        peak_g = 0.0
+        samples = self.ring_buffer.get_latest(1)
+        if samples:
+            s = samples[0]
+            peak_g = (s.ax**2 + s.ay**2 + s.az**2) ** 0.5
+
+        return {
+            "gps_available": self._gps_available,
+            "gps_has_fix": self._gps_has_fix,
+            "satellites": self._current_satellites,
+            "speed_kmh": self._current_speed_kmh,
+            "peak_g": peak_g,
+            "imu_ok": self.sampler._running,
+            "env_ok": self._environment_collector is not None,
+            "pwr_ok": self._power_collector is not None,
+            "events_captured": self.events_captured,
+            "recording": (
+                self.video_ring_buffer is not None
+                and self.video_ring_buffer.is_running
+            )
+            or (
+                self.video_recorder is not None
+                and self.video_recorder.is_recording
+            ),
+            "net_connected": self.connection.is_connected,
+            "sync_backlog": (
+                self.batch_sync.get_backlog_count() if self.batch_sync else 0
+            ),
+            "cpu_temp": self._read_pi_temp(),
+        }
+
     def _read_system_status(self) -> Optional[Reading]:
         """Get system status reading (Pi temp, etc)."""
         cpu_temp = self._read_pi_temp()
@@ -797,14 +861,18 @@ class UnifiedEngine:
         if self.config.gps_enabled:
             gps_reading = self._read_gps()
             if gps_reading:
+                self._gps_has_fix = True
                 readings.append(gps_reading)
                 if gps_reading.speed_kmh is not None:
-                    self._current_speed_kmh = gps_reading.speed_kmh
+                    speed = gps_reading.speed_kmh if gps_reading.speed_kmh >= 3.0 else 0.0
+                    self._current_speed_kmh = speed
                 self._current_lat = gps_reading.latitude
                 self._current_lon = gps_reading.longitude
                 self._current_heading = gps_reading.heading_deg
                 self._current_altitude = gps_reading.altitude_m
                 self._current_satellites = gps_reading.satellites
+            else:
+                self._gps_has_fix = False
 
         # IMU snapshot
         imu_reading = self._read_imu_snapshot()
@@ -962,7 +1030,7 @@ class UnifiedEngine:
                 self._power_collector.setup()
                 log.info("power_sensor_ready")
             except Exception as e:
-                log.warning("power_sensor_setup_failed", error=str(e))
+                log.error("power_sensor_setup_failed", error=str(e))
                 self._power_collector = None
 
         # Initialise environment sensor
@@ -971,7 +1039,7 @@ class UnifiedEngine:
                 self._environment_collector.setup()
                 log.info("environment_sensor_ready")
             except Exception as e:
-                log.warning("environment_sensor_setup_failed", error=str(e))
+                log.error("environment_sensor_setup_failed", error=str(e))
                 self._environment_collector = None
 
         # Start connection monitor
@@ -989,6 +1057,10 @@ class UnifiedEngine:
         # Start capture sync
         if self.capture_sync:
             self.capture_sync.start()
+
+        # Start OLED display
+        if self.oled_display:
+            self.oled_display.start()
 
         # Initialise overlay text files before ffmpeg starts
         if self.config.overlay_enabled and self.video_ring_buffer:
@@ -1043,6 +1115,10 @@ class UnifiedEngine:
         log.info("unified_engine_stopping")
 
         self._running = False
+
+        # Stop OLED display early so it can show final state
+        if self.oled_display:
+            self.oled_display.stop()
 
         # Stop button handler
         if self.button_handler:
