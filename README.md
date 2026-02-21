@@ -32,6 +32,92 @@ It'll catch up.
 - **Big red button** — arcade button on GPIO 17, manual capture trigger
 - **Piezo buzzer** — chirps on event capture so you know it's working
 
+## Wiring
+
+```mermaid
+graph LR
+    subgraph Pi["Raspberry Pi"]
+        I2C[I2C Bus 1]
+        USB[USB]
+        GPIO[GPIO]
+    end
+
+    subgraph I2C_Devices["I2C (Bus 1)"]
+        IMU["MPU-6050<br/>IMU @ 0x68"]
+        ENV["BME680<br/>Environment @ 0x77"]
+        PWR["INA219<br/>Power @ 0x40"]
+        OLED["SSD1306<br/>OLED @ 0x3C"]
+    end
+
+    subgraph USB_Devices["USB"]
+        GPS["GPS Receiver<br/>(via gpsd)"]
+        CAM["Webcam<br/>720p + mic"]
+    end
+
+    subgraph GPIO_Devices["GPIO 17"]
+        BTN["Big Red Button<br/>(input, 50ms debounce)"]
+        BZR["Piezo Buzzer<br/>(output)"]
+    end
+
+    I2C --- IMU
+    I2C --- ENV
+    I2C --- PWR
+    I2C --- OLED
+    USB --- GPS
+    USB --- CAM
+    GPIO --- BTN
+    GPIO --- BZR
+
+    style Pi fill:#2a1f0e,stroke:#c06000,color:#f0dbb8
+    style I2C_Devices fill:#161b22,stroke:#2a1f0e,color:#c9d1d9
+    style USB_Devices fill:#161b22,stroke:#2a1f0e,color:#c9d1d9
+    style GPIO_Devices fill:#161b22,stroke:#2a1f0e,color:#c9d1d9
+```
+
+## Data flow
+
+```mermaid
+graph TD
+    subgraph Car["In the car"]
+        IMU[MPU-6050<br/>100 Hz] --> RB[Ring Buffer]
+        RB --> DET[Event Detector<br/>state machine]
+        GPS[GPS<br/>1 Hz] --> DB[(SQLite)]
+        ENV[BME680<br/>1 Hz] --> DB
+        PWR[INA219<br/>1 Hz] --> DB
+        GPS --> |lat/lng/speed| OVL
+
+        DET --> |event trigger| CAP[Video Capture]
+        BTN[Big Red Button] --> |manual trigger| CAP
+        CAP --> BUF[ffmpeg ring buffer<br/>5 x 10s segments]
+        BUF --> STITCH[Live stitch<br/>concat demuxer]
+        OVL[GPS overlay] --> STITCH
+        STITCH --> MP4[event.mp4]
+
+        CAM[Webcam] --> BUF
+        CAM --> |1 frame/min<br/>when moving| TL[Timelapse frames]
+
+        DET --> |event metadata| DB
+        DB --> SYNC[Batch Sync<br/>cursor-based]
+        MP4 --> RSYNC[rsync]
+        TL --> RSYNC
+    end
+
+    subgraph Home["Home network"]
+        SYNC --> |remote_write<br/>Snappy compressed| PROM[Prometheus]
+        PROM --> GRAF[Grafana]
+        RSYNC --> |over WireGuard| NAS[(Synology NAS)]
+    end
+
+    subgraph K8s["Kubernetes"]
+        NAS --> |NFS mount| NGINX[nginx]
+        NGINX --> SITE[shit-of-theseus.com]
+    end
+
+    style Car fill:#161b22,stroke:#2a1f0e,color:#c9d1d9
+    style Home fill:#161b22,stroke:#2a1f0e,color:#c9d1d9
+    style K8s fill:#161b22,stroke:#2a1f0e,color:#c9d1d9
+```
+
 ## How it works
 
 One daemon, three paths running concurrently:
