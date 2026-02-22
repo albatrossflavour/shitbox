@@ -11,6 +11,11 @@ sensors:
     host: localhost # gpsd host
     port: 2947 # gpsd port
     sample_rate_hz: 1
+    location_resolution_interval_seconds: 300
+    rally_start_lat: -16.483831
+    rally_start_lon: 145.467250
+    rally_destination_lat: -37.819142
+    rally_destination_lon: 144.960397
 
   imu:
     enabled: true
@@ -29,7 +34,7 @@ sensors:
     sample_rate_hz: 0.1
 
   power:
-    enabled: true
+    enabled: false
     i2c_bus: 1
     address: 0x40
     sample_rate_hz: 1.0

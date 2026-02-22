@@ -21,6 +21,7 @@ dependencies = [
     "python-snappy>=0.6.0",
     "protobuf>=4.0.0",
     "piicodev>=1.0.0",
+    "reverse_geocoder>=1.5.1",
 ]
 
 [project.optional-dependencies]

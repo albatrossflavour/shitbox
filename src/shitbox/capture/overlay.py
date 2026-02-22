@@ -23,13 +23,22 @@ _HEADING_ARROWS = ["\u2191", "\u2197", "\u2192", "\u2198", "\u2193", "\u2199", "
 # 8 G-force direction arrows (same set, based on atan2 of G vector)
 _G_ARROWS = ["\u2191", "\u2197", "\u2192", "\u2198", "\u2193", "\u2199", "\u2190", "\u2196"]
 
-# File paths
+# File paths — one file per drawtext instance to avoid multiline newline
+# rendering artifacts (ffmpeg drawtext shows \n as a visible null/box char)
 SPEED_FILE = os.path.join(_DIR, "shitbox_speed.txt")
 HEADING_FILE = os.path.join(_DIR, "shitbox_heading.txt")
 GFORCE_FILE = os.path.join(_DIR, "shitbox_gforce.txt")
-GPS_FILE = os.path.join(_DIR, "shitbox_gps.txt")
+LOCATION_FILE = os.path.join(_DIR, "shitbox_location.txt")
+GPS_TIME_FILE = os.path.join(_DIR, "shitbox_gps_time.txt")
+GPS_COORDS_FILE = os.path.join(_DIR, "shitbox_gps_coords.txt")
+DIST_START_FILE = os.path.join(_DIR, "shitbox_dist_start.txt")
+DIST_DEST_FILE = os.path.join(_DIR, "shitbox_dist_dest.txt")
 
-ALL_FILES = [SPEED_FILE, HEADING_FILE, GFORCE_FILE, GPS_FILE]
+ALL_FILES = [
+    SPEED_FILE, HEADING_FILE, GFORCE_FILE,
+    LOCATION_FILE, GPS_TIME_FILE, GPS_COORDS_FILE,
+    DIST_START_FILE, DIST_DEST_FILE,
+]
 
 # Pre-processed 80x80 PNG with circular alpha mask
 LOGO_PATH = str(Path(__file__).parent / "assets" / "shitbox_rally_logo.png")
@@ -63,43 +72,74 @@ def _g_arrow(g_lat: float, g_lon: float) -> str:
 def build_drawtext_filter() -> str:
     """Return the -vf drawtext filter chain for ffmpeg.
 
-    Four drawtext instances reading from /dev/shm/ text files:
+    Eight drawtext instances reading from /dev/shm/ text files:
     - Speed (bottom-left, large)
     - Heading (bottom-left, smaller, below speed)
     - G-force with direction arrow (bottom-right)
-    - GPS coords + sats + time (top-right)
-    Plus a static SHITBOX logo (bottom-center).
+    - Location name (top-right, bold white)
+    - GPS time (top-right, below location)
+    - GPS coords (top-right, below time, faded)
+    - Distance from start (top-right, below coords)
+    - Distance to destination (top-right, below start distance)
+    Plus a static URL (bottom-centre).
+
+    Each line is a separate file to avoid ffmpeg drawtext rendering
+    newline bytes as visible null/box characters.
     """
     font = "font=DejaVu Sans"
     mono = "font=DejaVu Sans Mono"
     box = "box=1:boxcolor=black@0.6:boxborderw=8"
 
     parts = [
-        # Speed — bottom-left, large
+        # Speed — bottom-left
         (
             f"drawtext=textfile='{SPEED_FILE}':reload=1"
-            f":{font}:fontsize=64:fontcolor=white"
-            f":{box}:x=20:y=h-140"
+            f":{mono}:fontsize=22:fontcolor=white"
+            f":{box}:x=20:y=h-76"
         ),
         # Heading — bottom-left, below speed
         (
             f"drawtext=textfile='{HEADING_FILE}':reload=1"
-            f":{font}:fontsize=32:fontcolor=gray"
-            f":{box}:x=20:y=h-65"
+            f":{mono}:fontsize=18:fontcolor=white@0.5"
+            f":{box}:x=20:y=h-40"
         ),
         # G-force — bottom-right
         (
             f"drawtext=textfile='{GFORCE_FILE}':reload=1"
-            f":{font}:fontsize=48:fontcolor=white"
-            f":{box}:x=w-tw-20:y=h-110"
+            f":{mono}:fontsize=22:fontcolor=white"
+            f":{box}:x=w-tw-20:y=h-76"
         ),
-        # GPS — top-right
+        # Location name — top-right, prominent
         (
-            f"drawtext=textfile='{GPS_FILE}':reload=1"
-            f":{mono}:fontsize=24:fontcolor=white"
+            f"drawtext=textfile='{LOCATION_FILE}':reload=1"
+            f":{font}:fontsize=28:fontcolor=white"
             f":{box}:x=w-tw-20:y=16"
         ),
-        # URL — bottom-center, static
+        # GPS time — top-right, below location
+        (
+            f"drawtext=textfile='{GPS_TIME_FILE}':reload=1"
+            f":{mono}:fontsize=22:fontcolor=white@0.8"
+            f":{box}:x=w-tw-20:y=56"
+        ),
+        # GPS coords — top-right, below time, faded
+        (
+            f"drawtext=textfile='{GPS_COORDS_FILE}':reload=1"
+            f":{mono}:fontsize=18:fontcolor=white@0.5"
+            f":{box}:x=w-tw-20:y=94"
+        ),
+        # Distance from start — top-right, below coords
+        (
+            f"drawtext=textfile='{DIST_START_FILE}':reload=1"
+            f":{mono}:fontsize=22:fontcolor=white@0.8"
+            f":{box}:x=w-tw-20:y=130"
+        ),
+        # Distance to destination — top-right, below start distance
+        (
+            f"drawtext=textfile='{DIST_DEST_FILE}':reload=1"
+            f":{mono}:fontsize=22:fontcolor=white@0.8"
+            f":{box}:x=w-tw-20:y=168"
+        ),
+        # URL — bottom-centre, static
         (
             f"drawtext=text='shit-of-theseus.com'"
             f":{font}:fontsize=28:fontcolor=white@0.6"
@@ -143,8 +183,10 @@ def update(
     heading: Optional[float],
     lat: Optional[float],
     lon: Optional[float],
-    satellites: Optional[int],
     timestamp: Optional[datetime] = None,
+    location_name: Optional[str] = None,
+    distance_from_start_km: Optional[float] = None,
+    distance_to_destination_km: Optional[float] = None,
 ) -> None:
     """Write all overlay text files."""
     # Speed
@@ -163,23 +205,40 @@ def update(
     arrow = _g_arrow(g_lat, g_lon)
     _atomic_write(GFORCE_FILE, f"{arrow} {magnitude:.1f}g")
 
-    # GPS
+    # Location name
+    _atomic_write(LOCATION_FILE, location_name if location_name else "")
+
+    # GPS time
     if timestamp is None:
         timestamp = datetime.now()
     time_str = timestamp.strftime("%H:%M:%S")
-    sats = f"sats {satellites}" if satellites is not None else "sats --"
+    _atomic_write(GPS_TIME_FILE, time_str)
+
+    # GPS coords (faded, bottom line)
     if lat is not None and lon is not None:
         coord = f"{lat:.4f}, {lon:.4f}"
     else:
         coord = "--, --"
-    _atomic_write(GPS_FILE, f"{coord}\n{sats}  |  {time_str}")
+    _atomic_write(GPS_COORDS_FILE, coord)
+
+    # Distance from start
+    if distance_from_start_km is not None:
+        _atomic_write(DIST_START_FILE, f"Start: {distance_from_start_km:,.0f} km")
+    else:
+        _atomic_write(DIST_START_FILE, "Start: -- km")
+
+    # Distance to destination
+    if distance_to_destination_km is not None:
+        _atomic_write(DIST_DEST_FILE, f"Dest: {distance_to_destination_km:,.0f} km")
+    else:
+        _atomic_write(DIST_DEST_FILE, "Dest: -- km")
 
 
 def init() -> None:
     """Write initial placeholder text files before ffmpeg starts."""
     update(
         speed=None, g_lat=0.0, g_lon=0.0, heading=None,
-        lat=None, lon=None, satellites=None,
+        lat=None, lon=None,
     )
 
 

@@ -320,6 +320,12 @@ class EventStorage:
                 entry["lat"] = meta["lat"]
             if meta.get("lng") is not None:
                 entry["lng"] = meta["lng"]
+            if meta.get("location_name") is not None:
+                entry["location_name"] = meta["location_name"]
+            if meta.get("distance_from_start_km") is not None:
+                entry["distance_from_start_km"] = meta["distance_from_start_km"]
+            if meta.get("distance_to_destination_km") is not None:
+                entry["distance_to_destination_km"] = meta["distance_to_destination_km"]
             if video_url:
                 entry["video_url"] = video_url
 

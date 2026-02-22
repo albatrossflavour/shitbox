@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from shitbox.capture import buzzer, overlay
 from shitbox.capture.button import ButtonHandler
@@ -144,6 +144,15 @@ class EngineConfig:
     capture_sync_rsync_path: str = "/opt/bin/rsync"
     capture_sync_interval_seconds: int = 300
 
+    # Location resolution
+    location_resolution_interval_seconds: int = 300
+
+    # Rally coordinates
+    rally_start_lat: float = -16.483831
+    rally_start_lon: float = 145.467250
+    rally_destination_lat: float = -37.819142
+    rally_destination_lon: float = 144.960397
+
     # OLED display
     oled_enabled: bool = False
     oled_i2c_bus: int = 1
@@ -228,6 +237,13 @@ class EngineConfig:
             capture_sync_remote_dest=config.sync.capture_sync.remote_dest,
             capture_sync_rsync_path=config.sync.capture_sync.rsync_path,
             capture_sync_interval_seconds=config.sync.capture_sync.interval_seconds,
+            # Location resolution
+            location_resolution_interval_seconds=config.sensors.gps.location_resolution_interval_seconds,
+            # Rally coordinates
+            rally_start_lat=config.sensors.gps.rally_start_lat,
+            rally_start_lon=config.sensors.gps.rally_start_lon,
+            rally_destination_lat=config.sensors.gps.rally_destination_lat,
+            rally_destination_lon=config.sensors.gps.rally_destination_lon,
             # OLED display
             oled_enabled=config.display.oled.enabled,
             oled_i2c_bus=config.display.oled.i2c_bus,
@@ -450,6 +466,21 @@ class UnifiedEngine:
         self._current_altitude: Optional[float] = None
         self._current_satellites: Optional[int] = None
         self._gps_has_fix = False
+        self._distance_from_start_km: Optional[float] = None
+        self._distance_to_destination_km: Optional[float] = None
+
+        # Location resolution state
+        self._current_location_name: Optional[str] = None
+        self._last_location_resolve_time: float = 0.0
+        self._last_resolved_lat: Optional[float] = None
+        self._last_resolved_lon: Optional[float] = None
+        self._reverse_geocoder: Any = None
+        try:
+            import reverse_geocoder as rg
+            self._reverse_geocoder = rg
+            log.info("reverse_geocoder_available")
+        except ImportError:
+            log.warning("reverse_geocoder_not_installed")
 
         # Stats
         self.telemetry_readings = 0
@@ -503,6 +534,9 @@ class UnifiedEngine:
         event.lat = self._current_lat
         event.lng = self._current_lon
         event.speed_kmh = self._current_speed_kmh if self._current_speed_kmh else None
+        event.location_name = self._current_location_name
+        event.distance_from_start_km = self._distance_from_start_km
+        event.distance_to_destination_km = self._distance_to_destination_km
 
         # Start video recording/save for significant events
         video_path = None
@@ -778,6 +812,81 @@ class UnifiedEngine:
             log.debug("pi_temp_read_error", error=str(e))
         return None
 
+    @staticmethod
+    def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """Calculate great-circle distance between two points in km."""
+        import math
+        r = 6371.0
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = (
+            math.sin(dlat / 2) ** 2
+            + math.cos(math.radians(lat1))
+            * math.cos(math.radians(lat2))
+            * math.sin(dlon / 2) ** 2
+        )
+        return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    def _resolve_location(self, lat: float, lon: float) -> None:
+        """Resolve GPS coordinates to a human-readable location name.
+
+        Prefixes with "Near" when the matched place is >5 km away.
+        """
+        if not self._reverse_geocoder:
+            return
+
+        now = time.time()
+        interval = self.config.location_resolution_interval_seconds
+
+        # Check if enough time has elapsed
+        time_elapsed = (now - self._last_location_resolve_time) >= interval
+
+        # Check if position has moved >1km since last resolve
+        moved = False
+        if self._last_resolved_lat is not None and self._last_resolved_lon is not None:
+            moved = self._haversine_km(
+                lat, lon, self._last_resolved_lat, self._last_resolved_lon
+            ) > 1.0
+        else:
+            moved = True  # First resolve
+
+        if not time_elapsed and not moved:
+            return
+
+        try:
+            results = self._reverse_geocoder.search((lat, lon))
+            if results:
+                result = results[0]
+                name = result.get("name", "")
+                admin1 = result.get("admin1", "")
+                if name and admin1:
+                    label = f"{name}, {admin1}"
+                elif name:
+                    label = name
+                else:
+                    return
+
+                # "Near" prefix when >5 km from the matched place centre
+                place_lat = float(result.get("lat", lat))
+                place_lon = float(result.get("lon", lon))
+                dist_km = self._haversine_km(lat, lon, place_lat, place_lon)
+                if dist_km > 5.0:
+                    label = f"Near {label}"
+
+                self._current_location_name = label
+                self._last_location_resolve_time = now
+                self._last_resolved_lat = lat
+                self._last_resolved_lon = lon
+                log.debug(
+                    "location_resolved",
+                    location=self._current_location_name,
+                    distance_km=round(dist_km, 1),
+                    lat=round(lat, 4),
+                    lon=round(lon, 4),
+                )
+        except Exception as e:
+            log.error("location_resolve_error", error=str(e))
+
     def get_status(self) -> dict:
         """Return current system status for the OLED display."""
         # Peak G from latest IMU sample
@@ -871,6 +980,17 @@ class UnifiedEngine:
                 self._current_heading = gps_reading.heading_deg
                 self._current_altitude = gps_reading.altitude_m
                 self._current_satellites = gps_reading.satellites
+                # Resolve location name from coordinates
+                if gps_reading.latitude is not None and gps_reading.longitude is not None:
+                    self._resolve_location(gps_reading.latitude, gps_reading.longitude)
+                    self._distance_from_start_km = self._haversine_km(
+                        self.config.rally_start_lat, self.config.rally_start_lon,
+                        gps_reading.latitude, gps_reading.longitude,
+                    )
+                    self._distance_to_destination_km = self._haversine_km(
+                        gps_reading.latitude, gps_reading.longitude,
+                        self.config.rally_destination_lat, self.config.rally_destination_lon,
+                    )
             else:
                 self._gps_has_fix = False
 
@@ -937,7 +1057,9 @@ class UnifiedEngine:
             heading=self._current_heading,
             lat=self._current_lat,
             lon=self._current_lon,
-            satellites=self._current_satellites,
+            location_name=self._current_location_name,
+            distance_from_start_km=self._distance_from_start_km,
+            distance_to_destination_km=self._distance_to_destination_km,
         )
 
     def _check_timelapse(self, now: float) -> None:

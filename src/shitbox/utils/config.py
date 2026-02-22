@@ -15,6 +15,11 @@ class GPSConfig:
     host: str = "localhost"
     port: int = 2947  # gpsd default port
     sample_rate_hz: float = 1.0
+    location_resolution_interval_seconds: int = 300
+    rally_start_lat: float = -16.483831
+    rally_start_lon: float = 145.467250
+    rally_destination_lat: float = -37.819142
+    rally_destination_lon: float = 144.960397
 
 
 @dataclass

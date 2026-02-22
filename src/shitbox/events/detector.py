@@ -38,6 +38,9 @@ class Event:
     lat: Optional[float] = None
     lng: Optional[float] = None
     speed_kmh: Optional[float] = None
+    location_name: Optional[str] = None
+    distance_from_start_km: Optional[float] = None
+    distance_to_destination_km: Optional[float] = None
 
     @property
     def duration(self) -> float:
@@ -63,6 +66,12 @@ class Event:
             d["lng"] = round(self.lng, 6)
         if self.speed_kmh is not None:
             d["speed_kmh"] = round(self.speed_kmh, 1)
+        if self.location_name is not None:
+            d["location_name"] = self.location_name
+        if self.distance_from_start_km is not None:
+            d["distance_from_start_km"] = round(self.distance_from_start_km, 1)
+        if self.distance_to_destination_km is not None:
+            d["distance_to_destination_km"] = round(self.distance_to_destination_km, 1)
         return d
 
 
