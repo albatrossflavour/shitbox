@@ -145,10 +145,8 @@ class OLEDDisplayService:
         # Line 3: sensor health — each inverted when failed
         imu_ok = status["imu_ok"]
         env_ok = status["env_ok"]
-        pwr_ok = status["pwr_ok"]
-        self._draw_text(0, 32, "IMU" if imu_ok else "IMU", inverted=not imu_ok)
-        self._draw_text(44, 32, "ENV" if env_ok else "ENV", inverted=not env_ok)
-        self._draw_text(88, 32, "PWR" if pwr_ok else "PWR", inverted=not pwr_ok)
+        self._draw_text(0, 32, "IMU", inverted=not imu_ok)
+        self._draw_text(44, 32, "ENV", inverted=not env_ok)
 
         # Line 4: network, sync backlog, CPU temp — NET inverted when down
         net_ok = status["net_connected"]

@@ -38,6 +38,7 @@ class CaptureSyncService:
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._sync_lock = threading.Lock()
 
     def start(self) -> None:
         """Start the capture sync service."""
@@ -78,7 +79,21 @@ class CaptureSyncService:
                 log.error("capture_sync_error", error=str(e))
 
     def _do_sync(self) -> None:
-        """Regenerate events.json and rsync captures to NAS."""
+        """Regenerate events.json and rsync captures to NAS.
+
+        Uses a lock to prevent concurrent syncs — if a sync is already
+        running, the call is skipped.
+        """
+        if not self._sync_lock.acquire(blocking=False):
+            log.debug("capture_sync_skipped_already_running")
+            return
+        try:
+            self._do_sync_inner()
+        finally:
+            self._sync_lock.release()
+
+    def _do_sync_inner(self) -> None:
+        """Inner sync implementation."""
         # Refresh events index before syncing
         if self.event_storage:
             try:

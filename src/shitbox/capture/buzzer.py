@@ -92,5 +92,5 @@ def beep_boot() -> None:
 
 
 def beep_alarm() -> None:
-    """Two low 220 Hz tones (300 ms each) — distinct from higher-pitched beeps."""
-    _play_async([(220, 300), (220, 300)], name="buzzer-alarm")
+    """Four low 220 Hz tones (300 ms each) — distinct from higher-pitched beeps."""
+    _play_async([(220, 300), (220, 300), (220, 300), (220, 300)], name="buzzer-alarm")

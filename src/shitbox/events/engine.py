@@ -466,6 +466,7 @@ class UnifiedEngine:
         self._current_altitude: Optional[float] = None
         self._current_satellites: Optional[int] = None
         self._gps_has_fix = False
+        self._clock_synced_from_gps = False
         self._distance_from_start_km: Optional[float] = None
         self._distance_to_destination_km: Optional[float] = None
 
@@ -510,14 +511,58 @@ class UnifiedEngine:
             self._gps_available = False
             return False
 
+    def _wait_for_gps_fix(self, max_wait: int = 20) -> bool:
+        """Poll GPS for a fix at startup, syncing the clock if needed.
+
+        Args:
+            max_wait: Maximum seconds to wait for a fix.
+
+        Returns:
+            True if a fix was obtained.
+        """
+        log.info("waiting_for_gps_fix", max_wait_seconds=max_wait)
+
+        for i in range(max_wait):
+            if not self._running:
+                return False
+            try:
+                reading = self._read_gps()
+                if reading and reading.latitude is not None:
+                    self._gps_has_fix = True
+                    self._current_lat = reading.latitude
+                    self._current_lon = reading.longitude
+                    self._current_speed_kmh = (
+                        reading.speed_kmh if reading.speed_kmh and reading.speed_kmh >= 3.0
+                        else 0.0
+                    )
+                    self._current_heading = reading.heading_deg
+                    self._current_altitude = reading.altitude_m
+                    self._current_satellites = reading.satellites
+                    log.info(
+                        "gps_fix_acquired_at_startup",
+                        wait_seconds=i + 1,
+                        lat=round(reading.latitude, 4),
+                        lon=round(reading.longitude, 4),
+                        clock_synced=self._clock_synced_from_gps,
+                    )
+                    return True
+            except Exception as e:
+                log.debug("gps_fix_poll_error", error=str(e))
+            time.sleep(1)
+
+        log.warning("gps_fix_timeout_at_startup", waited_seconds=max_wait)
+        return False
+
     def _on_imu_sample(self, sample: IMUSample) -> None:
         """Called for each high-rate IMU sample."""
         self.detector.process_sample(sample)
 
     # Event types that should trigger video recording
     VIDEO_CAPTURE_EVENTS = {
+        EventType.HARD_BRAKE,
         EventType.HIGH_G,
         EventType.BIG_CORNER,
+        EventType.ROUGH_ROAD,
         EventType.MANUAL_CAPTURE,
         EventType.BOOT,
     }
@@ -530,6 +575,27 @@ class UnifiedEngine:
 
     def _on_event(self, event: Event) -> None:
         """Called when an event is detected."""
+        # Suppress auto-detected events while a capture is already in progress.
+        # Extends the active capture window instead, so consecutive events
+        # (e.g. hard brake → high G → hard brake) produce one video, not many.
+        if (
+            self._pending_post_capture
+            and event.event_type not in {EventType.MANUAL_CAPTURE, EventType.BOOT}
+        ):
+            # Extend the post-capture window of the most recent pending event
+            extension = self.config.detector.post_event_seconds
+            for pending in self._pending_post_capture.values():
+                new_until = time.time() + extension
+                if new_until > pending["capture_until"]:
+                    pending["capture_until"] = new_until
+            log.info(
+                "event_suppressed_capture_active",
+                suppressed_type=event.event_type.value,
+                peak_g=round(event.peak_value, 2),
+                pending_count=len(self._pending_post_capture),
+            )
+            return
+
         # Attach current GPS state to the event
         event.lat = self._current_lat
         event.lng = self._current_lon
@@ -573,6 +639,13 @@ class UnifiedEngine:
             "capture_until": post_capture_until,
             "video_path": video_path,
         }
+        log.info(
+            "event_queued_for_save",
+            event_type=event.event_type.value,
+            event_id=id(event),
+            pending_count=len(self._pending_post_capture),
+            save_after_seconds=self.config.detector.post_event_seconds,
+        )
 
         # Publish event to MQTT
         if self.mqtt and self.mqtt.is_connected:
@@ -660,6 +733,13 @@ class UnifiedEngine:
         for event_id, pending in self._pending_post_capture.items():
             if now >= pending["capture_until"]:
                 event = pending["event"]
+                wait_seconds = now - pending["capture_until"]
+                log.info(
+                    "post_capture_processing",
+                    event_type=event.event_type.value,
+                    event_id=event_id,
+                    waited_extra_seconds=round(wait_seconds, 1),
+                )
                 # Get additional samples since event ended
                 additional = self.ring_buffer.get_window(
                     self.config.detector.post_event_seconds
@@ -684,8 +764,29 @@ class UnifiedEngine:
                     # update this event.
                     self._event_json_paths[eid] = json_path
                     self.event_storage.generate_events_json()
+                    log.info(
+                        "event_saved_to_disk",
+                        event_type=event.event_type.value,
+                        json_path=str(json_path),
+                        has_video=video_path is not None,
+                    )
+                    # Trigger immediate connectivity check and sync
+                    if self.config.uplink_enabled:
+                        connected = self.connection.check_connectivity()
+                        log.info("post_event_connectivity_check", connected=connected)
+                        if connected and self.capture_sync:
+                            try:
+                                self.capture_sync._do_sync()
+                            except Exception as e:
+                                log.error("post_event_sync_error", error=str(e))
                 except Exception as e:
-                    log.error("event_save_error", error=str(e))
+                    log.error(
+                        "event_save_error",
+                        event_type=event.event_type.value,
+                        error=str(e),
+                        events_dir=self.config.events_dir,
+                        captures_dir=self.config.captures_dir,
+                    )
 
                 # Post Grafana annotation
                 if self.grafana:
@@ -733,6 +834,10 @@ class UnifiedEngine:
                 except (ValueError, AttributeError):
                     pass
 
+            # Sync system clock from GPS on first fix
+            if not self._clock_synced_from_gps:
+                self._sync_clock_from_gps(timestamp)
+
             reading = Reading(
                 timestamp_utc=timestamp,
                 sensor_type=SensorType.GPS,
@@ -749,6 +854,72 @@ class UnifiedEngine:
         except Exception as e:
             log.error("gps_read_error", error=str(e))
             return None
+
+    def _sync_clock_from_gps(self, gps_time: datetime) -> None:
+        """Set the system clock from GPS time on first fix.
+
+        Runs once per boot to correct the clock when NTP is unavailable
+        (e.g. no network). Only adjusts if the drift is >30 seconds to
+        avoid fighting NTP when it is available.
+
+        Uses clock_settime via ctypes — requires CAP_SYS_TIME capability
+        on the systemd service.
+        """
+        import ctypes
+        import ctypes.util
+
+        try:
+            drift = abs((gps_time - datetime.now(timezone.utc)).total_seconds())
+            if drift < 30:
+                log.info("clock_already_accurate", drift_seconds=round(drift, 1))
+                self._clock_synced_from_gps = True
+                return
+
+            # clock_settime(CLOCK_REALTIME, timespec)
+            CLOCK_REALTIME = 0
+            ts = gps_time.timestamp()
+            sec = int(ts)
+            nsec = int((ts - sec) * 1e9)
+
+            class Timespec(ctypes.Structure):
+                _fields_ = [("tv_sec", ctypes.c_long), ("tv_nsec", ctypes.c_long)]
+
+            librt_name = ctypes.util.find_library("rt")
+            if librt_name:
+                librt = ctypes.CDLL(librt_name, use_errno=True)
+            else:
+                librt = ctypes.CDLL("libc.so.6", use_errno=True)
+
+            timespec = Timespec(sec, nsec)
+            ret = librt.clock_settime(CLOCK_REALTIME, ctypes.byref(timespec))
+            if ret == 0:
+                log.info(
+                    "clock_synced_from_gps",
+                    gps_time=gps_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    drift_seconds=round(drift, 1),
+                )
+                self._clock_synced_from_gps = True
+            else:
+                errno = ctypes.get_errno()
+                log.error("clock_sync_failed", errno=errno)
+        except Exception as e:
+            log.error("clock_sync_error", error=str(e))
+
+    def _sync_fake_hwclock(self) -> None:
+        """Write current time to /etc/fake-hwclock.data.
+
+        Keeps the saved time fresh so reboots without network start
+        with a roughly correct clock (within ~1 hour).  Requires
+        ReadWritePaths=/etc/fake-hwclock.data in the systemd unit.
+        """
+        FAKE_HWCLOCK_FILE = "/etc/fake-hwclock.data"
+        try:
+            time_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            with open(FAKE_HWCLOCK_FILE, "w") as f:
+                f.write(time_str + "\n")
+            log.debug("fake_hwclock_saved", time=time_str)
+        except Exception as e:
+            log.debug("fake_hwclock_save_failed", error=str(e))
 
     def _get_satellite_count(self) -> Optional[int]:
         """Get satellite count directly from gpsd."""
@@ -1106,6 +1277,9 @@ class UnifiedEngine:
         except Exception as e:
             log.error("cleanup_error", error=str(e))
 
+        # Update fake-hwclock so reboots start with a recent time
+        self._sync_fake_hwclock()
+
         # Clean up old video captures
         if self.video_ring_buffer:
             try:
@@ -1142,9 +1316,11 @@ class UnifiedEngine:
         # Initialise database
         self.database.connect()
 
-        # Initialise GPS
+        # Initialise GPS and wait for fix (up to 20 seconds)
         if self.config.gps_enabled:
             self._init_gps()
+            if self._gps_available:
+                self._wait_for_gps_fix()
 
         # Initialise power sensor
         if self._power_collector:
@@ -1216,7 +1392,7 @@ class UnifiedEngine:
         except Exception as e:
             log.warning("events_json_boot_generate_error", error=str(e))
 
-        # Boot capture — route through standard event pipeline
+        # Boot capture — video ring buffer has had ~20s to fill during GPS wait
         if self.video_ring_buffer and self.video_ring_buffer.is_running:
             boot_event = Event(
                 event_type=EventType.BOOT,

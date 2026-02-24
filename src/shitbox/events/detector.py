@@ -80,19 +80,19 @@ class DetectorConfig:
     """Configuration for event detection thresholds."""
 
     # Hard braking: ax < threshold for duration
-    hard_brake_threshold_g: float = -0.5
+    hard_brake_threshold_g: float = -0.45
     hard_brake_min_duration_ms: int = 200
 
     # Big corner: |ay| > threshold for duration
-    big_corner_threshold_g: float = 0.9
+    big_corner_threshold_g: float = 0.6
     big_corner_min_duration_ms: int = 300
 
     # Rough road: stddev of az over window > threshold
-    rough_road_threshold_stddev: float = 0.4
+    rough_road_threshold_stddev: float = 0.3
     rough_road_window_ms: int = 1000
 
     # High G: sqrt(ax² + ay²) > threshold
-    high_g_threshold: float = 1.2
+    high_g_threshold: float = 0.85
     high_g_min_duration_ms: int = 150
 
     # Cooldown: minimum time between events of same type
