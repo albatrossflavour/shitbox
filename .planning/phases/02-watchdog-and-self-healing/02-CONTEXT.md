@@ -42,17 +42,15 @@ detection, I2C bus lockup recovery, and buzzer alerting for all failure types.
 ### Recovery aggressiveness
 
 - Unlimited restart attempts for crashed services — never give up
-- Exponential backoff between attempts: 1s, 2s, 4s, 8s, etc.
+- Fixed 5-second restart interval via systemd RestartSec=5 (Pi OS systemd v252 does
+  not support exponential backoff via RestartSteps=)
 - ffmpeg stall detection via output file size monitoring — if file size unchanged
   for N seconds, kill and restart ffmpeg
-- After backoff reaches a ceiling (e.g. 5 minutes), reset counter and try again
-  with fresh backoff
 
 ### Claude's Discretion
 
 - Watchdog pet source architecture (main engine loop vs dedicated thread)
 - Exact buzzer tone frequencies and durations for each pattern
-- Exponential backoff ceiling value
 - ffmpeg stall detection timeout threshold
 - Specific structlog fields for health monitoring events
 
