@@ -84,29 +84,30 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BOOT-01 | — | Pending |
-| BOOT-02 | — | Pending |
-| BOOT-03 | — | Pending |
-| WDOG-01 | — | Pending |
-| WDOG-02 | — | Pending |
-| WDOG-03 | — | Pending |
-| WDOG-04 | — | Pending |
-| HLTH-01 | — | Pending |
-| HLTH-02 | — | Pending |
-| THRM-01 | — | Pending |
-| THRM-02 | — | Pending |
-| THRM-03 | — | Pending |
-| STOR-01 | — | Pending |
-| STGE-01 | — | Pending |
-| STGE-02 | — | Pending |
-| STGE-03 | — | Pending |
+| BOOT-01 | Phase 1 | Pending |
+| BOOT-02 | Phase 1 | Pending |
+| BOOT-03 | Phase 1 | Pending |
+| WDOG-01 | Phase 2 | Pending |
+| WDOG-02 | Phase 2 | Pending |
+| WDOG-03 | Phase 2 | Pending |
+| WDOG-04 | Phase 2 | Pending |
+| HLTH-02 | Phase 2 | Pending |
+| THRM-01 | Phase 3 | Pending |
+| THRM-02 | Phase 3 | Pending |
+| THRM-03 | Phase 3 | Pending |
+| STOR-01 | Phase 3 | Pending |
+| HLTH-01 | Phase 4 | Pending |
+| STGE-01 | Phase 4 | Pending |
+| STGE-02 | Phase 4 | Pending |
+| STGE-03 | Phase 4 | Pending |
 
 **Coverage:**
 
 - v1 requirements: 16 total
-- Mapped to phases: 0
-- Unmapped: 16
+- Mapped to phases: 16
+- Unmapped: 0
 
 ---
+
 *Requirements defined: 2026-02-25*
-*Last updated: 2026-02-25 after initial definition*
+*Last updated: 2026-02-25 after roadmap creation — all 16 v1 requirements mapped*
