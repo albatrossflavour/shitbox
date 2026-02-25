@@ -94,3 +94,13 @@ def beep_boot() -> None:
 def beep_alarm() -> None:
     """Four low 220 Hz tones (300 ms each) — distinct from higher-pitched beeps."""
     _play_async([(220, 300), (220, 300), (220, 300), (220, 300)], name="buzzer-alarm")
+
+
+def beep_clean_boot() -> None:
+    """Single short tone: clean boot confirmed."""
+    _play_async([(880, 200)], name="buzzer-clean-boot")
+
+
+def beep_crash_recovery() -> None:
+    """Double beep: crash was detected, recovery ran."""
+    _play_async([(880, 200), (880, 200)], name="buzzer-crash-recovery")

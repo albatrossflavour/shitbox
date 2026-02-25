@@ -30,6 +30,7 @@ from shitbox.events.storage import EventStorage
 from shitbox.storage.database import Database
 from shitbox.storage.models import Reading, SensorType
 from shitbox.sync.batch_sync import BatchSyncService
+from shitbox.sync.boot_recovery import BootRecoveryService, detect_unclean_shutdown
 from shitbox.sync.capture_sync import CaptureSyncService
 from shitbox.sync.connection import ConnectionMonitor
 from shitbox.sync.grafana import GrafanaAnnotator
@@ -295,6 +296,9 @@ class UnifiedEngine:
             max_size_mb=config.max_event_storage_mb,
             captures_dir=config.captures_dir,
         )
+
+        # Boot recovery (set up before database.connect() in start())
+        self.boot_recovery: Optional[BootRecoveryService] = None
 
         # Low-rate components
         self.database = Database(config.database_path)
@@ -1090,6 +1094,15 @@ class UnifiedEngine:
                 self.batch_sync.get_backlog_count() if self.batch_sync else 0
             ),
             "cpu_temp": self._read_pi_temp(),
+            "recovery_was_crash": (
+                self.boot_recovery.was_crash if self.boot_recovery else False
+            ),
+            "recovery_complete": (
+                self.boot_recovery.recovery_complete.is_set() if self.boot_recovery else True
+            ),
+            "recovery_orphans_closed": (
+                self.boot_recovery.orphans_closed if self.boot_recovery else 0
+            ),
         }
 
     def _read_system_status(self) -> Optional[Reading]:
@@ -1313,8 +1326,63 @@ class UnifiedEngine:
 
         self._running = True
 
-        # Initialise database
+        # --- Boot recovery: detect crash BEFORE database.connect() creates the WAL ---
+        was_crash = detect_unclean_shutdown(self.database.db_path)
+        if was_crash:
+            log.info("unclean_shutdown_detected", db_path=str(self.database.db_path))
+
+        # Initialise database (this creates the WAL file — detection must be above)
         self.database.connect()
+
+        # Start boot recovery in background (does not block data capture)
+        self.boot_recovery = BootRecoveryService(self.database, self.event_storage)
+        self.boot_recovery.was_crash = was_crash
+        self.boot_recovery.start()
+
+        def _send_boot_metric() -> None:
+            """Send boot_was_crash gauge after recovery completes."""
+            if self.boot_recovery is None:
+                return
+            self.boot_recovery.recovery_complete.wait(timeout=30)
+            try:
+                import time as _time
+
+                from shitbox.sync.prometheus_write import encode_remote_write
+
+                metric_value = 1.0 if self.boot_recovery.was_crash else 0.0
+                timestamp_ms = int(_time.time() * 1000)
+                metrics = [
+                    (
+                        "shitbox_boot_was_crash",
+                        {"instance": "shitbox-car", "car": "shitbox"},
+                        metric_value,
+                        timestamp_ms,
+                    )
+                ]
+                if (
+                    self.config.prometheus_enabled
+                    and self.config.uplink_enabled
+                    and self.config.prometheus_remote_write_url
+                    and self.connection.is_connected
+                ):
+                    import requests
+
+                    data = encode_remote_write(metrics)
+                    requests.post(
+                        self.config.prometheus_remote_write_url,
+                        data=data,
+                        headers={
+                            "Content-Type": "application/x-protobuf",
+                            "Content-Encoding": "snappy",
+                            "X-Prometheus-Remote-Write-Version": "0.1.0",
+                        },
+                        timeout=10,
+                    )
+                    log.info("boot_metric_sent", was_crash=self.boot_recovery.was_crash)
+            except Exception as e:
+                log.warning("boot_metric_send_failed", error=str(e))
+
+        threading.Thread(target=_send_boot_metric, daemon=True, name="boot-metric").start()
 
         # Initialise GPS and wait for fix (up to 20 seconds)
         if self.config.gps_enabled:
@@ -1385,6 +1453,11 @@ class UnifiedEngine:
         if self.config.buzzer_enabled:
             buzzer.init()
             buzzer.beep_boot()
+            # Recovery-specific beep after boot tone
+            if self.boot_recovery and self.boot_recovery.was_crash:
+                buzzer.beep_crash_recovery()
+            else:
+                buzzer.beep_clean_boot()
 
         # Regenerate events.json from any previously stored events
         try:
