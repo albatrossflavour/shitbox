@@ -113,7 +113,7 @@ class Database:
 
             # Configure for crash resistance and performance
             self._local.conn.execute("PRAGMA journal_mode=WAL")
-            self._local.conn.execute("PRAGMA synchronous=NORMAL")
+            self._local.conn.execute("PRAGMA synchronous=FULL")
             self._local.conn.execute("PRAGMA wal_autocheckpoint=1000")
             self._local.conn.execute("PRAGMA busy_timeout=30000")
 
