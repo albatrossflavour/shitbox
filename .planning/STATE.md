@@ -6,34 +6,35 @@ See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 1 — Boot Recovery
+**Current focus:** Phase 2 — Watchdog and Self-Healing
 
 ## Current Position
 
-Phase: 1 of 5 (Boot Recovery)
-Plan: 2 of TBD in current phase
+Phase: 2 of 5 (Watchdog and Self-Healing)
+Plan: 1 of TBD in current phase
 Status: In progress
-Last activity: 2026-02-25 — Plan 01-02 completed (engine wiring, buzzer patterns, integration tests)
+Last activity: 2026-02-25 — Plan 02-01 completed (systemd hardening, buzzer alerts, escalation)
 
-Progress: [██░░░░░░░░] 20%
+Progress: [███░░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 2
-- Average duration: ~3 min
-- Total execution time: ~6 min
+- Total plans completed: 3
+- Average duration: ~2-3 min
+- Total execution time: ~8 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-boot-recovery | 2 | ~6 min | ~3 min |
+| 02-watchdog-and-self-healing | 1 | ~2 min | ~2 min |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (~3 min), 01-02 (~3 min)
+- Last 5 plans: 01-01 (~3 min), 01-02 (~3 min), 02-01 (~2 min)
 - Trend: Fast (small focused plans)
 
 *Updated after each plan completion*
@@ -56,6 +57,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [01-02]: Buzzer plays recovery tone AFTER beep_boot() — 3 tones then 1 (clean) or 2 (crash).
 - [01-02]: boot_recovery attribute set None in __init__, populated in start() to match engine lifecycle.
 - [01-02]: Prometheus boot metric uses best-effort daemon thread — failure logged, not fatal.
+- [02-01]: WatchdogSec changed from 30 to 10 to match RuntimeWatchdogSec=10 deployed via /etc/systemd/system.conf.d/watchdog.conf.
+- [02-01]: StartLimitIntervalSec=0 added to prevent systemd permanently stopping restarts after rapid crash loops.
+- [02-01]: Alert escalation plays pattern twice via list concatenation (not volume control) — PiicoDev_Buzzer .volume() not available on all firmware.
+- [02-01]: Engine must call set_boot_start_time(time.time()) early in UnifiedEngine.start() — wiring deferred to 02-02 when HealthMonitor is integrated.
 
 ### Pending Todos
 
@@ -76,5 +81,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 01-02-PLAN.md (engine wiring, buzzer patterns, integration tests)
+Stopped at: Completed 02-01-PLAN.md (systemd hardening, buzzer alerts, escalation)
 Resume file: None
