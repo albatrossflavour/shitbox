@@ -34,7 +34,7 @@ def sampler() -> HighRateSampler:
 
     Does NOT call setup() or start() — hardware is bypassed.
     """
-    ring_buf = RingBuffer(capacity=100)
+    ring_buf = RingBuffer(max_seconds=1.0, sample_rate_hz=100.0)
     s = HighRateSampler(ring_buffer=ring_buf, i2c_bus=1)
     # Wire a mock bus so _read_sample can be called without real hardware
     mock_bus = MagicMock()
@@ -160,8 +160,14 @@ def test_i2c_bus_reset_gpio_sequence(sampler: HighRateSampler) -> None:
     mock_smbus2 = MagicMock()
     mock_smbus2.SMBus.return_value = MagicMock()
 
+    # RPi package mock must expose .GPIO so `import RPi.GPIO as GPIO` binds
+    # mock_gpio.  Python resolves `import RPi.GPIO as GPIO` by fetching the
+    # `GPIO` attribute from the `RPi` entry in sys.modules.
+    rpi_pkg_mock = MagicMock()
+    rpi_pkg_mock.GPIO = mock_gpio
+
     with (
-        patch.dict(sys.modules, {"RPi": MagicMock(), "RPi.GPIO": mock_gpio}),
+        patch.dict(sys.modules, {"RPi": rpi_pkg_mock, "RPi.GPIO": mock_gpio}),
         patch.dict(sys.modules, {"smbus2": mock_smbus2}),
         patch.object(sampler, "setup") as mock_setup,
     ):
@@ -195,8 +201,11 @@ def test_i2c_bus_reset_returns_false_on_smbus_failure(sampler: HighRateSampler) 
     mock_smbus2 = MagicMock()
     mock_smbus2.SMBus.side_effect = OSError("I2C device not found")
 
+    rpi_pkg_mock = MagicMock()
+    rpi_pkg_mock.GPIO = mock_gpio
+
     with (
-        patch.dict(sys.modules, {"RPi": MagicMock(), "RPi.GPIO": mock_gpio}),
+        patch.dict(sys.modules, {"RPi": rpi_pkg_mock, "RPi.GPIO": mock_gpio}),
         patch.dict(sys.modules, {"smbus2": mock_smbus2}),
     ):
         result = sampler._i2c_bus_reset()
