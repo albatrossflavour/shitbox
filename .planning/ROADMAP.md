@@ -61,12 +61,12 @@ Plans:
 4. If the I2C bus locks up (sensors stop responding), the system performs a 9-clock bit-bang reset and resumes sensor reads without a reboot
 5. When a service failure, I2C lockup, or watchdog miss occurs, the in-car buzzer alerts the driver
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 
-- [ ] 02-01-PLAN.md — Systemd watchdog hardening (WatchdogSec=14, StartLimitIntervalSec=0) and buzzer alert patterns with escalation
-- [ ] 02-02-PLAN.md — ffmpeg mtime-based stall detection and auto-restart
+- [x] 02-01-PLAN.md — Systemd watchdog hardening (WatchdogSec=14, StartLimitIntervalSec=0) and buzzer alert patterns with escalation
+- [x] 02-02-PLAN.md — ffmpeg mtime-based stall detection and auto-restart
 - [ ] 02-03-PLAN.md — I2C bus lockup recovery via 9-clock bit-bang reset with reboot fallback
 
 ### Phase 3: Thermal Resilience and Storage Management
@@ -119,7 +119,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Boot Recovery | 2/2 | Complete | 2026-02-25 |
-| 2. Watchdog and Self-Healing | 1/3 | In Progress|  |
+| 2. Watchdog and Self-Healing | 2/3 | In Progress|  |
 | 3. Thermal Resilience and Storage Management | 0/TBD | Not started | - |
 | 4. Remote Health and Stage Tracking | 0/TBD | Not started | - |
 | 5. Driver Display | 0/TBD | Not started | - |

@@ -11,30 +11,30 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 ## Current Position
 
 Phase: 2 of 5 (Watchdog and Self-Healing)
-Plan: 1 of TBD in current phase
+Plan: 3 of TBD in current phase
 Status: In progress
-Last activity: 2026-02-25 — Plan 02-01 completed (systemd hardening, buzzer alerts, escalation)
+Last activity: 2026-02-26 — Plan 02-02 completed (ffmpeg stall detection, mtime health monitor)
 
-Progress: [███░░░░░░░] 30%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: ~2-3 min
-- Total execution time: ~8 min
+- Total execution time: ~25 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-boot-recovery | 2 | ~6 min | ~3 min |
-| 02-watchdog-and-self-healing | 1 | ~2 min | ~2 min |
+| 02-watchdog-and-self-healing | 2 | ~19 min | ~9 min |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (~3 min), 01-02 (~3 min), 02-01 (~2 min)
+- Last 5 plans: 01-01 (~3 min), 01-02 (~3 min), 02-01 (~2 min), 02-02 (~17 min)
 - Trend: Fast (small focused plans)
 
 *Updated after each plan completion*
@@ -60,7 +60,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [02-01]: WatchdogSec changed from 30 to 10 to match RuntimeWatchdogSec=10 deployed via /etc/systemd/system.conf.d/watchdog.conf.
 - [02-01]: StartLimitIntervalSec=0 added to prevent systemd permanently stopping restarts after rapid crash loops.
 - [02-01]: Alert escalation plays pattern twice via list concatenation (not volume control) — PiicoDev_Buzzer .volume() not available on all firmware.
-- [02-01]: Engine must call set_boot_start_time(time.time()) early in UnifiedEngine.start() — wiring deferred to 02-02 when HealthMonitor is integrated.
+- [02-02]: STALL_TIMEOUT_SECONDS=30 is conservative for 10-second segments — 3 missed segments before alert fires.
+- [02-02]: Stall check uses both mtime and size to catch both new-segment creation and ongoing writes to the current segment.
+- [02-02]: _stall_check_armed flag provides startup grace — no stall fires until at least one segment exists and is baselined.
+- [02-02]: buzzer imported lazily inside _health_monitor stall block to avoid circular import at module level.
 
 ### Pending Todos
 
@@ -80,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-25
-Stopped at: Completed 02-01-PLAN.md (systemd hardening, buzzer alerts, escalation)
+Last session: 2026-02-26
+Stopped at: Completed 02-02-PLAN.md (ffmpeg stall detection, mtime-based health monitor)
 Resume file: None
