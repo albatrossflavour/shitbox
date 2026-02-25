@@ -61,7 +61,13 @@ Plans:
 4. If the I2C bus locks up (sensors stop responding), the system performs a 9-clock bit-bang reset and resumes sensor reads without a reboot
 5. When a service failure, I2C lockup, or watchdog miss occurs, the in-car buzzer alerts the driver
 
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+
+- [ ] 02-01-PLAN.md — Systemd watchdog hardening (WatchdogSec=14, StartLimitIntervalSec=0) and buzzer alert patterns with escalation
+- [ ] 02-02-PLAN.md — ffmpeg mtime-based stall detection and auto-restart
+- [ ] 02-03-PLAN.md — I2C bus lockup recovery via 9-clock bit-bang reset with reboot fallback
 
 ### Phase 3: Thermal Resilience and Storage Management
 
