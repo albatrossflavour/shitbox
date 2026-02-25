@@ -12,9 +12,11 @@ WorkingDirectory=/home/tgreen/shitbox
 ExecStart=/home/tgreen/shitbox/.venv/bin/python -m shitbox.events.engine
 Restart=always
 RestartSec=5
+# Never stop restarting after rapid crash loops
+StartLimitIntervalSec=0
 
-# Watchdog - service must ping within 30s or gets restarted
-WatchdogSec=30
+# Watchdog - service must ping within 10s or gets restarted
+WatchdogSec=10
 
 # Environment
 Environment=PYTHONUNBUFFERED=1
