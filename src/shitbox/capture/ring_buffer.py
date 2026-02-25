@@ -32,6 +32,7 @@ class VideoRingBuffer:
 
     RESTART_BACKOFF_SECONDS = 2.0
     AUDIO_RETRY_SECONDS = 30.0
+    STALL_TIMEOUT_SECONDS = 30
 
     def __init__(
         self,
@@ -67,6 +68,11 @@ class VideoRingBuffer:
         self._save_counter = 0
         self._lock = threading.Lock()
         self._intro_ts: Optional[Path] = None
+
+        # Stall detection state — reset on every ffmpeg restart
+        self._last_segment_mtime: float = 0.0
+        self._last_segment_size: int = 0
+        self._stall_check_armed: bool = False
 
     @staticmethod
     def _detect_encoder() -> list[str]:
@@ -389,6 +395,7 @@ class VideoRingBuffer:
         so recording starts immediately. The next health-monitor restart
         will try audio again.
         """
+        self._reset_stall_state()
         self.buffer_dir.mkdir(parents=True, exist_ok=True)
 
         log.info(
@@ -451,8 +458,52 @@ class VideoRingBuffer:
             except subprocess.TimeoutExpired:
                 self._process.kill()
 
+    def _reset_stall_state(self) -> None:
+        """Reset stall detection state. Called at the start of every ffmpeg launch."""
+        self._last_segment_mtime = 0.0
+        self._last_segment_size = 0
+        self._stall_check_armed = False
+
+    def _check_stall(self) -> bool:
+        """Check whether the ffmpeg segment output has stalled.
+
+        Uses the newest segment's mtime and size to detect frozen output.
+        Returns True only when the stall timeout has elapsed with no file
+        activity. Returns False during the startup grace period (no segments
+        yet) and on the first observation (baselining).
+
+        Returns:
+            True if a stall is detected, False otherwise.
+        """
+        segments = self._get_buffer_segments()
+        if not segments:
+            # ffmpeg still starting up — no segments yet
+            return False
+
+        newest = segments[-1]
+        try:
+            st = newest.stat()
+        except OSError:
+            return False
+
+        if not self._stall_check_armed:
+            # First observation — arm the detector and record baseline
+            self._stall_check_armed = True
+            self._last_segment_mtime = st.st_mtime
+            self._last_segment_size = st.st_size
+            return False
+
+        if st.st_mtime != self._last_segment_mtime or st.st_size != self._last_segment_size:
+            # File activity detected — update baseline and reset timer
+            self._last_segment_mtime = st.st_mtime
+            self._last_segment_size = st.st_size
+            return False
+
+        # No activity — check whether the stall timeout has elapsed
+        return (time.time() - self._last_segment_mtime) > self.STALL_TIMEOUT_SECONDS
+
     def _health_monitor(self) -> None:
-        """Background thread that restarts ffmpeg if it crashes.
+        """Background thread that restarts ffmpeg if it crashes or stalls.
 
         Also retries with audio periodically if running in video-only mode,
         since the USB audio device may not be available at boot.
@@ -475,6 +526,19 @@ class VideoRingBuffer:
                 )
                 self._start_ffmpeg()
                 last_audio_retry = time.time()
+                continue
+
+            # Restart if ffmpeg is alive but producing no output
+            if self._check_stall():
+                log.warning(
+                    "ffmpeg_stall_detected",
+                    timeout_seconds=self.STALL_TIMEOUT_SECONDS,
+                )
+                from shitbox.capture import buzzer
+
+                buzzer.beep_ffmpeg_stall()
+                self._kill_current()
+                self._start_ffmpeg()
                 continue
 
             # If running without audio, periodically restart to retry
