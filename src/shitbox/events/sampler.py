@@ -1,10 +1,12 @@
 """High-rate MPU6050 sampler for event detection."""
 
 import struct
+import subprocess
 import threading
 import time
 from typing import Callable, Optional
 
+from shitbox.capture import buzzer
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
 from shitbox.utils.logging import get_logger
 
@@ -27,6 +29,12 @@ ACCEL_XOUT_H = 0x3B
 # Scale factors
 ACCEL_SCALE_4G = 8192.0  # LSB/g for ±4g range
 GYRO_SCALE_500 = 65.5    # LSB/(deg/s) for ±500 deg/s range
+
+# I2C bus lockup recovery constants
+I2C_CONSECUTIVE_FAILURE_THRESHOLD = 5  # Triggers recovery after 5 failures (~50ms at 100 Hz)
+I2C_RECOVERY_DELAY_SECONDS = 0.1       # 100ms delay after GPIO cleanup before smbus2 reopen
+SCL_PIN = 3                            # GPIO3 = physical pin 5
+SDA_PIN = 2                            # GPIO2 = physical pin 3
 
 
 class HighRateSampler:
@@ -78,6 +86,9 @@ class HighRateSampler:
         self.samples_total = 0
         self.samples_dropped = 0
         self._last_sample_time = 0.0
+
+        # I2C lockup recovery
+        self._consecutive_failures: int = 0
 
     def setup(self) -> None:
         """Initialise MPU6050 for high-rate sampling."""
@@ -163,14 +174,96 @@ class HighRateSampler:
                 sample = self._read_sample()
                 self.ring_buffer.append(sample)
                 self.samples_total += 1
+                self._consecutive_failures = 0
 
                 if self.on_sample:
                     self.on_sample(sample)
 
             except Exception as e:
                 log.error("sample_read_error", error=str(e))
+                self._consecutive_failures += 1
+
+                if self._consecutive_failures >= I2C_CONSECUTIVE_FAILURE_THRESHOLD:
+                    log.warning(
+                        "i2c_bus_lockup_detected",
+                        consecutive_failures=self._consecutive_failures,
+                    )
+                    buzzer.beep_i2c_lockup()
+                    recovered = self._i2c_bus_reset()
+                    if recovered:
+                        log.info("i2c_bus_recovery_successful")
+                        buzzer.beep_service_recovered("i2c")
+                        self._consecutive_failures = 0
+                    else:
+                        self._force_reboot()
 
             next_sample_time += self.sample_interval
+
+    def _i2c_bus_reset(self) -> bool:
+        """Attempt 9-clock bit-bang recovery to release a stuck I2C slave.
+
+        Pulses SCL 9 times to allow a slave device holding SDA low to
+        complete its transaction and release the bus. Then generates a STOP
+        condition, performs selective GPIO cleanup, waits for the I2C driver
+        to reclaim the pins, reopens smbus2, and reinitialises the MPU6050.
+
+        Returns:
+            True if the bus was successfully recovered and the sensor
+            reinitialised; False on any failure.
+        """
+        try:
+            import RPi.GPIO as GPIO  # type: ignore[import]
+        except ImportError:
+            log.error("rpi_gpio_not_available", hint="Cannot perform I2C bit-bang recovery")
+            return False
+
+        # Close the existing bus connection
+        try:
+            if self._bus is not None:
+                self._bus.close()
+        except Exception:
+            pass
+
+        try:
+            GPIO.setwarnings(False)
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(SCL_PIN, GPIO.OUT, initial=GPIO.HIGH)
+
+            # Pulse SCL 9 times to release stuck slave
+            for _ in range(9):
+                GPIO.output(SCL_PIN, GPIO.LOW)
+                time.sleep(0.000005)  # 5 microsecond half-cycle
+                GPIO.output(SCL_PIN, GPIO.HIGH)
+                time.sleep(0.000005)  # 5 microsecond half-cycle
+
+            # Generate STOP condition: SDA goes HIGH while SCL is HIGH
+            GPIO.setup(SDA_PIN, GPIO.OUT, initial=GPIO.LOW)
+            time.sleep(0.000005)
+            GPIO.output(SDA_PIN, GPIO.HIGH)
+
+            # Selective cleanup — do NOT call global GPIO.cleanup()
+            GPIO.cleanup([SCL_PIN, SDA_PIN])
+
+        except Exception as e:
+            log.error("i2c_bitbang_gpio_error", error=str(e))
+            return False
+
+        # Wait for the I2C driver to reclaim the pins
+        time.sleep(I2C_RECOVERY_DELAY_SECONDS)
+
+        try:
+            import smbus2  # type: ignore[import]
+            self._bus = smbus2.SMBus(self.i2c_bus)
+            self.setup()
+            return True
+        except Exception as e:
+            log.error("i2c_bus_reopen_failed", error=str(e))
+            return False
+
+    def _force_reboot(self) -> None:
+        """Force a system reboot after unrecoverable I2C failure."""
+        log.critical("i2c_recovery_failed_forcing_reboot")
+        subprocess.run(["sudo", "systemctl", "reboot"], check=False)
 
     def _read_sample(self) -> IMUSample:
         """Read accelerometer and gyroscope data from MPU6050."""

@@ -1452,6 +1452,7 @@ class UnifiedEngine:
         # Initialise buzzer
         if self.config.buzzer_enabled:
             buzzer.init()
+            buzzer.set_boot_start_time(time.time())
             buzzer.beep_boot()
             # Recovery-specific beep after boot tone
             if self.boot_recovery and self.boot_recovery.was_crash:
