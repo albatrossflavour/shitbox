@@ -11,30 +11,30 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 ## Current Position
 
 Phase: 1 of 5 (Boot Recovery)
-Plan: 1 of TBD in current phase
+Plan: 2 of TBD in current phase
 Status: In progress
-Last activity: 2026-02-25 — Plan 01-01 completed (BOOT-01, BOOT-02, BOOT-03)
+Last activity: 2026-02-25 — Plan 01-02 completed (engine wiring, buzzer patterns, integration tests)
 
-Progress: [█░░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: —
+- Total plans completed: 2
+- Average duration: ~3 min
+- Total execution time: ~6 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01-boot-recovery | 2 | ~6 min | ~3 min |
 
 **Recent Trend:**
 
-- Last 5 plans: —
-- Trend: —
+- Last 5 plans: 01-01 (~3 min), 01-02 (~3 min)
+- Trend: Fast (small focused plans)
 
 *Updated after each plan completion*
 
@@ -53,6 +53,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [01-01]: WAL crash detection must occur before database.connect() to avoid false negatives.
 - [01-01]: Orphaned event end_time uses file st_mtime as best-effort crash timestamp.
 - [01-01]: BootRecoveryService calls db._get_connection() lazily to honour thread-local model.
+- [01-02]: Buzzer plays recovery tone AFTER beep_boot() — 3 tones then 1 (clean) or 2 (crash).
+- [01-02]: boot_recovery attribute set None in __init__, populated in start() to match engine lifecycle.
+- [01-02]: Prometheus boot metric uses best-effort daemon thread — failure logged, not fatal.
 
 ### Pending Todos
 
@@ -73,5 +76,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 01-01-PLAN.md (BootRecoveryService, synchronous=FULL, close_orphaned_events)
+Stopped at: Completed 01-02-PLAN.md (engine wiring, buzzer patterns, integration tests)
 Resume file: None
