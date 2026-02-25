@@ -230,6 +230,55 @@ class EventStorage:
 
         return deleted
 
+    def close_orphaned_events(self) -> int:
+        """Close event JSON files that were left open by a prior crash.
+
+        Iterates all ``.json`` files under ``base_dir``.  Any file that is
+        missing ``end_time`` or has ``status == "open"`` is considered
+        orphaned: it receives ``status = "interrupted"`` and an ``end_time``
+        derived from the file's modification time.
+
+        The consolidated ``events.json`` file (if present) is skipped.
+
+        Returns:
+            Number of orphaned events that were closed.
+        """
+        closed = 0
+
+        for json_file in self.base_dir.rglob("*.json"):
+            if json_file.name == "events.json":
+                continue
+
+            try:
+                with open(json_file) as f:
+                    meta = json.load(f)
+            except (json.JSONDecodeError, IOError) as exc:
+                log.warning("orphan_scan_skip", file=str(json_file), error=str(exc))
+                continue
+
+            is_orphan = ("end_time" not in meta) or (meta.get("status") == "open")
+            if not is_orphan:
+                continue
+
+            meta["end_time"] = json_file.stat().st_mtime
+            meta["status"] = "interrupted"
+
+            try:
+                with open(json_file, "w") as f:
+                    json.dump(meta, f, indent=2)
+            except IOError as exc:
+                log.warning("orphan_close_error", file=str(json_file), error=str(exc))
+                continue
+
+            log.info(
+                "orphaned_event_closed",
+                file=str(json_file),
+                event_type=meta.get("type", "unknown"),
+            )
+            closed += 1
+
+        return closed
+
     def list_events(
         self, event_type: Optional[EventType] = None, days: int = 7
     ) -> List[dict]:
