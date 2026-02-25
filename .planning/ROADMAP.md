@@ -41,7 +41,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 3. Events from a prior crash are closed and marked as interrupted — not silently dropped and not left open indefinitely
 4. SQLite is configured with `synchronous=FULL` so that WAL writes are durable across hard power cuts
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 
@@ -112,7 +112,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Boot Recovery | 0/2 | Planning complete | - |
+| 1. Boot Recovery | 1/2 | In Progress|  |
 | 2. Watchdog and Self-Healing | 0/TBD | Not started | - |
 | 3. Thermal Resilience and Storage Management | 0/TBD | Not started | - |
 | 4. Remote Health and Stage Tracking | 0/TBD | Not started | - |

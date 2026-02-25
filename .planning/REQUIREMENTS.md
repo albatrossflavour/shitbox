@@ -9,9 +9,9 @@ Requirements for rally-ready hardening. Each maps to roadmap phases.
 
 ### Boot Recovery
 
-- [ ] **BOOT-01**: System runs SQLite `PRAGMA integrity_check` after detecting unclean shutdown
-- [ ] **BOOT-02**: System closes orphaned events from prior crash and marks them as interrupted on boot
-- [ ] **BOOT-03**: SQLite configured with `synchronous=FULL` for WAL durability across hard power cuts
+- [x] **BOOT-01**: System runs SQLite `PRAGMA integrity_check` after detecting unclean shutdown
+- [x] **BOOT-02**: System closes orphaned events from prior crash and marks them as interrupted on boot
+- [x] **BOOT-03**: SQLite configured with `synchronous=FULL` for WAL durability across hard power cuts
 
 ### Watchdog and Self-Healing
 
@@ -84,9 +84,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BOOT-01 | Phase 1 | Pending |
-| BOOT-02 | Phase 1 | Pending |
-| BOOT-03 | Phase 1 | Pending |
+| BOOT-01 | Phase 1 | Complete |
+| BOOT-02 | Phase 1 | Complete |
+| BOOT-03 | Phase 1 | Complete |
 | WDOG-01 | Phase 2 | Pending |
 | WDOG-02 | Phase 2 | Pending |
 | WDOG-03 | Phase 2 | Pending |

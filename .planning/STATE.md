@@ -11,11 +11,11 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 ## Current Position
 
 Phase: 1 of 5 (Boot Recovery)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-25 — Roadmap created from requirements and research
+Plan: 1 of TBD in current phase
+Status: In progress
+Last activity: 2026-02-25 — Plan 01-01 completed (BOOT-01, BOOT-02, BOOT-03)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 10%
 
 ## Performance Metrics
 
@@ -50,6 +50,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
   alongside HealthMonitor; thermal and storage thresholds that trigger it come from Phase 3.
 - [Roadmap]: HLTH-01 (remote health metrics) placed in Phase 4 because it depends on ThermalMonitor
   (Phase 3) and StorageManager (Phase 3) producing the values that are reported.
+- [01-01]: WAL crash detection must occur before database.connect() to avoid false negatives.
+- [01-01]: Orphaned event end_time uses file st_mtime as best-effort crash timestamp.
+- [01-01]: BootRecoveryService calls db._get_connection() lazily to honour thread-local model.
 
 ### Pending Todos
 
@@ -63,12 +66,12 @@ None yet.
   available in GPX format before Phase 4 planning begins.
 - **Phase 5**: pygame-ce KMSDRM on target Bookworm image needs hardware-in-loop validation early
   in the phase. SDL2 package list may differ between Bookworm releases.
-- **Pre-start**: `synchronous=FULL` config value is unknown — verify in Phase 1.
+- ~~**Pre-start**: `synchronous=FULL` config value is unknown — verify in Phase 1.~~ RESOLVED: set in 01-01.
 - **Pre-start**: WireGuard `PersistentKeepalive=25` should be set manually before the rally
   (config change only, not a software requirement).
 
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Roadmap created, ready to plan Phase 1
+Stopped at: Completed 01-01-PLAN.md (BootRecoveryService, synchronous=FULL, close_orphaned_events)
 Resume file: None
