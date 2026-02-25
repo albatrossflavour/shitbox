@@ -11,33 +11,35 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 ## Current Position
 
 Phase: 2 of 5 (Watchdog and Self-Healing)
-Plan: 3 of TBD in current phase
+Plan: 4 of TBD in current phase
 Status: In progress
-Last activity: 2026-02-26 — Plan 02-02 completed (ffmpeg stall detection, mtime health monitor)
+Last activity: 2026-02-26 — Plan 02-03 completed (I2C bus lockup detection, bit-bang recovery)
 
-Progress: [████░░░░░░] 40%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: ~2-3 min
-- Total execution time: ~25 min
+- Total execution time: ~30 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-boot-recovery | 2 | ~6 min | ~3 min |
-| 02-watchdog-and-self-healing | 2 | ~19 min | ~9 min |
+| 02-watchdog-and-self-healing | 3 | ~24 min | ~8 min |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (~3 min), 01-02 (~3 min), 02-01 (~2 min), 02-02 (~17 min)
+- Last 5 plans: 01-01 (~3 min), 01-02 (~3 min), 02-01 (~2 min), 02-02 (~17 min), 02-03 (~5 min)
 - Trend: Fast (small focused plans)
 
 *Updated after each plan completion*
+
+| Phase 02-watchdog-and-self-healing P03 | 5 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -64,6 +66,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [02-02]: Stall check uses both mtime and size to catch both new-segment creation and ongoing writes to the current segment.
 - [02-02]: _stall_check_armed flag provides startup grace — no stall fires until at least one segment exists and is baselined.
 - [02-02]: buzzer imported lazily inside _health_monitor stall block to avoid circular import at module level.
+- [Phase 02-03]: Import RPi.GPIO inside _i2c_bus_reset() method body to preserve graceful degradation on non-Pi hosts
+- [Phase 02-03]: GPIO.cleanup([SCL_PIN, SDA_PIN]) uses selective pin list — NOT global GPIO.cleanup() — to avoid disrupting other GPIO users
+- [Phase 02-03]: buzzer.set_boot_start_time() called immediately after buzzer.init() in engine.start() to anchor grace period to actual engine start time
 
 ### Pending Todos
 
@@ -84,5 +89,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 02-02-PLAN.md (ffmpeg stall detection, mtime-based health monitor)
+Stopped at: Completed 02-03-PLAN.md (I2C bus lockup detection, 9-clock bit-bang recovery)
 Resume file: None

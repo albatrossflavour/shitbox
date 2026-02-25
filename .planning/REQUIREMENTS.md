@@ -18,7 +18,7 @@ Requirements for rally-ready hardening. Each maps to roadmap phases.
 - [x] **WDOG-01**: BCM2835 hardware watchdog enabled (`dtparam=watchdog=on`, `RuntimeWatchdogSec=14`)
 - [x] **WDOG-02**: All systemd services audited and configured with `Restart=always`
 - [x] **WDOG-03**: ffmpeg `is_running` bug fixed to use `poll()` with mtime-based health check and auto-restart
-- [ ] **WDOG-04**: I2C bus lockup detected and recovered via 9-clock bit-bang reset
+- [x] **WDOG-04**: I2C bus lockup detected and recovered via 9-clock bit-bang reset
 
 ### Remote Health Monitoring
 
@@ -90,7 +90,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WDOG-01 | Phase 2 | Complete |
 | WDOG-02 | Phase 2 | Complete |
 | WDOG-03 | Phase 2 | Complete |
-| WDOG-04 | Phase 2 | Pending |
+| WDOG-04 | Phase 2 | Complete |
 | HLTH-02 | Phase 2 | Complete |
 | THRM-01 | Phase 3 | Pending |
 | THRM-02 | Phase 3 | Pending |

@@ -22,7 +22,7 @@ data capture if time runs short before departure.
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Boot Recovery** - System survives hard power cuts and starts cleanly every time
-- [ ] **Phase 2: Watchdog and Self-Healing** - Hardware watchdog active, all services auto-restart, known bugs fixed
+- [x] **Phase 2: Watchdog and Self-Healing** - Hardware watchdog active, all services auto-restart, known bugs fixed (completed 2026-02-25)
 - [ ] **Phase 3: Thermal Resilience and Storage Management** - Temperature alerts before throttle, disk never exhausts
 - [ ] **Phase 4: Remote Health and Stage Tracking** - Crew can see system health; car knows where it is on the route
 - [ ] **Phase 5: Driver Display** - Speed, heading, trip progress, and system health on 7" screen
@@ -61,7 +61,7 @@ Plans:
 4. If the I2C bus locks up (sensors stop responding), the system performs a 9-clock bit-bang reset and resumes sensor reads without a reboot
 5. When a service failure, I2C lockup, or watchdog miss occurs, the in-car buzzer alerts the driver
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 
@@ -119,7 +119,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Boot Recovery | 2/2 | Complete | 2026-02-25 |
-| 2. Watchdog and Self-Healing | 2/3 | In Progress|  |
+| 2. Watchdog and Self-Healing | 3/3 | Complete   | 2026-02-25 |
 | 3. Thermal Resilience and Storage Management | 0/TBD | Not started | - |
 | 4. Remote Health and Stage Tracking | 0/TBD | Not started | - |
 | 5. Driver Display | 0/TBD | Not started | - |
