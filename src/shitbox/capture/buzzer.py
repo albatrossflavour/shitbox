@@ -259,3 +259,69 @@ def beep_service_recovered(recovered_service: str = "unknown") -> None:
         return
     _alert_state.reset(recovered_service)
     _play_async([(880, 150)], name="buzzer-service-recovered")
+
+
+# ---------------------------------------------------------------------------
+# Thermal alert functions — 500 Hz mid-range tone, distinct from failure alerts (330 Hz)
+# ---------------------------------------------------------------------------
+
+
+def beep_thermal_warning() -> None:
+    """Two medium 500 Hz tones: CPU temperature at warning threshold (70C).
+
+    Pattern: [(500, 400), (500, 400)]. Escalates (plays twice) if same
+    fault fired within the last 5 minutes. Suppressed during boot grace
+    period.
+    """
+    if not _should_alert():
+        return
+    name = "buzzer-thermal-warning"
+    tones: list[tuple[int, int]] = [(500, 400), (500, 400)]
+    if _alert_state.should_escalate(name):
+        tones = tones + tones
+    _play_async(tones, name=name)
+
+
+def beep_thermal_critical() -> None:
+    """Three long 500 Hz tones: CPU temperature at critical threshold (80C).
+
+    Pattern: [(500, 600), (500, 600), (500, 600)]. Escalates (plays twice)
+    if same fault fired within the last 5 minutes. Suppressed during boot
+    grace period.
+    """
+    if not _should_alert():
+        return
+    name = "buzzer-thermal-critical"
+    tones: list[tuple[int, int]] = [(500, 600), (500, 600), (500, 600)]
+    if _alert_state.should_escalate(name):
+        tones = tones + tones
+    _play_async(tones, name=name)
+
+
+def beep_under_voltage() -> None:
+    """Four rapid 500 Hz tones: under-voltage detected.
+
+    Pattern: [(500, 150), (500, 150), (500, 150), (500, 150)]. Escalates
+    (plays twice) if same fault fired within the last 5 minutes. Suppressed
+    during boot grace period.
+    """
+    if not _should_alert():
+        return
+    name = "buzzer-under-voltage"
+    tones: list[tuple[int, int]] = [(500, 150), (500, 150), (500, 150), (500, 150)]
+    if _alert_state.should_escalate(name):
+        tones = tones + tones
+    _play_async(tones, name=name)
+
+
+def beep_thermal_recovered() -> None:
+    """Descending pair: temperature recovered below warning threshold.
+
+    Pattern: [(880, 150), (500, 150)]. Clears the thermal-warning escalation
+    counter so the next warning starts from scratch. Suppressed during boot
+    grace period.
+    """
+    if not _should_alert():
+        return
+    _alert_state.reset("buzzer-thermal-warning")
+    _play_async([(880, 150), (500, 150)], name="buzzer-thermal-recovered")

@@ -529,3 +529,17 @@ class Database:
         """Force a WAL checkpoint."""
         conn = self._get_connection()
         conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+
+    def checkpoint_wal(self) -> None:
+        """Run a TRUNCATE WAL checkpoint and log only when pages were checkpointed.
+
+        Uses TRUNCATE mode so the WAL file is zeroed after a successful
+        full checkpoint. Silent when the WAL was already clean (no pages to
+        checkpoint). Logs at INFO level only when work was actually done.
+        """
+        conn = self._get_connection()
+        with self._write_lock:
+            cursor = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            row = cursor.fetchone()
+        if row is not None and row[2] > 0:
+            log.info("wal_checkpoint_completed", pages_checkpointed=row[2], pages_in_wal=row[1])
