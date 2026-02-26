@@ -6,14 +6,14 @@ See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 2 — Watchdog and Self-Healing
+**Current focus:** Phase 3 — Thermal Resilience and Storage Management
 
 ## Current Position
 
-Phase: 2 of 5 (Watchdog and Self-Healing)
-Plan: 4 of TBD in current phase
+Phase: 3 of 5 (Thermal Resilience and Storage Management)
+Plan: 2 of TBD in current phase
 Status: In progress
-Last activity: 2026-02-26 — Plan 02-03 completed (I2C bus lockup detection, bit-bang recovery)
+Last activity: 2026-02-26 — Plan 03-01 completed (thermal buzzer functions, WAL checkpoint, test scaffolds)
 
 Progress: [█████░░░░░] 50%
 
@@ -21,9 +21,9 @@ Progress: [█████░░░░░] 50%
 
 **Velocity:**
 
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: ~2-3 min
-- Total execution time: ~30 min
+- Total execution time: ~32 min
 
 **By Phase:**
 
@@ -31,15 +31,17 @@ Progress: [█████░░░░░] 50%
 |-------|-------|-------|----------|
 | 01-boot-recovery | 2 | ~6 min | ~3 min |
 | 02-watchdog-and-self-healing | 3 | ~24 min | ~8 min |
+| 03-thermal-resilience-and-storage-management | 1 | ~2 min | ~2 min |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (~3 min), 01-02 (~3 min), 02-01 (~2 min), 02-02 (~17 min), 02-03 (~5 min)
+- Last 5 plans: 02-01 (~2 min), 02-02 (~17 min), 02-03 (~5 min), 03-01 (~2 min)
 - Trend: Fast (small focused plans)
 
 *Updated after each plan completion*
 
 | Phase 02-watchdog-and-self-healing P03 | 5 | 2 tasks | 3 files |
+| Phase 03-thermal-resilience-and-storage-management P01 | 6 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -69,6 +71,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 02-03]: Import RPi.GPIO inside _i2c_bus_reset() method body to preserve graceful degradation on non-Pi hosts
 - [Phase 02-03]: GPIO.cleanup([SCL_PIN, SDA_PIN]) uses selective pin list — NOT global GPIO.cleanup() — to avoid disrupting other GPIO users
 - [Phase 02-03]: buzzer.set_boot_start_time() called immediately after buzzer.init() in engine.start() to anchor grace period to actual engine start time
+- [03-01]: Thermal alerts use 500 Hz to distinguish from 330 Hz service-failure alerts (per RESEARCH.md)
+- [03-01]: beep_thermal_recovered calls _alert_state.reset() before playing — no escalation check needed for recovery
+- [03-01]: checkpoint_wal() is silent when WAL is clean (row[2] == 0) to avoid log noise in steady state
 
 ### Pending Todos
 
@@ -89,5 +94,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 02-03-PLAN.md (I2C bus lockup detection, 9-clock bit-bang recovery)
+Stopped at: Completed 03-01-PLAN.md (thermal buzzer functions, WAL checkpoint, Phase 3 test scaffolds)
 Resume file: None

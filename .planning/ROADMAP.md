@@ -81,7 +81,7 @@ Plans:
 3. The `vcgencmd get_throttled` bitmask is decoded and logged at every health check interval so thermal events are visible in structured logs
 4. The SQLite WAL file does not grow unboundedly — a periodic `TRUNCATE` checkpoint runs and is logged when it executes
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 
@@ -125,6 +125,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Boot Recovery | 2/2 | Complete | 2026-02-25 |
 | 2. Watchdog and Self-Healing | 3/3 | Complete   | 2026-02-25 |
-| 3. Thermal Resilience and Storage Management | 0/2 | Planned | - |
+| 3. Thermal Resilience and Storage Management | 1/2 | In Progress|  |
 | 4. Remote Health and Stage Tracking | 0/TBD | Not started | - |
 | 5. Driver Display | 0/TBD | Not started | - |
