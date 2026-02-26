@@ -27,9 +27,9 @@ Requirements for rally-ready hardening. Each maps to roadmap phases.
 
 ### Thermal Resilience
 
-- [ ] **THRM-01**: Thermal monitor reads CPU temperature every 5 seconds and publishes to shared state
+- [x] **THRM-01**: Thermal monitor reads CPU temperature every 5 seconds and publishes to shared state
 - [x] **THRM-02**: System alerts (buzzer + log) at 70°C warning and 80°C throttle thresholds
-- [ ] **THRM-03**: `vcgencmd get_throttled` bitmask decoded and logged at every health check
+- [x] **THRM-03**: `vcgencmd get_throttled` bitmask decoded and logged at every health check
 
 ### Storage Management
 
@@ -92,9 +92,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WDOG-03 | Phase 2 | Complete |
 | WDOG-04 | Phase 2 | Complete |
 | HLTH-02 | Phase 2 | Complete |
-| THRM-01 | Phase 3 | Pending |
+| THRM-01 | Phase 3 | Complete |
 | THRM-02 | Phase 3 | Complete |
-| THRM-03 | Phase 3 | Pending |
+| THRM-03 | Phase 3 | Complete |
 | STOR-01 | Phase 3 | Complete |
 | HLTH-01 | Phase 4 | Pending |
 | STGE-01 | Phase 4 | Pending |

@@ -11,9 +11,9 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 ## Current Position
 
 Phase: 3 of 5 (Thermal Resilience and Storage Management)
-Plan: 2 of TBD in current phase
+Plan: 2 of TBD in current phase (03-02 complete)
 Status: In progress
-Last activity: 2026-02-26 — Plan 03-01 completed (thermal buzzer functions, WAL checkpoint, test scaffolds)
+Last activity: 2026-02-26 — Plan 03-02 completed (ThermalMonitorService, engine wiring, WAL checkpoint timer)
 
 Progress: [█████░░░░░] 50%
 
@@ -21,9 +21,9 @@ Progress: [█████░░░░░] 50%
 
 **Velocity:**
 
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: ~2-3 min
-- Total execution time: ~32 min
+- Total execution time: ~35 min
 
 **By Phase:**
 
@@ -31,17 +31,18 @@ Progress: [█████░░░░░] 50%
 |-------|-------|-------|----------|
 | 01-boot-recovery | 2 | ~6 min | ~3 min |
 | 02-watchdog-and-self-healing | 3 | ~24 min | ~8 min |
-| 03-thermal-resilience-and-storage-management | 1 | ~2 min | ~2 min |
+| 03-thermal-resilience-and-storage-management | 2 | ~5 min | ~2-3 min |
 
 **Recent Trend:**
 
-- Last 5 plans: 02-01 (~2 min), 02-02 (~17 min), 02-03 (~5 min), 03-01 (~2 min)
+- Last 5 plans: 02-02 (~17 min), 02-03 (~5 min), 03-01 (~2 min), 03-02 (~3 min)
 - Trend: Fast (small focused plans)
 
 *Updated after each plan completion*
 
 | Phase 02-watchdog-and-self-healing P03 | 5 | 2 tasks | 3 files |
 | Phase 03-thermal-resilience-and-storage-management P01 | 6 | 2 tasks | 6 files |
+| Phase 03-thermal-resilience-and-storage-management P02 | 7 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,11 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [03-01]: Thermal alerts use 500 Hz to distinguish from 330 Hz service-failure alerts (per RESEARCH.md)
 - [03-01]: beep_thermal_recovered calls _alert_state.reset() before playing — no escalation check needed for recovery
 - [03-01]: checkpoint_wal() is silent when WAL is clean (row[2] == 0) to avoid log noise in steady state
+- [03-02]: HYSTERESIS_C=5.0 (not 3.0 as specified in plan) — test scaffold is authoritative: 66C suppressed, 65C re-arms
+- [03-02]: Buzzer functions imported at module level in thermal_monitor.py (not lazily) — required for patch() in tests to bind to module-level names
+- [03-02]: _read_sysfs_temp/_read_throttled are instance methods so tests can use patch.object() for per-test mocking
+- [03-02]: WAL checkpoint timer co-located in _telemetry_loop, no new thread — per user decision in plan
+- [03-02]: get_status() now reads cpu_temp from thermal_monitor.current_temp_celsius (single source of truth)
 
 ### Pending Todos
 
@@ -94,5 +100,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 03-01-PLAN.md (thermal buzzer functions, WAL checkpoint, Phase 3 test scaffolds)
+Stopped at: Completed 03-02-PLAN.md (ThermalMonitorService, engine wiring, WAL checkpoint timer)
 Resume file: None
