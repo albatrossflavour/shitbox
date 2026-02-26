@@ -67,7 +67,7 @@ Plans:
 
 - [x] 02-01-PLAN.md — Systemd watchdog hardening (WatchdogSec=14, StartLimitIntervalSec=0) and buzzer alert patterns with escalation
 - [x] 02-02-PLAN.md — ffmpeg mtime-based stall detection and auto-restart
-- [ ] 02-03-PLAN.md — I2C bus lockup recovery via 9-clock bit-bang reset with reboot fallback
+- [x] 02-03-PLAN.md — I2C bus lockup recovery via 9-clock bit-bang reset with reboot fallback
 
 ### Phase 3: Thermal Resilience and Storage Management
 
