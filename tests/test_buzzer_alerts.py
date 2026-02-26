@@ -4,6 +4,7 @@ Tests cover:
 - Distinct tone patterns for each failure alert function
 - BuzzerAlertState escalation within / outside the window
 - Boot grace period suppression
+- Thermal alert tone patterns (THRM-02)
 """
 
 import time
@@ -18,6 +19,10 @@ from shitbox.capture.buzzer import (
     beep_i2c_lockup,
     beep_service_crash,
     beep_service_recovered,
+    beep_thermal_critical,
+    beep_thermal_recovered,
+    beep_thermal_warning,
+    beep_under_voltage,
     beep_watchdog_miss,
     set_boot_start_time,
 )
@@ -164,3 +169,66 @@ def test_alerts_active_after_grace() -> None:
     ):
         beep_service_crash()
     mock_play.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Thermal alert pattern tests (THRM-02)
+# ---------------------------------------------------------------------------
+
+
+def test_beep_thermal_warning_pattern() -> None:
+    """beep_thermal_warning plays two 500 Hz 400 ms tones."""
+    set_boot_start_time(0.0)
+    with (
+        patch.object(buzzer_module, "_buzzer", _make_active_buzzer()),
+        patch.object(buzzer_module, "_alert_state", BuzzerAlertState()),
+        patch.object(buzzer_module, "_play_async") as mock_play,
+    ):
+        beep_thermal_warning()
+    mock_play.assert_called_once_with(
+        [(500, 400), (500, 400)], name="buzzer-thermal-warning"
+    )
+
+
+def test_beep_thermal_critical_pattern() -> None:
+    """beep_thermal_critical plays three 500 Hz 600 ms tones."""
+    set_boot_start_time(0.0)
+    with (
+        patch.object(buzzer_module, "_buzzer", _make_active_buzzer()),
+        patch.object(buzzer_module, "_alert_state", BuzzerAlertState()),
+        patch.object(buzzer_module, "_play_async") as mock_play,
+    ):
+        beep_thermal_critical()
+    mock_play.assert_called_once_with(
+        [(500, 600), (500, 600), (500, 600)], name="buzzer-thermal-critical"
+    )
+
+
+def test_beep_under_voltage_pattern() -> None:
+    """beep_under_voltage plays four rapid 500 Hz 150 ms tones."""
+    set_boot_start_time(0.0)
+    with (
+        patch.object(buzzer_module, "_buzzer", _make_active_buzzer()),
+        patch.object(buzzer_module, "_alert_state", BuzzerAlertState()),
+        patch.object(buzzer_module, "_play_async") as mock_play,
+    ):
+        beep_under_voltage()
+    mock_play.assert_called_once_with(
+        [(500, 150), (500, 150), (500, 150), (500, 150)], name="buzzer-under-voltage"
+    )
+
+
+def test_beep_thermal_recovered_pattern() -> None:
+    """beep_thermal_recovered plays a descending pair and resets warning state."""
+    set_boot_start_time(0.0)
+    mock_state = MagicMock(spec=BuzzerAlertState)
+    with (
+        patch.object(buzzer_module, "_buzzer", _make_active_buzzer()),
+        patch.object(buzzer_module, "_alert_state", mock_state),
+        patch.object(buzzer_module, "_play_async") as mock_play,
+    ):
+        beep_thermal_recovered()
+    mock_play.assert_called_once_with(
+        [(880, 150), (500, 150)], name="buzzer-thermal-recovered"
+    )
+    mock_state.reset.assert_called_once_with("buzzer-thermal-warning")
