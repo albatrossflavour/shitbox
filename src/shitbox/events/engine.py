@@ -27,6 +27,7 @@ from shitbox.events.detector import DetectorConfig, Event, EventDetector, EventT
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
 from shitbox.events.sampler import HighRateSampler
 from shitbox.events.storage import EventStorage
+from shitbox.health.thermal_monitor import ThermalMonitorService
 from shitbox.storage.database import Database
 from shitbox.storage.models import Reading, SensorType
 from shitbox.sync.batch_sync import BatchSyncService
@@ -409,6 +410,9 @@ class UnifiedEngine:
                 self.event_storage,
             )
 
+        # Thermal monitor
+        self.thermal_monitor = ThermalMonitorService()
+
         # OLED display
         self.oled_display: Optional[OLEDDisplayService] = None
         if config.oled_enabled:
@@ -463,6 +467,7 @@ class UnifiedEngine:
         self._event_video_paths: dict[int, Path] = {}
         self._manual_capture_count = 0
         self._last_timelapse_time = 0.0
+        self._last_wal_checkpoint: float = 0.0
         self._current_speed_kmh = 0.0
         self._current_lat: Optional[float] = None
         self._current_lon: Optional[float] = None
@@ -576,6 +581,9 @@ class UnifiedEngine:
     HEALTH_GRACE_PERIOD = 60.0  # skip checks during startup
     DISK_LOW_PCT = 10.0
     DISK_CRITICAL_PCT = 5.0
+
+    # WAL checkpoint interval (5 minutes)
+    WAL_CHECKPOINT_INTERVAL_S = 300.0
 
     def _on_event(self, event: Event) -> None:
         """Called when an event is detected."""
@@ -1093,7 +1101,7 @@ class UnifiedEngine:
             "sync_backlog": (
                 self.batch_sync.get_backlog_count() if self.batch_sync else 0
             ),
-            "cpu_temp": self._read_pi_temp(),
+            "cpu_temp": self.thermal_monitor.current_temp_celsius,
             "recovery_was_crash": (
                 self.boot_recovery.was_crash if self.boot_recovery else False
             ),
@@ -1141,6 +1149,14 @@ class UnifiedEngine:
                 if (now - last_cleanup) >= 3600:
                     self._do_cleanup()
                     last_cleanup = now
+
+                # WAL TRUNCATE checkpoint every 5 minutes
+                if (now - self._last_wal_checkpoint) >= self.WAL_CHECKPOINT_INTERVAL_S:
+                    try:
+                        self.database.checkpoint_wal()
+                    except Exception as e:
+                        log.error("wal_checkpoint_error", error=str(e))
+                    self._last_wal_checkpoint = now
             except Exception as e:
                 log.error("telemetry_loop_error", error=str(e))
 
@@ -1424,6 +1440,9 @@ class UnifiedEngine:
         if self.capture_sync:
             self.capture_sync.start()
 
+        # Start thermal monitor
+        self.thermal_monitor.start()
+
         # Start OLED display
         if self.oled_display:
             self.oled_display.start()
@@ -1517,6 +1536,8 @@ class UnifiedEngine:
 
         if self.capture_sync:
             self.capture_sync.stop()
+
+        self.thermal_monitor.stop()
 
         if self.mqtt:
             self.mqtt.disconnect()
