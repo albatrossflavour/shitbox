@@ -13,7 +13,7 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 # Database schema version for migrations
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -55,9 +55,29 @@ CREATE TABLE IF NOT EXISTS readings (
 
     -- System fields (Pi health)
     cpu_temp_celsius REAL,
+    disk_percent REAL,
+    sync_backlog INTEGER,
+    throttle_flags INTEGER,
 
     -- Metadata
     created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Trip state key-value store (for stage tracking)
+CREATE TABLE IF NOT EXISTS trip_state (
+    key TEXT PRIMARY KEY,
+    value_real REAL,
+    value_text TEXT,
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Waypoints reached during a stage
+CREATE TABLE IF NOT EXISTS waypoints_reached (
+    waypoint_index INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    reached_at TEXT NOT NULL,
+    lat_at_reach REAL,
+    lon_at_reach REAL
 );
 
 -- Sync cursor tracking
@@ -141,6 +161,9 @@ class Database:
         if current_version < 3:
             self._migrate_to_v3(conn)
 
+        if current_version < 4:
+            self._migrate_to_v4(conn)
+
         if current_version < SCHEMA_VERSION:
             conn.execute(
                 "INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
@@ -177,6 +200,43 @@ class Database:
             pass  # Column already exists
         conn.commit()
         log.info("migrated_to_v3", columns=["gas_resistance_ohms"])
+
+    def _migrate_to_v4(self, conn: sqlite3.Connection) -> None:
+        """Add health metric columns and trip/waypoint tables for Phase 4."""
+        new_columns = [
+            ("disk_percent", "REAL"),
+            ("sync_backlog", "INTEGER"),
+            ("throttle_flags", "INTEGER"),
+        ]
+        for col_name, col_type in new_columns:
+            try:
+                conn.execute(f"ALTER TABLE readings ADD COLUMN {col_name} {col_type}")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS trip_state (
+                key TEXT PRIMARY KEY,
+                value_real REAL,
+                value_text TEXT,
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS waypoints_reached (
+                waypoint_index INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                reached_at TEXT NOT NULL,
+                lat_at_reach REAL,
+                lon_at_reach REAL
+            )
+            """
+        )
+        conn.commit()
+        log.info("migrated_to_v4", columns=[c[0] for c in new_columns])
 
     def close(self) -> None:
         """Close database connection for current thread."""
@@ -229,8 +289,8 @@ class Database:
                     bus_voltage_v, current_ma, power_mw,
                     pressure_hpa, humidity_pct, env_temp_celsius,
                     gas_resistance_ohms,
-                    cpu_temp_celsius
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    cpu_temp_celsius, disk_percent, sync_backlog, throttle_flags
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     reading.timestamp_utc.isoformat(),
@@ -257,6 +317,9 @@ class Database:
                     reading.env_temp_celsius,
                     reading.gas_resistance_ohms,
                     reading.cpu_temp_celsius,
+                    reading.disk_percent,
+                    reading.sync_backlog,
+                    reading.throttle_flags,
                 ),
             )
             conn.commit()
@@ -290,10 +353,10 @@ class Database:
                             bus_voltage_v, current_ma, power_mw,
                             pressure_hpa, humidity_pct, env_temp_celsius,
                             gas_resistance_ohms,
-                            cpu_temp_celsius
+                            cpu_temp_celsius, disk_percent, sync_backlog, throttle_flags
                         ) VALUES (
                             ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
                         """,
                         (
@@ -321,6 +384,9 @@ class Database:
                             reading.env_temp_celsius,
                             reading.gas_resistance_ohms,
                             reading.cpu_temp_celsius,
+                            reading.disk_percent,
+                            reading.sync_backlog,
+                            reading.throttle_flags,
                         ),
                     )
                 conn.execute("COMMIT")
@@ -516,7 +582,119 @@ class Database:
                 row["gas_resistance_ohms"] if "gas_resistance_ohms" in keys else None
             ),
             cpu_temp_celsius=row["cpu_temp_celsius"] if "cpu_temp_celsius" in keys else None,
+            disk_percent=row["disk_percent"] if "disk_percent" in keys else None,
+            sync_backlog=row["sync_backlog"] if "sync_backlog" in keys else None,
+            throttle_flags=row["throttle_flags"] if "throttle_flags" in keys else None,
         )
+
+    def get_trip_state(self, key: str) -> Optional[float]:
+        """Get a numeric trip state value.
+
+        Args:
+            key: State key name.
+
+        Returns:
+            Stored float value, or None if key does not exist.
+        """
+        conn = self._get_connection()
+        cursor = conn.execute(
+            "SELECT value_real FROM trip_state WHERE key = ?", (key,)
+        )
+        row = cursor.fetchone()
+        return row["value_real"] if row else None
+
+    def get_trip_state_text(self, key: str) -> Optional[str]:
+        """Get a text trip state value.
+
+        Args:
+            key: State key name.
+
+        Returns:
+            Stored text value, or None if key does not exist.
+        """
+        conn = self._get_connection()
+        cursor = conn.execute(
+            "SELECT value_text FROM trip_state WHERE key = ?", (key,)
+        )
+        row = cursor.fetchone()
+        return row["value_text"] if row else None
+
+    def set_trip_state(self, key: str, value: float) -> None:
+        """Upsert a numeric trip state value.
+
+        Args:
+            key: State key name.
+            value: Float value to store.
+        """
+        conn = self._get_connection()
+        with self._write_lock:
+            conn.execute(
+                """
+                INSERT INTO trip_state (key, value_real, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(key) DO UPDATE SET
+                    value_real = excluded.value_real,
+                    updated_at = datetime('now')
+                """,
+                (key, value),
+            )
+            conn.commit()
+
+    def set_trip_state_text(self, key: str, value: str) -> None:
+        """Upsert a text trip state value.
+
+        Args:
+            key: State key name.
+            value: Text value to store.
+        """
+        conn = self._get_connection()
+        with self._write_lock:
+            conn.execute(
+                """
+                INSERT INTO trip_state (key, value_text, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(key) DO UPDATE SET
+                    value_text = excluded.value_text,
+                    updated_at = datetime('now')
+                """,
+                (key, value),
+            )
+            conn.commit()
+
+    def record_waypoint_reached(
+        self, waypoint_index: int, name: str, lat: float, lon: float
+    ) -> None:
+        """Record that a waypoint was reached during the current stage.
+
+        Uses INSERT OR IGNORE so re-crossing a waypoint boundary is idempotent.
+
+        Args:
+            waypoint_index: Zero-based index into the waypoints list.
+            name: Human-readable waypoint name.
+            lat: Latitude at the moment of crossing.
+            lon: Longitude at the moment of crossing.
+        """
+        conn = self._get_connection()
+        with self._write_lock:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO waypoints_reached
+                    (waypoint_index, name, reached_at, lat_at_reach, lon_at_reach)
+                VALUES (?, ?, datetime('now'), ?, ?)
+                """,
+                (waypoint_index, name, lat, lon),
+            )
+            conn.commit()
+
+    def get_reached_waypoints(self) -> set[int]:
+        """Get the set of waypoint indices already reached.
+
+        Returns:
+            Set of zero-based waypoint indices.
+        """
+        conn = self._get_connection()
+        cursor = conn.execute("SELECT waypoint_index FROM waypoints_reached")
+        return {row["waypoint_index"] for row in cursor.fetchall()}
 
     def vacuum(self) -> None:
         """Reclaim disk space by vacuuming the database."""
