@@ -11,11 +11,11 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 ## Current Position
 
 Phase: 4 of 5 (Remote Health and Stage Tracking)
-Plan: 1 of 2 in current phase (04-01 complete)
-Status: In progress
-Last activity: 2026-02-27 — Plan 04-01 completed (Schema v4, HealthCollector, Prometheus health metrics)
+Plan: 2 of 2 in current phase (04-02 complete — Phase 4 done)
+Status: Phase 4 complete
+Last activity: 2026-02-27 — Plan 04-02 completed (GPS odometer, AEST daily reset, waypoint detection)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
@@ -44,6 +44,7 @@ Progress: [█████░░░░░] 50%
 | Phase 03-thermal-resilience-and-storage-management P01 | 6 | 2 tasks | 6 files |
 | Phase 03-thermal-resilience-and-storage-management P02 | 7 | 2 tasks | 2 files |
 | Phase 04-remote-health-and-stage-tracking P01 | 8 | 2 tasks | 7 files |
+| Phase 04 P02 | 786 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [03-02]: _read_sysfs_temp/_read_throttled are instance methods so tests can use patch.object() for per-test mocking
 - [03-02]: WAL checkpoint timer co-located in _telemetry_loop, no new thread — per user decision in plan
 - [03-02]: get_status() now reads cpu_temp from thermal_monitor.current_temp_celsius (single source of truth)
+- [Phase 04]: Route waypoints stored as flat list on EngineConfig per project pattern (not nested dataclass)
+- [Phase 04]: AEST date calculated via timedelta(hours=10) — no tzdata dependency, no DST edge cases for Australian rally in March
+- [Phase 04]: _last_known_lat only updated when speed >= 5 km/h to prevent GPS drift at rest corrupting odometer
 
 ### Pending Todos
 
@@ -101,5 +105,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 04-01-PLAN.md (Schema v4, HealthCollector, Prometheus health metrics)
+Stopped at: Completed 04-02-PLAN.md (GPS odometer, AEST daily reset, waypoint detection)
 Resume file: None

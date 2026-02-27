@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Boot Recovery** - System survives hard power cuts and starts cleanly every time
 - [x] **Phase 2: Watchdog and Self-Healing** - Hardware watchdog active, all services auto-restart, known bugs fixed (completed 2026-02-25)
 - [x] **Phase 3: Thermal Resilience and Storage Management** - Temperature alerts before throttle, disk never exhausts (completed 2026-02-26)
-- [ ] **Phase 4: Remote Health and Stage Tracking** - Crew can see system health; car knows where it is on the route
+- [x] **Phase 4: Remote Health and Stage Tracking** - Crew can see system health; car knows where it is on the route (completed 2026-02-27)
 - [ ] **Phase 5: Audio Alerts and TTS** - USB speaker replaces buzzer with spoken alerts and contextual announcements
 - [ ] **Phase 6: Driver Display** - Speed, heading, trip progress, and system health on 7" screen
 
@@ -101,7 +101,7 @@ Plans:
 3. The system tracks distance driven today, resetting correctly on a new driving day
 4. Given a waypoint-based rally route in YAML config, the system tracks stage progress (waypoints reached within 5 km, day labels) and makes that data available to other subsystems
 
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 
@@ -146,6 +146,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Boot Recovery | 2/2 | Complete | 2026-02-25 |
 | 2. Watchdog and Self-Healing | 3/3 | Complete | 2026-02-25 |
 | 3. Thermal Resilience and Storage Management | 2/2 | Complete | 2026-02-26 |
-| 4. Remote Health and Stage Tracking | 0/2 | Not started | - |
+| 4. Remote Health and Stage Tracking | 2/2 | Complete   | 2026-02-27 |
 | 5. Audio Alerts and TTS | 0/TBD | Not started | - |
 | 6. Driver Display | 0/TBD | Not started | - |

@@ -37,9 +37,9 @@ Requirements for rally-ready hardening. Each maps to roadmap phases.
 
 ### Stage Tracking
 
-- [ ] **STGE-01**: System tracks cumulative distance from GPS (odometer-style total km)
-- [ ] **STGE-02**: System tracks daily distance (resets on new driving day)
-- [ ] **STGE-03**: System loads waypoint-based rally route and tracks stage progress (waypoints reached, day label)
+- [x] **STGE-01**: System tracks cumulative distance from GPS (odometer-style total km)
+- [x] **STGE-02**: System tracks daily distance (resets on new driving day)
+- [x] **STGE-03**: System loads waypoint-based rally route and tracks stage progress (waypoints reached, day label)
 
 ### Audio Alerts
 
@@ -103,9 +103,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | THRM-03 | Phase 3 | Complete |
 | STOR-01 | Phase 3 | Complete |
 | HLTH-01 | Phase 4 | Pending |
-| STGE-01 | Phase 4 | Pending |
-| STGE-02 | Phase 4 | Pending |
-| STGE-03 | Phase 4 | Pending |
+| STGE-01 | Phase 4 | Complete |
+| STGE-02 | Phase 4 | Complete |
+| STGE-03 | Phase 4 | Complete |
 | AUDIO-01 | Phase 5 | Pending |
 | AUDIO-02 | Phase 5 | Pending |
 | AUDIO-03 | Phase 5 | Pending |
