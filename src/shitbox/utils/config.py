@@ -217,6 +217,15 @@ class VideoBufferConfig:
 
 
 @dataclass
+class SpeakerConfig:
+    """USB TTS speaker configuration."""
+
+    enabled: bool = False
+    model_path: str = "/var/lib/shitbox/tts/en_US-lessac-medium.onnx"
+    distance_announce_interval_km: float = 50.0
+
+
+@dataclass
 class CaptureConfig:
     """Manual capture (button + video) configuration."""
 
@@ -231,6 +240,7 @@ class CaptureConfig:
     video: VideoConfig = field(default_factory=VideoConfig)
     timelapse: TimelapseConfig = field(default_factory=TimelapseConfig)
     video_buffer: VideoBufferConfig = field(default_factory=VideoBufferConfig)
+    speaker: SpeakerConfig = field(default_factory=SpeakerConfig)
 
 
 @dataclass
@@ -340,6 +350,7 @@ def load_config(config_path: str | Path | None = None) -> Config:
         video_buffer=_dict_to_dataclass(
             VideoBufferConfig, capture_data.get("video_buffer", {})
         ),
+        speaker=_dict_to_dataclass(SpeakerConfig, capture_data.get("speaker", {})),
     )
 
     gps_dict = data.get("sensors", {}).get("gps", {})
