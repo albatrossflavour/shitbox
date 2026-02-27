@@ -11,19 +11,19 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 ## Current Position
 
 Phase: 5 of 5 (Audio Alerts and TTS)
-Plan: 1 of 2 in current phase (05-01 complete — speaker.py module and TTS foundation)
-Status: Phase 5 in progress
-Last activity: 2026-02-27 — Plan 05-01 completed (speaker.py, SpeakerConfig, 15 unit tests)
+Plan: 2 of 2 in current phase (05-02 complete — speaker wiring in engine and thermal monitor)
+Status: Phase 5 complete
+Last activity: 2026-02-27 — Plan 05-02 completed (speaker wiring, distance announcements, 20 tests)
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: ~2-3 min
-- Total execution time: ~38 min
+- Total execution time: ~41 min
 
 **By Phase:**
 
@@ -46,6 +46,7 @@ Progress: [████████░░] 80%
 | Phase 04-remote-health-and-stage-tracking P01 | 8 | 2 tasks | 7 files |
 | Phase 04 P02 | 786 | 2 tasks | 4 files |
 | Phase 05-audio-alerts-and-tts P01 | 3 | 2 tasks | 4 files |
+| Phase 05 P02 | 3 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [05-01]: _detect_usb_speaker() uses UACDemo substring (not Jieli) per PLAN.md must_haves specification
 - [05-01]: Queue maxsize=2: one message playing + one queued, third dropped silently at debug log level
 - [05-01]: str(_alsa_device) and str(wav_path) casts in subprocess call to satisfy mypy Optional[str] typing
+- [Phase 05-02]: Speaker import at module level in engine.py alongside buzzer and overlay
+- [Phase 05-02]: Speaker init called after buzzer in start() so boot tones precede spoken announcement
+- [Phase 05-02]: _last_announced_km not persisted to DB — resetting on reboot acceptable for distance announcement tracking
+- [Phase 05-02]: EngineConfig speaker fields wired directly from config.capture.speaker (SpeakerConfig already existed from 05-01)
 
 ### Pending Todos
 
@@ -110,5 +115,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 05-01-PLAN.md (speaker.py module, SpeakerConfig, 15 unit tests)
+Stopped at: Completed 05-02-PLAN.md (speaker wiring in engine.py and thermal_monitor.py, 20 tests)
 Resume file: None

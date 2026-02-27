@@ -25,7 +25,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Watchdog and Self-Healing** - Hardware watchdog active, all services auto-restart, known bugs fixed (completed 2026-02-25)
 - [x] **Phase 3: Thermal Resilience and Storage Management** - Temperature alerts before throttle, disk never exhausts (completed 2026-02-26)
 - [x] **Phase 4: Remote Health and Stage Tracking** - Crew can see system health; car knows where it is on the route (completed 2026-02-27)
-- [ ] **Phase 5: Audio Alerts and TTS** - USB speaker replaces buzzer with spoken alerts and contextual announcements
+- [x] **Phase 5: Audio Alerts and TTS** - USB speaker replaces buzzer with spoken alerts and contextual announcements (completed 2026-02-27)
 - [ ] **Phase 6: Driver Display** - Speed, heading, trip progress, and system health on 7" screen
 
 ## Phase Details
@@ -120,7 +120,7 @@ Plans:
 3. Contextual announcements fire for system events: boot ready, thermal warnings, waypoint reached, periodic distance updates, and recovery confirmations
 4. Audio playback does not block the main engine thread or interfere with 100 Hz IMU sampling
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 
@@ -152,5 +152,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Watchdog and Self-Healing | 3/3 | Complete | 2026-02-25 |
 | 3. Thermal Resilience and Storage Management | 2/2 | Complete | 2026-02-26 |
 | 4. Remote Health and Stage Tracking | 2/2 | Complete   | 2026-02-27 |
-| 5. Audio Alerts and TTS | 1/2 | In Progress|  |
+| 5. Audio Alerts and TTS | 2/2 | Complete   | 2026-02-27 |
 | 6. Driver Display | 0/TBD | Not started | - |
