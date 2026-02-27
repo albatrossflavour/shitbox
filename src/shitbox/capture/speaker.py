@@ -159,7 +159,10 @@ def _synthesise_and_play(text: str) -> None:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             wav_path = f.name
 
-        with wave.open(wav_path, "w") as wav_file:
+        with wave.open(wav_path, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)  # 16-bit PCM
+            wav_file.setframerate(_voice.config.sample_rate)  # type: ignore[union-attr]
             _voice.synthesize(text, wav_file)  # type: ignore[union-attr]
 
         # _alsa_device and wav_path are always set when the worker is running

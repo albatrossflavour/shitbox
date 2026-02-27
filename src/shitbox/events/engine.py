@@ -1623,6 +1623,7 @@ class UnifiedEngine:
 
         # Initialise speaker (after buzzer so boot tones precede spoken announcement)
         if self.config.speaker_enabled:
+            self._notify_systemd("WATCHDOG=1")  # Piper model load takes ~5-7s
             speaker.init(self.config.speaker_model_path)
             speaker.set_boot_start_time(time.time())
             was_crash = self.boot_recovery.was_crash if self.boot_recovery else False
