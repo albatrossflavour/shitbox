@@ -6,7 +6,7 @@ import threading
 import time
 from typing import Callable, Optional
 
-from shitbox.capture import buzzer
+from shitbox.capture import buzzer, speaker
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
 from shitbox.utils.logging import get_logger
 
@@ -189,10 +189,12 @@ class HighRateSampler:
                         consecutive_failures=self._consecutive_failures,
                     )
                     buzzer.beep_i2c_lockup()
+                    speaker.speak_i2c_lockup()
                     recovered = self._i2c_bus_reset()
                     if recovered:
                         log.info("i2c_bus_recovery_successful")
                         buzzer.beep_service_recovered("i2c")
+                        speaker.speak_service_recovered()
                         self._consecutive_failures = 0
                     else:
                         self._force_reboot()

@@ -534,9 +534,10 @@ class VideoRingBuffer:
                     "ffmpeg_stall_detected",
                     timeout_seconds=self.STALL_TIMEOUT_SECONDS,
                 )
-                from shitbox.capture import buzzer
+                from shitbox.capture import buzzer, speaker
 
                 buzzer.beep_ffmpeg_stall()
+                speaker.speak_ffmpeg_stall()
                 self._kill_current()
                 self._start_ffmpeg()
                 continue

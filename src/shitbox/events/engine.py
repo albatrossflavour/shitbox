@@ -660,6 +660,7 @@ class UnifiedEngine:
         if event.event_type in self.VIDEO_CAPTURE_EVENTS:
             if self.video_ring_buffer and self.video_ring_buffer.is_running:
                 buzzer.beep_capture_start()
+                speaker.speak_capture_start(event.event_type.value)
                 eid = id(event)
                 self.video_ring_buffer.save_event(
                     prefix=event.event_type.value,
@@ -761,6 +762,7 @@ class UnifiedEngine:
             path: Path to the saved video file, or None on failure.
         """
         buzzer.beep_capture_end()
+        speaker.speak_capture_end()
         if not path:
             log.warning("capture_failed", event_id=event_id)
             return
@@ -1730,9 +1732,15 @@ class UnifiedEngine:
             log.info("manual_capture_signal_received")
             self.trigger_manual_capture()
 
+        def test_alert_handler(signum, frame):
+            log.info("test_alert_signal_received")
+            buzzer.beep_capture_start()
+            speaker.speak_capture_start("high_g")
+
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGUSR1, capture_signal_handler)
+        signal.signal(signal.SIGUSR2, test_alert_handler)
 
         # Notify systemd we're ready
         self._notify_systemd("READY=1")
@@ -1826,6 +1834,7 @@ class UnifiedEngine:
             )
             if self._health_failures >= 2:
                 buzzer.beep_alarm()
+                speaker.speak_health_alarm()
         else:
             if self._health_failures > 0:
                 log.info(

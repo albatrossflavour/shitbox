@@ -19,6 +19,11 @@ fi
 DEVICE="plughw:${CARD},0"
 echo "Speaker: ${DEVICE}"
 
+# Set volume to 75% — 100% causes the USB device to reset
+echo "Setting volume to 75%..."
+amixer -c "${CARD}" sset PCM 75% 2>/dev/null || \
+    echo "Warning: could not set volume (no PCM control found)"
+
 # Synthesise WAV
 echo "Synthesising: \"${TEXT}\""
 "$VENV" -c "
