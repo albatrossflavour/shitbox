@@ -19,6 +19,28 @@ from shitbox.capture.buzzer import (
     beep_thermal_warning,
     beep_under_voltage,
 )
+
+try:
+    from shitbox.capture.speaker import (
+        speak_thermal_critical,
+        speak_thermal_recovered,
+        speak_thermal_warning,
+        speak_under_voltage,
+    )
+except ImportError:
+
+    def speak_thermal_warning() -> None:  # type: ignore[misc]
+        pass
+
+    def speak_thermal_critical() -> None:  # type: ignore[misc]
+        pass
+
+    def speak_thermal_recovered() -> None:  # type: ignore[misc]
+        pass
+
+    def speak_under_voltage() -> None:  # type: ignore[misc]
+        pass
+
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -217,12 +239,14 @@ class ThermalMonitorService:
                 threshold=TEMP_WARNING_C,
             )
             beep_thermal_warning()
+            speak_thermal_warning()
             self._warning_armed = False
 
         # Warning recovery (re-arm)
         if temp <= _WARN_REARM_C and not self._warning_armed:
             log.info("cpu_temp_recovered", temp_celsius=round(temp, 1))
             beep_thermal_recovered()
+            speak_thermal_recovered()
             self._warning_armed = True
 
         # Critical threshold
@@ -233,6 +257,7 @@ class ThermalMonitorService:
                 threshold=TEMP_CRITICAL_C,
             )
             beep_thermal_critical()
+            speak_thermal_critical()
             self._critical_armed = False
 
         # Critical recovery (silent re-arm only)
@@ -261,3 +286,4 @@ class ThermalMonitorService:
 
         if decoded["current"].get("under_voltage"):
             beep_under_voltage()
+            speak_under_voltage()

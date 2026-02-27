@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from shitbox.capture import buzzer, overlay
+from shitbox.capture import buzzer, overlay, speaker
 from shitbox.capture.button import ButtonHandler
 from shitbox.capture.ring_buffer import VideoRingBuffer
 from shitbox.capture.video import VideoRecorder
@@ -171,6 +171,11 @@ class EngineConfig:
     oled_i2c_address: int = 0x3C
     oled_update_interval: float = 1.0
 
+    # Speaker (USB TTS)
+    speaker_enabled: bool = False
+    speaker_model_path: str = "/var/lib/shitbox/tts/en_US-lessac-medium.onnx"
+    speaker_distance_announce_interval_km: float = 50.0
+
     # Route waypoints (WaypointConfig objects loaded from YAML)
     route_waypoints: list = field(default_factory=list)
 
@@ -264,6 +269,12 @@ class EngineConfig:
             oled_i2c_bus=config.display.oled.i2c_bus,
             oled_i2c_address=config.display.oled.address,
             oled_update_interval=config.display.oled.update_interval_seconds,
+            # Speaker
+            speaker_enabled=config.capture.speaker.enabled,
+            speaker_model_path=config.capture.speaker.model_path,
+            speaker_distance_announce_interval_km=(
+                config.capture.speaker.distance_announce_interval_km
+            ),
             # Route waypoints
             route_waypoints=config.sensors.gps.route.waypoints,
         )
@@ -504,6 +515,8 @@ class UnifiedEngine:
         self._last_known_lon: Optional[float] = None
         self._last_trip_persist: float = 0.0
         self._reached_waypoints: set = set()
+        # Last announced km threshold — reset on reboot, no DB persistence needed
+        self._last_announced_km: float = 0.0
 
         # Location resolution state
         self._current_location_name: Optional[str] = None
@@ -1236,6 +1249,16 @@ class UnifiedEngine:
                             if delta_km <= 1.0:
                                 self._odometer_km += delta_km
                                 self._daily_km += delta_km
+                                # Distance announcement at configurable interval
+                                announce_interval = (
+                                    self.config.speaker_distance_announce_interval_km
+                                )
+                                if announce_interval > 0 and (
+                                    self._daily_km // announce_interval
+                                    > self._last_announced_km // announce_interval
+                                ):
+                                    speaker.speak_distance_update(int(self._daily_km))
+                                    self._last_announced_km = self._daily_km
                         self._last_known_lat = gps_reading.latitude
                         self._last_known_lon = gps_reading.longitude
 
@@ -1332,6 +1355,7 @@ class UnifiedEngine:
                     day=waypoint.day,
                     distance_km=round(dist_km, 2),
                 )
+                speaker.speak_waypoint_reached(waypoint.name, waypoint.day)
 
     def _update_overlay(self) -> None:
         """Write overlay text files for ffmpeg drawtext filters."""
@@ -1452,6 +1476,7 @@ class UnifiedEngine:
         today_aest = _current_aest_date()
         if stored_date != today_aest:
             self._daily_km = 0.0
+            self._last_announced_km = 0.0
             self.database.set_trip_state("daily_km", 0.0)
             self.database.set_trip_state_text("daily_reset_date", today_aest)
             log.info("daily_distance_reset", new_date=today_aest)
@@ -1596,6 +1621,13 @@ class UnifiedEngine:
             else:
                 buzzer.beep_clean_boot()
 
+        # Initialise speaker (after buzzer so boot tones precede spoken announcement)
+        if self.config.speaker_enabled:
+            speaker.init(self.config.speaker_model_path)
+            speaker.set_boot_start_time(time.time())
+            was_crash = self.boot_recovery.was_crash if self.boot_recovery else False
+            speaker.speak_boot(was_crash=was_crash)
+
         # Regenerate events.json from any previously stored events
         try:
             self.event_storage.generate_events_json()
@@ -1642,8 +1674,9 @@ class UnifiedEngine:
         if self.config.overlay_enabled:
             overlay.cleanup()
 
-        # Clean up buzzer
+        # Clean up buzzer and speaker
         buzzer.cleanup()
+        speaker.cleanup()
 
         # Stop components
         self.sampler.stop()
