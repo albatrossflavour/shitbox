@@ -101,7 +101,12 @@ Plans:
 3. The system tracks distance driven today, resetting correctly on a new driving day
 4. Given a waypoint-based rally route in YAML config, the system tracks stage progress (waypoints reached within 5 km, day labels) and makes that data available to other subsystems
 
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 04-01-PLAN.md — Schema v4 migration, HealthCollector, batch_sync health metrics (HLTH-01)
+- [ ] 04-02-PLAN.md — Config dataclasses, GPS distance tracking, waypoint detection (STGE-01/02/03)
 
 ### Phase 5: Audio Alerts and TTS
 
@@ -141,6 +146,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Boot Recovery | 2/2 | Complete | 2026-02-25 |
 | 2. Watchdog and Self-Healing | 3/3 | Complete | 2026-02-25 |
 | 3. Thermal Resilience and Storage Management | 2/2 | Complete | 2026-02-26 |
-| 4. Remote Health and Stage Tracking | 0/TBD | Not started | - |
+| 4. Remote Health and Stage Tracking | 0/2 | Not started | - |
 | 5. Audio Alerts and TTS | 0/TBD | Not started | - |
 | 6. Driver Display | 0/TBD | Not started | - |
