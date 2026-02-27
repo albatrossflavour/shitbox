@@ -120,7 +120,12 @@ Plans:
 3. Contextual announcements fire for system events: boot ready, thermal warnings, waypoint reached, periodic distance updates, and recovery confirmations
 4. Audio playback does not block the main engine thread or interfere with 100 Hz IMU sampling
 
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 05-01-PLAN.md — Speaker module, SpeakerConfig, USB detection, TTS enqueue, unit tests (AUDIO-01, AUDIO-02)
+- [ ] 05-02-PLAN.md — Engine and thermal monitor wiring, waypoint and distance announcements (AUDIO-03)
 
 ### Phase 6: Driver Display
 
@@ -147,5 +152,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Watchdog and Self-Healing | 3/3 | Complete | 2026-02-25 |
 | 3. Thermal Resilience and Storage Management | 2/2 | Complete | 2026-02-26 |
 | 4. Remote Health and Stage Tracking | 2/2 | Complete   | 2026-02-27 |
-| 5. Audio Alerts and TTS | 0/TBD | Not started | - |
+| 5. Audio Alerts and TTS | 0/2 | Not started | - |
 | 6. Driver Display | 0/TBD | Not started | - |
