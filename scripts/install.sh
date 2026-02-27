@@ -13,7 +13,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Get the actual user (not root)
-ACTUAL_USER=${SUDO_USER:-pi}
+ACTUAL_USER=${SUDO_USER:-tgreen}
 ACTUAL_HOME=$(eval echo ~$ACTUAL_USER)
 INSTALL_DIR="$ACTUAL_HOME/shitbox"
 
@@ -26,7 +26,7 @@ echo "=== Enabling I2C interface ==="
 raspi-config nonint do_i2c 0
 
 # Add user to required groups
-usermod -aG i2c,gpio $ACTUAL_USER
+usermod -aG i2c,gpio,audio $ACTUAL_USER
 
 # Create data directory
 echo ""
@@ -39,7 +39,7 @@ chmod 755 /var/lib/shitbox
 echo ""
 echo "=== Installing system dependencies ==="
 apt-get update
-apt-get install -y python3-pip python3-venv python3-dev i2c-tools gpsd gpsd-clients
+apt-get install -y python3-pip python3-venv python3-dev i2c-tools gpsd gpsd-clients alsa-utils
 
 # Configure gpsd for the GPS HAT
 echo ""
@@ -63,6 +63,27 @@ cd "$INSTALL_DIR"
 sudo -u $ACTUAL_USER python3 -m venv .venv
 sudo -u $ACTUAL_USER .venv/bin/pip install --upgrade pip
 sudo -u $ACTUAL_USER .venv/bin/pip install -e .
+
+# Download Piper TTS voice model
+echo ""
+echo "=== Setting up Piper TTS voice model ==="
+TTS_DIR="/var/lib/shitbox/tts"
+mkdir -p "$TTS_DIR"
+chown $ACTUAL_USER:$ACTUAL_USER "$TTS_DIR"
+
+PIPER_MODEL="en_US-lessac-medium"
+PIPER_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium"
+
+if [ ! -f "$TTS_DIR/${PIPER_MODEL}.onnx" ]; then
+    echo "Downloading Piper voice model (${PIPER_MODEL}, ~63 MB)..."
+    sudo -u $ACTUAL_USER wget -q --show-progress -O "$TTS_DIR/${PIPER_MODEL}.onnx" \
+        "${PIPER_BASE}/${PIPER_MODEL}.onnx"
+    sudo -u $ACTUAL_USER wget -q -O "$TTS_DIR/${PIPER_MODEL}.onnx.json" \
+        "${PIPER_BASE}/${PIPER_MODEL}.onnx.json"
+    echo "Voice model installed to $TTS_DIR"
+else
+    echo "Voice model already exists at $TTS_DIR/${PIPER_MODEL}.onnx"
+fi
 
 # Install systemd service
 echo ""
@@ -99,13 +120,11 @@ echo ""
 echo "=== Installation complete ==="
 echo ""
 echo "Next steps:"
-echo "1. Edit /etc/shitbox/config.yaml with your MQTT broker details"
+echo "1. Edit /etc/shitbox/config.yaml with your settings"
 echo "2. Reboot to apply hardware interface changes: sudo reboot"
 echo "3. After reboot, verify gpsd is working: cgps"
-echo "4. Start the service: sudo systemctl start shitbox-telemetry"
-echo "5. Check status: sudo systemctl status shitbox-telemetry"
-echo "6. View logs: journalctl -u shitbox-telemetry -f"
-echo ""
-echo "To run without uplink (offline mode):"
-echo "  /home/$ACTUAL_USER/shitbox/.venv/bin/python -m shitbox.main --no-uplink"
+echo "4. Test USB speaker: aplay /usr/share/sounds/alsa/Front_Center.wav"
+echo "5. Start the service: sudo systemctl start shitbox-telemetry"
+echo "6. Check status: sudo systemctl status shitbox-telemetry"
+echo "7. View logs: journalctl -u shitbox-telemetry -f"
 echo ""

@@ -38,7 +38,7 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 
 # Device access for I2C and serial
-SupplementaryGroups=i2c dialout gpio
+SupplementaryGroups=i2c dialout gpio audio
 
 [Install]
 WantedBy=multi-user.target

@@ -22,6 +22,7 @@ dependencies = [
     "protobuf>=4.0.0",
     "piicodev>=1.0.0",
     "reverse_geocoder>=1.5.1",
+    "piper-tts>=1.4.0",
 ]
 
 [project.optional-dependencies]

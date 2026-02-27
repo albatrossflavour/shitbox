@@ -125,7 +125,7 @@ fi
 
 # --- Sensors (data flowing?) ---
 if command -v sqlite3 >/dev/null 2>&1 && [ -f "$DB" ]; then
-  for stype in imu environment; do
+  for stype in imu environment system; do
     age=$(sqlite3 "$DB" "SELECT CAST((strftime('%s','now') - strftime('%s', timestamp_utc)) AS INTEGER) FROM readings WHERE sensor_type = '${stype}' ORDER BY id DESC LIMIT 1;" 2>/dev/null || echo "")
     if [ -z "$age" ]; then
       fail "sensor" "${stype}: no data"
@@ -137,6 +137,43 @@ if command -v sqlite3 >/dev/null 2>&1 && [ -f "$DB" ]; then
       ok "sensor" "${stype}: ${age}s ago"
     fi
   done
+fi
+
+# --- Speaker ---
+if [ -f "/var/lib/shitbox/tts/en_US-lessac-medium.onnx" ]; then
+  if aplay -l 2>/dev/null | grep -qi "UACDemo"; then
+    ok "speaker" "USB speaker detected, TTS model present"
+  else
+    warn "speaker" "TTS model present, USB speaker not detected (buzzer fallback)"
+  fi
+else
+  warn "speaker" "TTS model not installed (/var/lib/shitbox/tts/)"
+fi
+
+# --- Throttle ---
+if command -v vcgencmd >/dev/null 2>&1; then
+  throttled=$(vcgencmd get_throttled 2>/dev/null | cut -d= -f2)
+  if [ "$throttled" = "0x0" ]; then
+    ok "throttle" "none"
+  else
+    fail "throttle" "flags: ${throttled}"
+  fi
+else
+  warn "throttle" "vcgencmd not available"
+fi
+
+# --- Trip State ---
+if command -v sqlite3 >/dev/null 2>&1 && [ -f "$DB" ]; then
+  odo=$(sqlite3 "$DB" "SELECT value_real FROM trip_state WHERE key = 'odometer_km';" 2>/dev/null || echo "")
+  daily=$(sqlite3 "$DB" "SELECT value_real FROM trip_state WHERE key = 'daily_km';" 2>/dev/null || echo "")
+  waypoints=$(sqlite3 "$DB" "SELECT COUNT(*) FROM waypoints_reached;" 2>/dev/null || echo "0")
+  if [ -n "$odo" ]; then
+    odo_fmt=$(printf "%.1f" "$odo" 2>/dev/null || echo "$odo")
+    daily_fmt=$(printf "%.1f" "$daily" 2>/dev/null || echo "${daily:-0}")
+    ok "trip" "odo ${odo_fmt} km, today ${daily_fmt} km, ${waypoints} waypoint(s)"
+  else
+    warn "trip" "no trip data yet"
+  fi
 fi
 
 # --- Prometheus ---
