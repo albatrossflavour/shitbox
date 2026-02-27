@@ -163,7 +163,8 @@ def _synthesise_and_play(text: str) -> None:
             wav_file.setnchannels(1)
             wav_file.setsampwidth(2)  # 16-bit PCM
             wav_file.setframerate(_voice.config.sample_rate)  # type: ignore[union-attr]
-            _voice.synthesize(text, wav_file)  # type: ignore[union-attr]
+            for audio_bytes in _voice.synthesize_stream_raw(text):  # type: ignore[union-attr]
+                wav_file.writeframes(audio_bytes)
 
         # _alsa_device and wav_path are always set when the worker is running
         subprocess.run(

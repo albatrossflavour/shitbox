@@ -29,7 +29,8 @@ with wave.open('${WAV}', 'wb') as wf:
     wf.setnchannels(1)
     wf.setsampwidth(2)
     wf.setframerate(v.config.sample_rate)
-    v.synthesize('${TEXT}', wf)
+    for audio_bytes in v.synthesize_stream_raw('${TEXT}'):
+        wf.writeframes(audio_bytes)
 print('WAV written to ${WAV}')
 "
 
