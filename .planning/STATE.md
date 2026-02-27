@@ -6,24 +6,24 @@ See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 4 — Remote Health and Stage Tracking
+**Current focus:** Phase 5 — Audio Alerts and TTS
 
 ## Current Position
 
-Phase: 4 of 5 (Remote Health and Stage Tracking)
-Plan: 2 of 2 in current phase (04-02 complete — Phase 4 done)
-Status: Phase 4 complete
-Last activity: 2026-02-27 — Plan 04-02 completed (GPS odometer, AEST daily reset, waypoint detection)
+Phase: 5 of 5 (Audio Alerts and TTS)
+Plan: 1 of 2 in current phase (05-01 complete — speaker.py module and TTS foundation)
+Status: Phase 5 in progress
+Last activity: 2026-02-27 — Plan 05-01 completed (speaker.py, SpeakerConfig, 15 unit tests)
 
-Progress: [██████░░░░] 60%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: ~2-3 min
-- Total execution time: ~35 min
+- Total execution time: ~38 min
 
 **By Phase:**
 
@@ -45,6 +45,7 @@ Progress: [██████░░░░] 60%
 | Phase 03-thermal-resilience-and-storage-management P02 | 7 | 2 tasks | 2 files |
 | Phase 04-remote-health-and-stage-tracking P01 | 8 | 2 tasks | 7 files |
 | Phase 04 P02 | 786 | 2 tasks | 4 files |
+| Phase 05-audio-alerts-and-tts P01 | 3 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 04]: Route waypoints stored as flat list on EngineConfig per project pattern (not nested dataclass)
 - [Phase 04]: AEST date calculated via timedelta(hours=10) — no tzdata dependency, no DST edge cases for Australian rally in March
 - [Phase 04]: _last_known_lat only updated when speed >= 5 km/h to prevent GPS drift at rest corrupting odometer
+- [05-01]: speaker.py mirrors buzzer.py module-level API exactly — module-level state, try/except ImportError, all functions are no-ops when _voice is None
+- [05-01]: _detect_usb_speaker() uses UACDemo substring (not Jieli) per PLAN.md must_haves specification
+- [05-01]: Queue maxsize=2: one message playing + one queued, third dropped silently at debug log level
+- [05-01]: str(_alsa_device) and str(wav_path) casts in subprocess call to satisfy mypy Optional[str] typing
 
 ### Pending Todos
 
@@ -105,5 +110,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 04-02-PLAN.md (GPS odometer, AEST daily reset, waypoint detection)
+Stopped at: Completed 05-01-PLAN.md (speaker.py module, SpeakerConfig, 15 unit tests)
 Resume file: None

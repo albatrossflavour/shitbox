@@ -43,8 +43,8 @@ Requirements for rally-ready hardening. Each maps to roadmap phases.
 
 ### Audio Alerts
 
-- [ ] **AUDIO-01**: USB speaker detected and used as primary audio output device
-- [ ] **AUDIO-02**: TTS engine (Piper) generates spoken alerts replacing buzzer tone patterns
+- [x] **AUDIO-01**: USB speaker detected and used as primary audio output device
+- [x] **AUDIO-02**: TTS engine (Piper) generates spoken alerts replacing buzzer tone patterns
 - [ ] **AUDIO-03**: Contextual announcements for system events (boot, thermal, waypoints, distance, recovery)
 
 ## v2 Requirements
@@ -106,8 +106,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STGE-01 | Phase 4 | Complete |
 | STGE-02 | Phase 4 | Complete |
 | STGE-03 | Phase 4 | Complete |
-| AUDIO-01 | Phase 5 | Pending |
-| AUDIO-02 | Phase 5 | Pending |
+| AUDIO-01 | Phase 5 | Complete |
+| AUDIO-02 | Phase 5 | Complete |
 | AUDIO-03 | Phase 5 | Pending |
 
 **Coverage:**
