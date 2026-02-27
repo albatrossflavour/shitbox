@@ -16,6 +16,17 @@ sensors:
     rally_start_lon: 145.467250
     rally_destination_lat: -37.819142
     rally_destination_lon: 144.960397
+    route:
+      waypoints: []
+      # Populate before the rally, e.g.:
+      # - name: "Port Douglas"
+      #   day: 1
+      #   lat: -16.4838
+      #   lon: 145.4673
+      # - name: "Townsville"
+      #   day: 1
+      #   lat: -19.2590
+      #   lon: 146.8169
 
   imu:
     enabled: true

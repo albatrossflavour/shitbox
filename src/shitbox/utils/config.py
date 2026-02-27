@@ -2,9 +2,26 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 import yaml
+
+
+@dataclass
+class WaypointConfig:
+    """A single named waypoint on the rally route."""
+
+    name: str = ""
+    day: int = 1
+    lat: float = 0.0
+    lon: float = 0.0
+
+
+@dataclass
+class RouteConfig:
+    """Ordered list of waypoints defining the rally route."""
+
+    waypoints: List[WaypointConfig] = field(default_factory=list)
 
 
 @dataclass
@@ -20,6 +37,7 @@ class GPSConfig:
     rally_start_lon: float = 145.467250
     rally_destination_lat: float = -37.819142
     rally_destination_lon: float = 144.960397
+    route: RouteConfig = field(default_factory=RouteConfig)
 
 
 @dataclass
@@ -324,10 +342,21 @@ def load_config(config_path: str | Path | None = None) -> Config:
         ),
     )
 
+    gps_dict = data.get("sensors", {}).get("gps", {})
+    gps_config = _dict_to_dataclass(GPSConfig, gps_dict)
+    # Explicitly convert waypoints list — _dict_to_dataclass does not handle
+    # lists of dataclasses, so we do it here.
+    route_data = gps_dict.get("route", {}) if isinstance(gps_dict, dict) else {}
+    waypoints = [
+        WaypointConfig(**w)
+        for w in (route_data.get("waypoints", []) if isinstance(route_data, dict) else [])
+    ]
+    gps_config.route = RouteConfig(waypoints=waypoints)
+
     return Config(
         app=_dict_to_dataclass(AppConfig, data.get("app", {})),
         sensors=SensorsConfig(
-            gps=_dict_to_dataclass(GPSConfig, data.get("sensors", {}).get("gps", {})),
+            gps=gps_config,
             imu=_dict_to_dataclass(IMUConfig, data.get("sensors", {}).get("imu", {})),
             temperature=_dict_to_dataclass(
                 TemperatureConfig, data.get("sensors", {}).get("temperature", {})

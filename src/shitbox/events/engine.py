@@ -14,7 +14,7 @@ import signal
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -47,6 +47,15 @@ from shitbox.utils.config import (
 from shitbox.utils.logging import get_logger, setup_logging
 
 log = get_logger(__name__)
+
+# Trip tracking constants
+TRIP_PERSIST_INTERVAL_S = 60.0
+AEST_OFFSET = timedelta(hours=10)
+
+
+def _current_aest_date() -> str:
+    """Return today's date string in AEST (UTC+10), e.g. '2026-02-27'."""
+    return (datetime.now(timezone.utc) + AEST_OFFSET).strftime("%Y-%m-%d")
 
 
 @dataclass
@@ -162,6 +171,9 @@ class EngineConfig:
     oled_i2c_address: int = 0x3C
     oled_update_interval: float = 1.0
 
+    # Route waypoints (WaypointConfig objects loaded from YAML)
+    route_waypoints: list = field(default_factory=list)
+
     @classmethod
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
         """Create EngineConfig from the existing YAML config structure."""
@@ -252,6 +264,8 @@ class EngineConfig:
             oled_i2c_bus=config.display.oled.i2c_bus,
             oled_i2c_address=config.display.oled.address,
             oled_update_interval=config.display.oled.update_interval_seconds,
+            # Route waypoints
+            route_waypoints=config.sensors.gps.route.waypoints,
         )
 
 
@@ -482,6 +496,14 @@ class UnifiedEngine:
         self._clock_synced_from_gps = False
         self._distance_from_start_km: Optional[float] = None
         self._distance_to_destination_km: Optional[float] = None
+
+        # Trip tracking state (odometer + daily distance + waypoints)
+        self._odometer_km: float = 0.0
+        self._daily_km: float = 0.0
+        self._last_known_lat: Optional[float] = None
+        self._last_known_lon: Optional[float] = None
+        self._last_trip_persist: float = 0.0
+        self._reached_waypoints: set = set()
 
         # Location resolution state
         self._current_location_name: Optional[str] = None
@@ -1115,6 +1137,11 @@ class UnifiedEngine:
             "recovery_orphans_closed": (
                 self.boot_recovery.orphans_closed if self.boot_recovery else 0
             ),
+            # Trip tracking
+            "odometer_km": round(self._odometer_km, 1),
+            "daily_km": round(self._daily_km, 1),
+            "waypoints_reached": len(self._reached_waypoints),
+            "waypoints_total": len(self.config.route_waypoints),
         }
 
     def _read_system_status(self) -> Optional[Reading]:
@@ -1195,6 +1222,35 @@ class UnifiedEngine:
                         gps_reading.latitude, gps_reading.longitude,
                         self.config.rally_destination_lat, self.config.rally_destination_lon,
                     )
+                    # Odometer: accumulate distance only when speed >= 5 km/h
+                    if (
+                        gps_reading.speed_kmh is not None
+                        and gps_reading.speed_kmh >= 5.0
+                    ):
+                        if self._last_known_lat is not None:
+                            delta_km = self._haversine_km(
+                                self._last_known_lat, self._last_known_lon,  # type: ignore[arg-type]
+                                gps_reading.latitude, gps_reading.longitude,
+                            )
+                            # Reject implausible deltas (> 1 km/s = 3600 km/h)
+                            if delta_km <= 1.0:
+                                self._odometer_km += delta_km
+                                self._daily_km += delta_km
+                        self._last_known_lat = gps_reading.latitude
+                        self._last_known_lon = gps_reading.longitude
+
+                    # Persist odometer every 60 seconds
+                    now_mono = time.monotonic()
+                    if (now_mono - self._last_trip_persist) >= TRIP_PERSIST_INTERVAL_S:
+                        try:
+                            self.database.set_trip_state("odometer_km", self._odometer_km)
+                            self.database.set_trip_state("daily_km", self._daily_km)
+                        except Exception as e:
+                            log.error("trip_state_persist_error", error=str(e))
+                        self._last_trip_persist = now_mono
+
+                    # Waypoint detection (regardless of speed)
+                    self._check_waypoints(gps_reading.latitude, gps_reading.longitude)
             else:
                 self._gps_has_fix = False
 
@@ -1252,6 +1308,30 @@ class UnifiedEngine:
         # Update video HUD overlay text files
         if self.config.overlay_enabled and self.video_ring_buffer:
             self._update_overlay()
+
+    def _check_waypoints(self, lat: float, lon: float) -> None:
+        """Check whether the current position is within 5 km of any unreached waypoint.
+
+        Args:
+            lat: Current latitude.
+            lon: Current longitude.
+        """
+        for i, waypoint in enumerate(self.config.route_waypoints):
+            if i in self._reached_waypoints:
+                continue
+            dist_km = self._haversine_km(lat, lon, waypoint.lat, waypoint.lon)
+            if dist_km <= 5.0:
+                self._reached_waypoints.add(i)
+                try:
+                    self.database.record_waypoint_reached(i, waypoint.name, lat, lon)
+                except Exception as e:
+                    log.error("waypoint_persist_error", index=i, error=str(e))
+                log.info(
+                    "waypoint_reached",
+                    name=waypoint.name,
+                    day=waypoint.day,
+                    distance_km=round(dist_km, 2),
+                )
 
     def _update_overlay(self) -> None:
         """Write overlay text files for ffmpeg drawtext filters."""
@@ -1362,6 +1442,22 @@ class UnifiedEngine:
 
         # Initialise database (this creates the WAL file — detection must be above)
         self.database.connect()
+
+        # Load persisted trip state
+        self._odometer_km = self.database.get_trip_state("odometer_km") or 0.0
+        self._daily_km = self.database.get_trip_state("daily_km") or 0.0
+
+        # Reset daily distance on AEST day boundary
+        stored_date = self.database.get_trip_state_text("daily_reset_date")
+        today_aest = _current_aest_date()
+        if stored_date != today_aest:
+            self._daily_km = 0.0
+            self.database.set_trip_state("daily_km", 0.0)
+            self.database.set_trip_state_text("daily_reset_date", today_aest)
+            log.info("daily_distance_reset", new_date=today_aest)
+
+        # Load reached waypoints
+        self._reached_waypoints = self.database.get_reached_waypoints()
 
         # Start boot recovery in background (does not block data capture)
         self.boot_recovery = BootRecoveryService(self.database, self.event_storage)
