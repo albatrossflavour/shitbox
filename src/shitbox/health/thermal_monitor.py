@@ -112,6 +112,15 @@ class ThermalMonitorService:
         with self._lock:
             return self._current_temp
 
+    @property
+    def last_throttled_raw(self) -> Optional[int]:
+        """Return the most recently read throttle bitmask from vcgencmd, thread-safe.
+
+        Returns None if vcgencmd has never been read (e.g. not running on Pi).
+        """
+        with self._lock:
+            return self._last_throttled_raw
+
     def start(self) -> None:
         """Start the thermal monitor daemon thread."""
         self._running = True
@@ -238,10 +247,10 @@ class ThermalMonitorService:
         if raw is None:
             return
 
-        if raw == self._last_throttled_raw:
-            return  # No change — stay silent
-
-        self._last_throttled_raw = raw
+        with self._lock:
+            if raw == self._last_throttled_raw:
+                return  # No change — stay silent
+            self._last_throttled_raw = raw
         decoded = _decode_throttled(raw)
         log.warning(
             "throttle_state_changed",

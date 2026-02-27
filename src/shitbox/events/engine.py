@@ -27,6 +27,7 @@ from shitbox.events.detector import DetectorConfig, Event, EventDetector, EventT
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
 from shitbox.events.sampler import HighRateSampler
 from shitbox.events.storage import EventStorage
+from shitbox.health.health_collector import HealthCollector
 from shitbox.health.thermal_monitor import ThermalMonitorService
 from shitbox.storage.database import Database
 from shitbox.storage.models import Reading, SensorType
@@ -412,6 +413,9 @@ class UnifiedEngine:
 
         # Thermal monitor
         self.thermal_monitor = ThermalMonitorService()
+
+        # Health collector (wired in start() once batch_sync is known)
+        self._health_collector: Optional[HealthCollector] = None
 
         # OLED display
         self.oled_display: Optional[OLEDDisplayService] = None
@@ -1217,10 +1221,19 @@ class UnifiedEngine:
             except Exception as e:
                 log.error("environment_read_error", error=str(e))
 
-        # System status (Pi temp)
-        system_reading = self._read_system_status()
-        if system_reading:
-            readings.append(system_reading)
+        # System status (Pi health: cpu temp, disk, sync backlog, throttle flags)
+        if self._health_collector is not None:
+            try:
+                system_reading = self._health_collector.collect()
+                if system_reading:
+                    readings.append(system_reading)
+            except Exception as e:
+                log.error("health_collector_error", error=str(e))
+        else:
+            # Fallback before start() completes
+            system_reading = self._read_system_status()
+            if system_reading:
+                readings.append(system_reading)
 
         # Store to SQLite and publish to MQTT
         for reading in readings:
@@ -1442,6 +1455,14 @@ class UnifiedEngine:
 
         # Start thermal monitor
         self.thermal_monitor.start()
+
+        # Instantiate health collector (thermal_monitor and batch_sync now ready)
+        data_dir = str(Path(self.config.database_path).parent)
+        self._health_collector = HealthCollector(
+            thermal_monitor=self.thermal_monitor,
+            batch_sync=self.batch_sync,
+            data_dir=data_dir,
+        )
 
         # Start OLED display
         if self.oled_display:
