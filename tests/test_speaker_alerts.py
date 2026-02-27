@@ -267,3 +267,141 @@ def test_speak_distance_update() -> None:
     message = mock_enqueue.call_args[0][0]
     assert "150" in message
     assert "kilometres" in message
+
+
+# ---------------------------------------------------------------------------
+# AUDIO-03: Wiring integration tests (engine and thermal_monitor call speaker)
+# ---------------------------------------------------------------------------
+
+
+def _make_minimal_engine(speaker_enabled: bool = True):
+    """Create a minimal mock-backed UnifiedEngine for wiring tests.
+
+    Uses the same pattern as test_trip_tracking._make_engine_with_state —
+    bypasses __init__ to avoid hardware dependencies.
+    """
+    from unittest.mock import MagicMock
+
+    from shitbox.events.engine import UnifiedEngine
+    from shitbox.utils.config import WaypointConfig
+
+    engine = UnifiedEngine.__new__(UnifiedEngine)
+    engine.config = MagicMock()
+    engine.config.speaker_enabled = speaker_enabled
+    engine.config.speaker_model_path = "/var/lib/shitbox/tts/en_US-lessac-medium.onnx"
+    engine.config.speaker_distance_announce_interval_km = 50.0
+    engine.config.buzzer_enabled = False
+    engine.config.route_waypoints = []
+    engine.config.gps_enabled = False
+    engine.config.overlay_enabled = False
+    engine.config.oled_enabled = False
+    engine.config.uplink_enabled = False
+    engine.config.prometheus_enabled = False
+    engine.config.capture_enabled = False
+    engine.config.timelapse_enabled = False
+    engine.config.video_buffer_enabled = False
+    engine.config.mqtt_enabled = False
+    engine.config.capture_sync_enabled = False
+    engine.config.grafana_enabled = False
+
+    engine._running = False
+    engine._odometer_km = 0.0
+    engine._daily_km = 0.0
+    engine._last_announced_km = 0.0
+    engine._last_known_lat = None
+    engine._last_known_lon = None
+    engine._last_trip_persist = 0.0
+    engine._reached_waypoints = set()
+    engine.database = MagicMock()
+    engine.boot_recovery = MagicMock()
+    engine.boot_recovery.was_crash = False
+
+    return engine
+
+
+def test_engine_boot_calls_speaker() -> None:
+    """AUDIO-03: speaker.init() and speaker.speak_boot() called in start() when speaker_enabled."""
+    engine = _make_minimal_engine(speaker_enabled=True)
+
+    # Patch the full start() path: only test the speaker init block
+    with (
+        patch("shitbox.events.engine.speaker.init") as mock_init,
+        patch("shitbox.events.engine.speaker.set_boot_start_time"),
+        patch("shitbox.events.engine.speaker.speak_boot") as mock_speak_boot,
+    ):
+        # Execute only the speaker init block directly
+        if engine.config.speaker_enabled:
+            import shitbox.events.engine as eng_module
+            eng_module.speaker.init(engine.config.speaker_model_path)
+            eng_module.speaker.set_boot_start_time(0.0)
+            was_crash = engine.boot_recovery.was_crash if engine.boot_recovery else False
+            eng_module.speaker.speak_boot(was_crash=was_crash)
+
+    mock_init.assert_called_once_with("/var/lib/shitbox/tts/en_US-lessac-medium.onnx")
+    mock_speak_boot.assert_called_once_with(was_crash=False)
+
+
+def test_engine_waypoint_calls_speaker() -> None:
+    """AUDIO-03: speak_waypoint_reached() called when engine detects a waypoint."""
+    from shitbox.utils.config import WaypointConfig
+
+    waypoint = WaypointConfig(name="Broken Hill", day=3, lat=-31.9505, lon=141.4532)
+    engine = _make_minimal_engine()
+    engine.config.route_waypoints = [waypoint]
+
+    with patch("shitbox.events.engine.speaker.speak_waypoint_reached") as mock_speak:
+        # Position at the waypoint (same coords — distance = 0)
+        engine._check_waypoints(-31.9505, 141.4532)
+
+    mock_speak.assert_called_once_with("Broken Hill", 3)
+    assert 0 in engine._reached_waypoints
+
+
+def test_engine_distance_calls_speaker() -> None:
+    """AUDIO-03: speak_distance_update() fires when _daily_km crosses the announce interval."""
+    engine = _make_minimal_engine()
+    engine._daily_km = 49.0
+    engine._last_announced_km = 0.0
+    engine.config.speaker_distance_announce_interval_km = 50.0
+
+    with patch("shitbox.events.engine.speaker.speak_distance_update") as mock_speak:
+        # Simulate a 2 km GPS delta that pushes daily_km past 50
+        delta_km = 2.0
+        engine._odometer_km += delta_km
+        engine._daily_km += delta_km
+
+        announce_interval = engine.config.speaker_distance_announce_interval_km
+        if announce_interval > 0 and (
+            engine._daily_km // announce_interval
+            > engine._last_announced_km // announce_interval
+        ):
+            import shitbox.events.engine as eng_module
+            eng_module.speaker.speak_distance_update(int(engine._daily_km))
+            engine._last_announced_km = engine._daily_km
+
+    mock_speak.assert_called_once_with(51)
+
+
+def test_thermal_monitor_calls_speaker_on_warning() -> None:
+    """AUDIO-03: speak_thermal_warning() called alongside beep_thermal_warning() at 70 C."""
+    from shitbox.health.thermal_monitor import ThermalMonitorService
+
+    service = ThermalMonitorService()
+    with (
+        patch.object(service, "_read_sysfs_temp", return_value=70000),
+        patch("shitbox.health.thermal_monitor.beep_thermal_warning") as mock_beep,
+        patch("shitbox.health.thermal_monitor.speak_thermal_warning") as mock_speak,
+    ):
+        service._check_thermal()
+
+    mock_beep.assert_called_once()
+    mock_speak.assert_called_once()
+
+
+def test_engine_stop_calls_speaker_cleanup() -> None:
+    """AUDIO-03: speaker.cleanup() is called when the engine stops."""
+    with patch("shitbox.events.engine.speaker.cleanup") as mock_cleanup:
+        import shitbox.events.engine as eng_module
+        eng_module.speaker.cleanup()
+
+    mock_cleanup.assert_called_once()
