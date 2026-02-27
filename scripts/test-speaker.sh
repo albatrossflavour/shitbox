@@ -25,12 +25,9 @@ echo "Synthesising: \"${TEXT}\""
 from piper.voice import PiperVoice
 import wave
 v = PiperVoice.load('${MODEL}')
-with wave.open('${WAV}', 'wb') as wf:
-    wf.setnchannels(1)
-    wf.setsampwidth(2)
-    wf.setframerate(v.config.sample_rate)
-    for audio_bytes in v.synthesize_stream_raw('${TEXT}'):
-        wf.writeframes(audio_bytes)
+wf = wave.open('${WAV}', 'wb')
+v.synthesize_wav('${TEXT}', wf)
+wf.close()
 print('WAV written to ${WAV}')
 "
 
