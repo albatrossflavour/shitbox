@@ -6,14 +6,14 @@ See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 3 — Thermal Resilience and Storage Management
+**Current focus:** Phase 4 — Remote Health and Stage Tracking
 
 ## Current Position
 
-Phase: 3 of 5 (Thermal Resilience and Storage Management)
-Plan: 2 of TBD in current phase (03-02 complete)
+Phase: 4 of 5 (Remote Health and Stage Tracking)
+Plan: 1 of 2 in current phase (04-01 complete)
 Status: In progress
-Last activity: 2026-02-26 — Plan 03-02 completed (ThermalMonitorService, engine wiring, WAL checkpoint timer)
+Last activity: 2026-02-27 — Plan 04-01 completed (Schema v4, HealthCollector, Prometheus health metrics)
 
 Progress: [█████░░░░░] 50%
 
@@ -43,6 +43,7 @@ Progress: [█████░░░░░] 50%
 | Phase 02-watchdog-and-self-healing P03 | 5 | 2 tasks | 3 files |
 | Phase 03-thermal-resilience-and-storage-management P01 | 6 | 2 tasks | 6 files |
 | Phase 03-thermal-resilience-and-storage-management P02 | 7 | 2 tasks | 2 files |
+| Phase 04-remote-health-and-stage-tracking P01 | 8 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-26
-Stopped at: Completed 03-02-PLAN.md (ThermalMonitorService, engine wiring, WAL checkpoint timer)
+Last session: 2026-02-27
+Stopped at: Completed 04-01-PLAN.md (Schema v4, HealthCollector, Prometheus health metrics)
 Resume file: None
