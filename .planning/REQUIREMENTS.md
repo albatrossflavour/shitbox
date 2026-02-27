@@ -39,7 +39,13 @@ Requirements for rally-ready hardening. Each maps to roadmap phases.
 
 - [ ] **STGE-01**: System tracks cumulative distance from GPS (odometer-style total km)
 - [ ] **STGE-02**: System tracks daily distance (resets on new driving day)
-- [ ] **STGE-03**: System loads GPX rally route and shows progress (% complete, km remaining)
+- [ ] **STGE-03**: System loads waypoint-based rally route and tracks stage progress (waypoints reached, day label)
+
+### Audio Alerts
+
+- [ ] **AUDIO-01**: USB speaker detected and used as primary audio output device
+- [ ] **AUDIO-02**: TTS engine (Piper) generates spoken alerts replacing buzzer tone patterns
+- [ ] **AUDIO-03**: Contextual announcements for system events (boot, thermal, waypoints, distance, recovery)
 
 ## v2 Requirements
 
@@ -100,14 +106,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STGE-01 | Phase 4 | Pending |
 | STGE-02 | Phase 4 | Pending |
 | STGE-03 | Phase 4 | Pending |
+| AUDIO-01 | Phase 5 | Pending |
+| AUDIO-02 | Phase 5 | Pending |
+| AUDIO-03 | Phase 5 | Pending |
 
 **Coverage:**
 
-- v1 requirements: 16 total
-- Mapped to phases: 16
+- v1 requirements: 19 total
+- Mapped to phases: 19
 - Unmapped: 0
 
 ---
 
 *Requirements defined: 2026-02-25*
-*Last updated: 2026-02-25 after roadmap creation — all 16 v1 requirements mapped*
+*Last updated: 2026-02-27 — added AUDIO-01/02/03 for Phase 5, updated STGE-03 to waypoint-based*

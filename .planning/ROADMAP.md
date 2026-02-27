@@ -7,7 +7,7 @@ Port Douglas to Melbourne across remote Australia in a 2001 Ford Laser. The exis
 (SQLite WAL, 100 Hz IMU, batch Prometheus sync, event-triggered video) is sound. What it lacks is
 the operational hardening to survive twenty hard power cuts per day, 50°C cabin temperatures, zero
 mobile coverage for 12-hour stretches, and ten consecutive driving days without human intervention.
-Five sequential phases deliver that hardening. Each phase enables the next. Boot recovery comes
+Six sequential phases deliver that hardening. Each phase enables the next. Boot recovery comes
 first because it protects data integrity before any new complexity is added. Driver display comes
 last because it consumes all state produced by earlier phases and can be deferred without impacting
 data capture if time runs short before departure.
@@ -23,9 +23,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Boot Recovery** - System survives hard power cuts and starts cleanly every time
 - [x] **Phase 2: Watchdog and Self-Healing** - Hardware watchdog active, all services auto-restart, known bugs fixed (completed 2026-02-25)
-- [ ] **Phase 3: Thermal Resilience and Storage Management** - Temperature alerts before throttle, disk never exhausts
+- [x] **Phase 3: Thermal Resilience and Storage Management** - Temperature alerts before throttle, disk never exhausts (completed 2026-02-26)
 - [ ] **Phase 4: Remote Health and Stage Tracking** - Crew can see system health; car knows where it is on the route
-- [ ] **Phase 5: Driver Display** - Speed, heading, trip progress, and system health on 7" screen
+- [ ] **Phase 5: Audio Alerts and TTS** - USB speaker replaces buzzer with spoken alerts and contextual announcements
+- [ ] **Phase 6: Driver Display** - Speed, heading, trip progress, and system health on 7" screen
 
 ## Phase Details
 
@@ -81,12 +82,12 @@ Plans:
 3. The `vcgencmd get_throttled` bitmask is decoded and logged at every health check interval so thermal events are visible in structured logs
 4. The SQLite WAL file does not grow unboundedly — a periodic `TRUNCATE` checkpoint runs and is logged when it executes
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans executed
 
 Plans:
 
-- [ ] 03-01-PLAN.md — Test scaffolds, thermal buzzer alerts, WAL checkpoint method, health package
-- [ ] 03-02-PLAN.md — ThermalMonitorService implementation and engine wiring
+- [x] 03-01-PLAN.md — Test scaffolds, thermal buzzer alerts, WAL checkpoint method, health package
+- [x] 03-02-PLAN.md — ThermalMonitorService implementation and engine wiring
 
 ### Phase 4: Remote Health and Stage Tracking
 
@@ -98,14 +99,28 @@ Plans:
 1. When WireGuard connectivity is available, CPU temperature, disk usage percentage, Prometheus sync backlog, and throttle state appear as metrics in Grafana
 2. The system accumulates GPS distance driven as a running total (odometer) that persists across reboots
 3. The system tracks distance driven today, resetting correctly on a new driving day
-4. Given a GPX file of the rally route, the system calculates percentage of route complete and kilometres remaining, and makes that data available to other subsystems
+4. Given a waypoint-based rally route in YAML config, the system tracks stage progress (waypoints reached within 5 km, day labels) and makes that data available to other subsystems
 
 **Plans**: TBD
 
-### Phase 5: Driver Display
+### Phase 5: Audio Alerts and TTS
+
+**Goal**: USB speaker provides spoken alerts and contextual announcements, replacing buzzer tone patterns as the primary audio output
+**Depends on**: Phase 4
+**Requirements**: AUDIO-01, AUDIO-02, AUDIO-03
+**Success Criteria** (what must be TRUE):
+
+1. The USB speaker is detected and configured as the audio output device, with buzzer as fallback if speaker is unavailable
+2. Piper TTS generates natural-sounding spoken messages for all alert types previously handled by buzzer tones
+3. Contextual announcements fire for system events: boot ready, thermal warnings, waypoint reached, periodic distance updates, and recovery confirmations
+4. Audio playback does not block the main engine thread or interfere with 100 Hz IMU sampling
+
+**Plans**: TBD
+
+### Phase 6: Driver Display
 
 **Goal**: Driver can see speed, heading, trip distance, stage progress, and system health on the 7" screen without touching anything
-**Depends on**: Phase 4
+**Depends on**: Phase 5
 **Requirements**: (v2 scope — DISP-01, DISP-02, DISP-03 deferred)
 **Success Criteria** (what must be TRUE):
 
@@ -119,12 +134,13 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Boot Recovery | 2/2 | Complete | 2026-02-25 |
-| 2. Watchdog and Self-Healing | 3/3 | Complete   | 2026-02-25 |
-| 3. Thermal Resilience and Storage Management | 1/2 | In Progress|  |
+| 2. Watchdog and Self-Healing | 3/3 | Complete | 2026-02-25 |
+| 3. Thermal Resilience and Storage Management | 2/2 | Complete | 2026-02-26 |
 | 4. Remote Health and Stage Tracking | 0/TBD | Not started | - |
-| 5. Driver Display | 0/TBD | Not started | - |
+| 5. Audio Alerts and TTS | 0/TBD | Not started | - |
+| 6. Driver Display | 0/TBD | Not started | - |
