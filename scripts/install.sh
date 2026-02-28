@@ -20,10 +20,18 @@ INSTALL_DIR="$ACTUAL_HOME/shitbox"
 echo "Installing for user: $ACTUAL_USER"
 echo "Install directory: $INSTALL_DIR"
 
-# Enable I2C interface
+# Enable I2C interface and set bus speed to 100 kHz for reliability
 echo ""
 echo "=== Enabling I2C interface ==="
 raspi-config nonint do_i2c 0
+
+# Lower I2C bus speed from 400 kHz to 100 kHz — more tolerant of vibration
+if ! grep -q "i2c_arm_baudrate" /boot/firmware/config.txt 2>/dev/null; then
+    echo "dtparam=i2c_arm_baudrate=100000" >> /boot/firmware/config.txt
+    echo "I2C bus speed set to 100 kHz"
+else
+    echo "I2C baudrate already configured"
+fi
 
 # Add user to required groups
 usermod -aG i2c,gpio,audio $ACTUAL_USER
@@ -39,7 +47,7 @@ chmod 755 /var/lib/shitbox
 echo ""
 echo "=== Installing system dependencies ==="
 apt-get update
-apt-get install -y python3-pip python3-venv python3-dev i2c-tools gpsd gpsd-clients alsa-utils
+apt-get install -y python3-pip python3-venv python3-dev i2c-tools gpsd gpsd-clients alsa-utils fake-hwclock
 
 # Configure gpsd for the GPS HAT
 echo ""

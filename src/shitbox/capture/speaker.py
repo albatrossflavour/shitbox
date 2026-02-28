@@ -56,6 +56,7 @@ _CACHED_MESSAGES: dict[str, str] = {
     "health_alarm": "Warning. Health check failing.",
     "i2c_lockup": "Warning. Sensor bus lockup.",
     "ffmpeg_stall": "Warning. Video recording stalled.",
+    "capture_failed": "Video save failed.",
     "capture_hard_brake": "Hard braking detected.",
     "capture_big_corner": "Big corner detected.",
     "capture_high_g": "High G force detected.",
@@ -142,11 +143,11 @@ def set_boot_start_time(t: float) -> None:
     """Record the engine boot timestamp to anchor the grace period.
 
     The engine calls this once at startup. Alert functions compare
-    time.time() against this value and skip playback for
+    time.monotonic() against this value and skip playback for
     BOOT_GRACE_PERIOD_SECONDS after boot.
 
     Args:
-        t: Unix timestamp (time.time()) of engine start.
+        t: Monotonic timestamp (time.monotonic()) of engine start.
     """
     global _boot_start_time
     _boot_start_time = t
@@ -154,7 +155,7 @@ def set_boot_start_time(t: float) -> None:
 
 def _should_alert() -> bool:
     """Return False if we are still within the boot grace period."""
-    return time.time() - _boot_start_time >= BOOT_GRACE_PERIOD_SECONDS
+    return time.monotonic() - _boot_start_time >= BOOT_GRACE_PERIOD_SECONDS
 
 
 def init(model_path: str) -> bool:
@@ -409,6 +410,18 @@ def speak_ffmpeg_stall() -> None:
     if not _should_alert():
         return
     _enqueue("Warning. Video recording stalled.")
+
+
+def speak_capture_failed() -> None:
+    """Announce that video save verification failed.
+
+    Suppressed during the boot grace period.
+    """
+    if _voice is None:
+        return
+    if not _should_alert():
+        return
+    _enqueue("Video save failed.")
 
 
 _EVENT_TYPE_MESSAGES: dict[str, str] = {

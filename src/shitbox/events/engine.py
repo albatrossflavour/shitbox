@@ -624,19 +624,21 @@ class UnifiedEngine:
     # WAL checkpoint interval (5 minutes)
     WAL_CHECKPOINT_INTERVAL_S = 300.0
 
+    # Timelapse gap watchdog: alert if 3x interval passes with no capture
+    TIMELAPSE_GAP_FACTOR = 3
+
     def _on_event(self, event: Event) -> None:
         """Called when an event is detected."""
-        # Suppress auto-detected events while a capture is already in progress.
+        # Suppress events while a capture is already in progress.
         # Extends the active capture window instead, so consecutive events
         # (e.g. hard brake → high G → hard brake) produce one video, not many.
-        if (
-            self._pending_post_capture
-            and event.event_type not in {EventType.MANUAL_CAPTURE, EventType.BOOT}
-        ):
+        # Manual captures also extend rather than starting overlapping saves.
+        # Boot events always go through (only fires once).
+        if self._pending_post_capture and event.event_type != EventType.BOOT:
             # Extend the post-capture window of the most recent pending event
             extension = self.config.detector.post_event_seconds
             for pending in self._pending_post_capture.values():
-                new_until = time.time() + extension
+                new_until = time.monotonic() + extension
                 if new_until > pending["capture_until"]:
                     pending["capture_until"] = new_until
             log.info(
@@ -659,6 +661,18 @@ class UnifiedEngine:
         video_path = None
         if event.event_type in self.VIDEO_CAPTURE_EVENTS:
             if self.video_ring_buffer and self.video_ring_buffer.is_running:
+                # Skip boot capture if buffer has no complete segments
+                if event.event_type == EventType.BOOT:
+                    segments = self.video_ring_buffer._get_buffer_segments()
+                    if len(segments) < 2:
+                        log.info(
+                            "boot_capture_skipped_no_segments",
+                            segment_count=len(segments),
+                        )
+                        # Still save event metadata without video
+                        self.event_storage.save_event(event)
+                        return
+
                 buzzer.beep_capture_start()
                 speaker.speak_capture_start(event.event_type.value)
                 eid = id(event)
@@ -685,7 +699,7 @@ class UnifiedEngine:
                 )
 
         # Schedule post-event capture
-        post_capture_until = time.time() + self.config.detector.post_event_seconds
+        post_capture_until = time.monotonic() + self.config.detector.post_event_seconds
         self._pending_post_capture[id(event)] = {
             "event": event,
             "capture_until": post_capture_until,
@@ -780,7 +794,7 @@ class UnifiedEngine:
 
     def _check_post_captures(self) -> None:
         """Complete any pending post-event captures."""
-        now = time.time()
+        now = time.monotonic()
         completed = []
 
         for event_id, pending in self._pending_post_capture.items():
@@ -1059,7 +1073,7 @@ class UnifiedEngine:
         if not self._reverse_geocoder:
             return
 
-        now = time.time()
+        now = time.monotonic()
         interval = self.config.location_resolution_interval_seconds
 
         # Check if enough time has elapsed
@@ -1173,12 +1187,12 @@ class UnifiedEngine:
 
     def _telemetry_loop(self) -> None:
         """Low-rate telemetry logging loop (1 Hz)."""
-        last_telemetry = 0
-        last_cleanup = time.time()
+        last_telemetry = 0.0
+        last_cleanup = time.monotonic()
 
         while self._running:
             try:
-                now = time.time()
+                now = time.monotonic()
 
                 # Telemetry at configured interval
                 if (now - last_telemetry) >= self.config.telemetry_interval_seconds:
@@ -1390,6 +1404,26 @@ class UnifiedEngine:
         if not has_capture_source:
             return
 
+        # Gap watchdog: detect stuck timelapse extraction
+        elapsed = now - self._last_timelapse_time
+        gap_threshold = self.config.timelapse_interval_seconds * UnifiedEngine.TIMELAPSE_GAP_FACTOR
+        if (
+            elapsed > gap_threshold
+            and self._last_timelapse_time > 0.0
+            and self._current_speed_kmh >= self.config.timelapse_min_speed_kmh
+        ):
+            log.warning(
+                "timelapse_gap_detected",
+                elapsed_seconds=round(elapsed),
+                expected_interval=self.config.timelapse_interval_seconds,
+            )
+            # Attempt recovery: restart ffmpeg
+            if self.video_ring_buffer and self.video_ring_buffer.is_running:
+                self.video_ring_buffer._kill_current()
+                self.video_ring_buffer._start_ffmpeg()
+            self._last_timelapse_time = now  # Reset to avoid repeat alerts
+            return  # Skip normal capture this iteration
+
         # Check if enough time has passed
         if (now - self._last_timelapse_time) < self.config.timelapse_interval_seconds:
             return
@@ -1449,7 +1483,7 @@ class UnifiedEngine:
         if self._running:
             return
 
-        self._engine_start_time = time.time()
+        self._engine_start_time = time.monotonic()
 
         log.info(
             "unified_engine_starting",
@@ -1615,7 +1649,7 @@ class UnifiedEngine:
         # Initialise buzzer
         if self.config.buzzer_enabled:
             buzzer.init()
-            buzzer.set_boot_start_time(time.time())
+            buzzer.set_boot_start_time(time.monotonic())
             buzzer.beep_boot()
             # Recovery-specific beep after boot tone
             if self.boot_recovery and self.boot_recovery.was_crash:
@@ -1627,7 +1661,7 @@ class UnifiedEngine:
         if self.config.speaker_enabled:
             self._notify_systemd("WATCHDOG=1")  # Piper model load takes ~5-7s
             speaker.init(self.config.speaker_model_path)
-            speaker.set_boot_start_time(time.time())
+            speaker.set_boot_start_time(time.monotonic())
             was_crash = self.boot_recovery.was_crash if self.boot_recovery else False
             speaker.speak_boot(was_crash=was_crash)
 
@@ -1639,10 +1673,11 @@ class UnifiedEngine:
 
         # Boot capture — video ring buffer has had ~20s to fill during GPS wait
         if self.video_ring_buffer and self.video_ring_buffer.is_running:
+            boot_now = time.time()
             boot_event = Event(
                 event_type=EventType.BOOT,
-                start_time=time.time(),
-                end_time=time.time(),
+                start_time=boot_now,
+                end_time=boot_now,
                 peak_value=0.0,
                 peak_ax=0.0,
                 peak_ay=0.0,
@@ -1750,7 +1785,7 @@ class UnifiedEngine:
         # Main loop with watchdog
         while self._running:
             self._notify_systemd("WATCHDOG=1")
-            now = time.time()
+            now = time.monotonic()
             elapsed = now - self._engine_start_time
             if elapsed > self.HEALTH_GRACE_PERIOD:
                 if (now - self._last_health_time) >= self.HEALTH_CHECK_INTERVAL:
@@ -1824,6 +1859,25 @@ class UnifiedEngine:
         except OSError as e:
             log.warning("disk_usage_check_failed", error=str(e))
 
+        # 6. Speaker worker health (HEAL-01)
+        if self.config.speaker_enabled:
+            if (
+                speaker._voice is not None
+                and speaker._worker is not None
+                and not speaker._worker.is_alive()
+            ):
+                log.warning("speaker_worker_dead", restarting=True)
+                issues.append("speaker_worker_dead")
+                try:
+                    speaker.cleanup()
+                    if speaker.init(self.config.speaker_model_path):
+                        recovered.append("speaker")
+                        log.info("speaker_reinitialised")
+                    else:
+                        log.error("speaker_reinit_failed_no_device")
+                except Exception as e:
+                    log.error("speaker_reinit_exception", error=str(e))
+
         # Alarm logic
         if issues:
             self._health_failures += 1
@@ -1845,6 +1899,8 @@ class UnifiedEngine:
 
         if recovered:
             log.info("health_check_recovered", subsystems=recovered)
+            buzzer.beep_service_recovered("subsystem")
+            speaker.speak_service_recovered()
 
     @staticmethod
     def _notify_systemd(state: str) -> None:

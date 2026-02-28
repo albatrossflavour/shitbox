@@ -35,6 +35,8 @@ I2C_CONSECUTIVE_FAILURE_THRESHOLD = 5  # Triggers recovery after 5 failures (~50
 I2C_RECOVERY_DELAY_SECONDS = 0.1       # 100ms delay after GPIO cleanup before smbus2 reopen
 SCL_PIN = 3                            # GPIO3 = physical pin 5
 SDA_PIN = 2                            # GPIO2 = physical pin 3
+I2C_MAX_RESETS = 3                     # Maximum recovery attempts before forced reboot
+I2C_RESET_BACKOFF_SECONDS = [0, 2, 5]  # Seconds to wait before each attempt (index = attempt)
 
 
 class HighRateSampler:
@@ -89,6 +91,7 @@ class HighRateSampler:
 
         # I2C lockup recovery
         self._consecutive_failures: int = 0
+        self._reset_count: int = 0
 
     def setup(self) -> None:
         """Initialise MPU6050 for high-rate sampling."""
@@ -133,7 +136,25 @@ class HighRateSampler:
             return
 
         if self._bus is None:
-            self.setup()
+            for attempt in range(I2C_MAX_RESETS + 1):
+                try:
+                    self.setup()
+                    break  # Success — continue to thread start
+                except Exception as e:
+                    log.error("sampler_setup_failed", error=str(e), attempt=attempt + 1)
+                    if attempt < I2C_MAX_RESETS:
+                        buzzer.beep_i2c_lockup()
+                        speaker.speak_i2c_lockup()
+                        backoff = I2C_RESET_BACKOFF_SECONDS[attempt]
+                        if backoff > 0:
+                            time.sleep(backoff)
+                        recovered = self._i2c_bus_reset()
+                        if recovered:
+                            break  # _i2c_bus_reset() already called setup() internally
+                    else:
+                        log.critical("sampler_setup_unrecoverable")
+                        self._force_reboot()
+                        return
 
         self._running = True
         self._thread = threading.Thread(target=self._sample_loop, daemon=True)
@@ -143,6 +164,7 @@ class HighRateSampler:
     def stop(self) -> None:
         """Stop sampling."""
         self._running = False
+        self._reset_count = 0
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=1.0)
         log.info(
@@ -187,17 +209,37 @@ class HighRateSampler:
                     log.warning(
                         "i2c_bus_lockup_detected",
                         consecutive_failures=self._consecutive_failures,
+                        reset_attempt=self._reset_count + 1,
+                        max_resets=I2C_MAX_RESETS,
                     )
                     buzzer.beep_i2c_lockup()
                     speaker.speak_i2c_lockup()
+
+                    backoff = I2C_RESET_BACKOFF_SECONDS[
+                        min(self._reset_count, len(I2C_RESET_BACKOFF_SECONDS) - 1)
+                    ]
+                    if backoff > 0:
+                        time.sleep(backoff)
+
+                    self._reset_count += 1
                     recovered = self._i2c_bus_reset()
+
                     if recovered:
-                        log.info("i2c_bus_recovery_successful")
+                        log.info(
+                            "i2c_bus_recovery_successful",
+                            attempt=self._reset_count,
+                        )
                         buzzer.beep_service_recovered("i2c")
                         speaker.speak_service_recovered()
                         self._consecutive_failures = 0
-                    else:
+                        self._reset_count = 0
+                    elif self._reset_count >= I2C_MAX_RESETS:
+                        log.critical(
+                            "i2c_max_resets_exceeded",
+                            reset_count=self._reset_count,
+                        )
                         self._force_reboot()
+                    # else: loop continues, next lockup detection fires another attempt
 
             next_sample_time += self.sample_interval
 

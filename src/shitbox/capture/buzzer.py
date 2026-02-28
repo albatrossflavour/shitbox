@@ -51,7 +51,7 @@ class BuzzerAlertState:
         Returns:
             True if this alert_type was seen within ESCALATION_WINDOW_SECONDS.
         """
-        now = time.time()
+        now = time.monotonic()
         last = self._last_alerts.get(alert_type)
         self._last_alerts[alert_type] = now
         if last is None:
@@ -77,11 +77,11 @@ def set_boot_start_time(t: float) -> None:
     """Record the engine boot timestamp so alerts can suppress during grace period.
 
     The engine calls this once at startup. Alert functions compare
-    time.time() against this value and skip playback for
+    time.monotonic() against this value and skip playback for
     BOOT_GRACE_PERIOD_SECONDS after boot.
 
     Args:
-        t: Unix timestamp (time.time()) of engine start.
+        t: Monotonic timestamp (time.monotonic()) of engine start.
     """
     global _boot_start_time
     _boot_start_time = t
@@ -89,7 +89,7 @@ def set_boot_start_time(t: float) -> None:
 
 def _should_alert() -> bool:
     """Return False if we are still within the boot grace period."""
-    return time.time() - _boot_start_time >= BOOT_GRACE_PERIOD_SECONDS
+    return time.monotonic() - _boot_start_time >= BOOT_GRACE_PERIOD_SECONDS
 
 
 def init() -> bool:
@@ -239,6 +239,23 @@ def beep_ffmpeg_stall() -> None:
         return
     name = "buzzer-ffmpeg-stall"
     tones: list[tuple[int, int]] = [(330, 200), (330, 200), (330, 600)]
+    if _alert_state.should_escalate(name):
+        tones = tones + tones
+    _play_async(tones, name=name)
+
+
+def beep_capture_failed() -> None:
+    """Double descending tone pair: video save verification failed.
+
+    Pattern: [(440, 150), (330, 150)]. Distinct from stall alerts (which
+    use 330 Hz only) by starting at 440 Hz and descending. Escalates
+    (plays twice) if same fault fired within the last 5 minutes.
+    Suppressed during boot grace period.
+    """
+    if not _should_alert():
+        return
+    name = "buzzer-capture-failed"
+    tones: list[tuple[int, int]] = [(440, 150), (330, 150)]
     if _alert_state.should_escalate(name):
         tones = tones + tones
     _play_async(tones, name=name)

@@ -117,8 +117,8 @@ def test_no_escalation_after_window(monkeypatch: pytest.MonkeyPatch) -> None:
     state.should_escalate("test-alert")  # records first timestamp
 
     # Advance time past the window
-    real_time = time.time
-    monkeypatch.setattr(time, "time", lambda: real_time() + 301)
+    real_monotonic = time.monotonic
+    monkeypatch.setattr(time, "monotonic", lambda: real_monotonic() + 301)
 
     result = state.should_escalate("test-alert")
     assert result is False
@@ -149,7 +149,7 @@ def test_escalation_plays_pattern_twice() -> None:
 
 def test_alerts_suppressed_during_grace() -> None:
     """Alerts play nothing while within the 30-second boot grace period."""
-    set_boot_start_time(time.time())  # just booted
+    set_boot_start_time(time.monotonic())  # just booted
     with (
         patch.object(buzzer_module, "_buzzer", _make_active_buzzer()),
         patch.object(buzzer_module, "_alert_state", BuzzerAlertState()),
@@ -161,7 +161,7 @@ def test_alerts_suppressed_during_grace() -> None:
 
 def test_alerts_active_after_grace() -> None:
     """Alerts play normally once past the 30-second boot grace period."""
-    set_boot_start_time(time.time() - 31)  # booted 31 seconds ago
+    set_boot_start_time(time.monotonic() - 31)  # booted 31 seconds ago
     with (
         patch.object(buzzer_module, "_buzzer", _make_active_buzzer()),
         patch.object(buzzer_module, "_alert_state", BuzzerAlertState()),

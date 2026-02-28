@@ -506,6 +506,31 @@ class Database:
         row = cursor.fetchone()
         return row["count"] if row else 0
 
+    def get_sync_backlog_time_range(
+        self, cursor_name: str
+    ) -> tuple[Optional[str], Optional[str]]:
+        """Get oldest and newest timestamps of unsynced readings.
+
+        Args:
+            cursor_name: Name of sync cursor.
+
+        Returns:
+            Tuple of (oldest_timestamp, newest_timestamp) as ISO strings,
+            or (None, None) if no backlog.
+        """
+        cursor_obj = self.get_sync_cursor(cursor_name)
+        conn = self._get_connection()
+        cursor = conn.execute(
+            """SELECT MIN(timestamp_utc) as oldest,
+                      MAX(timestamp_utc) as newest
+               FROM readings WHERE id > ?""",
+            (cursor_obj.last_synced_id,),
+        )
+        row = cursor.fetchone()
+        if row and row["oldest"]:
+            return row["oldest"], row["newest"]
+        return None, None
+
     def get_reading_count(self, sensor_type: Optional[SensorType] = None) -> int:
         """Get total count of readings.
 

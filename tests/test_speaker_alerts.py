@@ -216,7 +216,7 @@ def test_queue_drops_when_full() -> None:
 def test_boot_grace_suppresses_alerts() -> None:
     """Boot grace period suppresses non-boot alerts within 30 seconds of startup."""
     # Set boot time to now — we are within the grace period
-    speaker.set_boot_start_time(time.time())
+    speaker.set_boot_start_time(time.monotonic())
 
     with patch.object(speaker, "_enqueue") as mock_enqueue:
         speaker.speak_thermal_warning()
@@ -234,7 +234,7 @@ def test_boot_grace_suppresses_alerts() -> None:
 
 def test_boot_not_suppressed_by_grace() -> None:
     """speak_boot() bypasses the grace period check and always enqueues."""
-    speaker.set_boot_start_time(time.time())  # within grace period
+    speaker.set_boot_start_time(time.monotonic())  # within grace period
 
     with patch.object(speaker, "_enqueue") as mock_enqueue:
         speaker.speak_boot(was_crash=False)
@@ -405,3 +405,245 @@ def test_engine_stop_calls_speaker_cleanup() -> None:
         eng_module.speaker.cleanup()
 
     mock_cleanup.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# HEAL-01 / HEAL-03: Speaker watchdog and recovery confirmation tests
+# ---------------------------------------------------------------------------
+
+
+def _make_health_check_engine():
+    """Create a minimal engine instance suitable for calling _health_check().
+
+    Sets up mock speaker state, health counters, sampler, telemetry thread,
+    video ring buffer, GPS, and disk usage so the full _health_check() method
+    can run without hitting real hardware.
+    """
+    import shutil
+    from unittest.mock import MagicMock, patch  # noqa: F401 — used in calling scope
+
+    from shitbox.events.engine import UnifiedEngine
+
+    engine = UnifiedEngine.__new__(UnifiedEngine)
+    engine.config = MagicMock()
+    engine.config.speaker_enabled = True
+    engine.config.speaker_model_path = "/var/lib/shitbox/tts/en_US-lessac-medium.onnx"
+    engine.config.buzzer_enabled = False
+    engine.config.gps_enabled = False
+    engine.config.captures_dir = "/var/lib/shitbox/captures"
+
+    # Health check internal state
+    engine._health_failures = 0
+    engine._last_sample_count = 0
+
+    # Sampler: healthy (returns increasing sample count)
+    mock_sampler = MagicMock()
+    mock_sampler.samples_total = 100
+    mock_sampler._thread = MagicMock()
+    mock_sampler._thread.is_alive.return_value = True
+    engine.sampler = mock_sampler
+
+    # Telemetry thread: healthy
+    mock_tele = MagicMock()
+    mock_tele.is_alive.return_value = True
+    engine._telemetry_thread = mock_tele
+
+    # Video ring buffer: None (disabled)
+    engine.video_ring_buffer = None
+
+    return engine
+
+
+def test_health_check_detects_dead_speaker_worker() -> None:
+    """HEAL-01: Dead speaker worker triggers cleanup() then init()."""
+    engine = _make_health_check_engine()
+
+    mock_worker = MagicMock()
+    mock_worker.is_alive.return_value = False
+
+    with (
+        patch("shitbox.events.engine.shutil.disk_usage") as mock_disk,
+        patch("shitbox.events.engine.speaker") as mock_speaker,
+        patch("shitbox.events.engine.buzzer") as _mock_buzzer,
+    ):
+        # Disk usage: healthy (no disk issue)
+        mock_disk.return_value = MagicMock(free=50_000_000_000, total=100_000_000_000)
+        # Speaker: previously working, worker dead
+        mock_speaker._voice = MagicMock()
+        mock_speaker._worker = mock_worker
+        mock_speaker.init.return_value = True
+
+        engine._health_check()
+
+    mock_speaker.cleanup.assert_called_once()
+    mock_speaker.init.assert_called_once_with(engine.config.speaker_model_path)
+
+
+def test_health_check_speaker_reinit_success_adds_recovered() -> None:
+    """HEAL-01: Successful reinit adds 'speaker' to recovered list and logs it."""
+    engine = _make_health_check_engine()
+
+    mock_worker = MagicMock()
+    mock_worker.is_alive.return_value = False
+
+    recovered_subsystems: list = []
+
+    with (
+        patch("shitbox.events.engine.shutil.disk_usage") as mock_disk,
+        patch("shitbox.events.engine.speaker") as mock_speaker,
+        patch("shitbox.events.engine.buzzer") as mock_buzzer,
+    ):
+        mock_disk.return_value = MagicMock(free=50_000_000_000, total=100_000_000_000)
+        mock_speaker._voice = MagicMock()
+        mock_speaker._worker = mock_worker
+        mock_speaker.init.return_value = True
+
+        engine._health_check()
+
+        # Recovery confirmation must have been triggered
+        mock_speaker.speak_service_recovered.assert_called_once()
+        mock_buzzer.beep_service_recovered.assert_called_once_with("subsystem")
+
+
+def test_health_check_speaker_reinit_failure_logged() -> None:
+    """HEAL-01: Failed reinit does NOT add 'speaker' to recovered; no confirmation."""
+    engine = _make_health_check_engine()
+
+    mock_worker = MagicMock()
+    mock_worker.is_alive.return_value = False
+
+    with (
+        patch("shitbox.events.engine.shutil.disk_usage") as mock_disk,
+        patch("shitbox.events.engine.speaker") as mock_speaker,
+        patch("shitbox.events.engine.buzzer") as mock_buzzer,
+    ):
+        mock_disk.return_value = MagicMock(free=50_000_000_000, total=100_000_000_000)
+        mock_speaker._voice = MagicMock()
+        mock_speaker._worker = mock_worker
+        mock_speaker.init.return_value = False  # reinit fails
+
+        engine._health_check()
+
+    # No recovery confirmation since speaker was NOT recovered
+    mock_speaker.speak_service_recovered.assert_not_called()
+    mock_buzzer.beep_service_recovered.assert_not_called()
+
+
+def test_health_check_skips_speaker_when_never_initialised() -> None:
+    """HEAL-01: No reinit attempted when _voice is None (speaker was never initialised)."""
+    engine = _make_health_check_engine()
+
+    with (
+        patch("shitbox.events.engine.shutil.disk_usage") as mock_disk,
+        patch("shitbox.events.engine.speaker") as mock_speaker,
+        patch("shitbox.events.engine.buzzer"),
+    ):
+        mock_disk.return_value = MagicMock(free=50_000_000_000, total=100_000_000_000)
+        # Speaker was never initialised (_voice is None)
+        mock_speaker._voice = None
+        mock_speaker._worker = MagicMock()
+        mock_speaker._worker.is_alive.return_value = False
+
+        engine._health_check()
+
+    mock_speaker.cleanup.assert_not_called()
+    mock_speaker.init.assert_not_called()
+
+
+def test_health_check_skips_speaker_when_worker_none() -> None:
+    """HEAL-01: No reinit attempted (and no AttributeError) when _worker is None."""
+    engine = _make_health_check_engine()
+
+    with (
+        patch("shitbox.events.engine.shutil.disk_usage") as mock_disk,
+        patch("shitbox.events.engine.speaker") as mock_speaker,
+        patch("shitbox.events.engine.buzzer"),
+    ):
+        mock_disk.return_value = MagicMock(free=50_000_000_000, total=100_000_000_000)
+        # _voice is set but _worker is None — no thread was started
+        mock_speaker._voice = MagicMock()
+        mock_speaker._worker = None
+
+        # Must not raise AttributeError
+        engine._health_check()
+
+    mock_speaker.cleanup.assert_not_called()
+    mock_speaker.init.assert_not_called()
+
+
+def test_health_check_recovery_announces_via_tts() -> None:
+    """HEAL-03: speak_service_recovered() called after any successful subsystem recovery."""
+    engine = _make_health_check_engine()
+
+    # Make the telemetry thread appear dead so it gets restarted → added to recovered
+    engine._telemetry_thread = MagicMock()
+    engine._telemetry_thread.is_alive.return_value = False
+
+    with (
+        patch("shitbox.events.engine.shutil.disk_usage") as mock_disk,
+        patch("shitbox.events.engine.speaker") as mock_speaker,
+        patch("shitbox.events.engine.buzzer"),
+        patch("shitbox.events.engine.threading.Thread") as mock_thread_cls,
+    ):
+        mock_disk.return_value = MagicMock(free=50_000_000_000, total=100_000_000_000)
+        # Speaker healthy — no worker issue
+        mock_speaker._voice = None
+        mock_speaker._worker = None
+
+        mock_new_thread = MagicMock()
+        mock_thread_cls.return_value = mock_new_thread
+
+        engine._health_check()
+
+    # TTS recovery announcement must fire after telemetry thread was restarted
+    mock_speaker.speak_service_recovered.assert_called_once()
+
+
+def test_health_check_recovery_announces_via_buzzer() -> None:
+    """HEAL-03: beep_service_recovered('subsystem') called after any successful recovery."""
+    engine = _make_health_check_engine()
+
+    # Make the telemetry thread appear dead so it gets restarted → added to recovered
+    engine._telemetry_thread = MagicMock()
+    engine._telemetry_thread.is_alive.return_value = False
+
+    with (
+        patch("shitbox.events.engine.shutil.disk_usage") as mock_disk,
+        patch("shitbox.events.engine.speaker") as mock_speaker,
+        patch("shitbox.events.engine.buzzer") as mock_buzzer,
+        patch("shitbox.events.engine.threading.Thread") as mock_thread_cls,
+    ):
+        mock_disk.return_value = MagicMock(free=50_000_000_000, total=100_000_000_000)
+        mock_speaker._voice = None
+        mock_speaker._worker = None
+
+        mock_new_thread = MagicMock()
+        mock_thread_cls.return_value = mock_new_thread
+
+        engine._health_check()
+
+    mock_buzzer.beep_service_recovered.assert_called_once_with("subsystem")
+
+
+def test_health_check_no_announcement_when_no_recovery() -> None:
+    """HEAL-03: No recovery announcements when all subsystems are healthy."""
+    engine = _make_health_check_engine()
+    # sampler: already increasing (set samples_total > _last_sample_count)
+    engine.sampler.samples_total = 200
+    engine._last_sample_count = 100
+
+    with (
+        patch("shitbox.events.engine.shutil.disk_usage") as mock_disk,
+        patch("shitbox.events.engine.speaker") as mock_speaker,
+        patch("shitbox.events.engine.buzzer") as mock_buzzer,
+    ):
+        mock_disk.return_value = MagicMock(free=50_000_000_000, total=100_000_000_000)
+        # Speaker: healthy (worker alive)
+        mock_speaker._voice = MagicMock()
+        mock_speaker._worker = MagicMock()
+        mock_speaker._worker.is_alive.return_value = True
+
+        engine._health_check()
+
+    mock_speaker.speak_service_recovered.assert_not_called()
+    mock_buzzer.beep_service_recovered.assert_not_called()
