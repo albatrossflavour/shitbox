@@ -56,6 +56,7 @@ _CACHED_MESSAGES: dict[str, str] = {
     "health_alarm": "Warning. Health check failing.",
     "i2c_lockup": "Warning. Sensor bus lockup.",
     "ffmpeg_stall": "Warning. Video recording stalled.",
+    "capture_failed": "Video save failed.",
     "capture_hard_brake": "Hard braking detected.",
     "capture_big_corner": "Big corner detected.",
     "capture_high_g": "High G force detected.",
@@ -409,6 +410,18 @@ def speak_ffmpeg_stall() -> None:
     if not _should_alert():
         return
     _enqueue("Warning. Video recording stalled.")
+
+
+def speak_capture_failed() -> None:
+    """Announce that video save verification failed.
+
+    Suppressed during the boot grace period.
+    """
+    if _voice is None:
+        return
+    if not _should_alert():
+        return
+    _enqueue("Video save failed.")
 
 
 _EVENT_TYPE_MESSAGES: dict[str, str] = {

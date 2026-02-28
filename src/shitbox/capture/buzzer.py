@@ -244,6 +244,23 @@ def beep_ffmpeg_stall() -> None:
     _play_async(tones, name=name)
 
 
+def beep_capture_failed() -> None:
+    """Double descending tone pair: video save verification failed.
+
+    Pattern: [(440, 150), (330, 150)]. Distinct from stall alerts (which
+    use 330 Hz only) by starting at 440 Hz and descending. Escalates
+    (plays twice) if same fault fired within the last 5 minutes.
+    Suppressed during boot grace period.
+    """
+    if not _should_alert():
+        return
+    name = "buzzer-capture-failed"
+    tones: list[tuple[int, int]] = [(440, 150), (330, 150)]
+    if _alert_state.should_escalate(name):
+        tones = tones + tones
+    _play_async(tones, name=name)
+
+
 def beep_service_recovered(recovered_service: str = "unknown") -> None:
     """Single short high chirp: service has recovered.
 
