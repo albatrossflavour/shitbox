@@ -47,7 +47,7 @@ chmod 755 /var/lib/shitbox
 echo ""
 echo "=== Installing system dependencies ==="
 apt-get update
-apt-get install -y python3-pip python3-venv python3-dev i2c-tools gpsd gpsd-clients alsa-utils fake-hwclock
+apt-get install -y python3-pip python3-venv python3-dev i2c-tools gpsd gpsd-clients alsa-utils fake-hwclock sox libsox-fmt-all
 
 # Configure gpsd for the GPS HAT
 echo ""

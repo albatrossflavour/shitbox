@@ -45,24 +45,24 @@ _cache: dict[str, Path] = {}
 
 # All fixed messages that can be pre-rendered at init time
 _CACHED_MESSAGES: dict[str, str] = {
-    "system_ready": "System ready.",
-    "crash_recovery": "System recovered after crash.",
-    "thermal_warning": "Warning. CPU temperature high.",
-    "thermal_critical": "Critical. CPU temperature critical.",
-    "thermal_recovered": "CPU temperature recovered.",
-    "under_voltage": "Warning. Under voltage detected.",
-    "service_crash": "Warning. Service failure detected.",
-    "service_recovered": "Service recovered.",
-    "health_alarm": "Warning. Health check failing.",
-    "i2c_lockup": "Warning. Sensor bus lockup.",
-    "ffmpeg_stall": "Warning. Video recording stalled.",
-    "capture_failed": "Video save failed.",
-    "capture_hard_brake": "Hard braking detected.",
-    "capture_big_corner": "Big corner detected.",
-    "capture_high_g": "High G force detected.",
-    "capture_rough_road": "Rough road detected.",
-    "capture_manual": "Manual capture.",
-    "capture_end": "Capture complete.",
+    "system_ready": "Winter is here. Systems stand ready.",
+    "crash_recovery": "Knife in the dark. Still standing. Systems restored.",
+    "thermal_warning": "The forge burns hot. Temperature rising.",
+    "thermal_critical": "Seven hells. The CPU burns hotter than a dragon's arrs hole.",
+    "thermal_recovered": "The heat breaks. Temperature restored.",
+    "under_voltage": "We are bleeding power. Under voltage.",
+    "service_crash": "A sworn brother has fallen. Service down.",
+    "service_recovered": "Back on his feet. Service restored.",
+    "health_alarm": "Dark wings. Dark words. Health failing.",
+    "i2c_lockup": "The ravens are silent. Sensor bus locked.",
+    "ffmpeg_stall": "The maester's quill has snapped. Recording stalled.",
+    "capture_failed": "The moment is lost. Capture failed.",
+    "capture_hard_brake": "Hold fast. Hard braking.",
+    "capture_big_corner": "Steady now. Big corner.",
+    "capture_high_g": "Gods be good. High G.",
+    "capture_rough_road": "Hold together. Rough road.",
+    "capture_manual": "Maester. Write this down.",
+    "capture_end": "It is written.",
 }
 
 
@@ -113,12 +113,43 @@ def _detect_usb_speaker() -> Optional[str]:
     return None
 
 
+# Pitch shift in cents — negative lowers the voice (125 cents ≈ 1.25 semitones)
+_PITCH_SHIFT_CENTS = -125
+
+
+def _pitch_shift(wav_path: Path) -> bool:
+    """Lower the pitch of a WAV file in-place using sox.
+
+    Args:
+        wav_path: Path to the WAV file to modify.
+
+    Returns:
+        True if the pitch shift succeeded.
+    """
+    import subprocess
+
+    shifted = wav_path.with_suffix(".shifted.wav")
+    try:
+        subprocess.run(
+            ["sox", str(wav_path), str(shifted), "pitch", str(_PITCH_SHIFT_CENTS)],
+            timeout=10,
+            check=True,
+            capture_output=True,
+        )
+        shifted.replace(wav_path)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
+        log.warning("pitch_shift_failed", path=str(wav_path), error=str(e))
+        shifted.unlink(missing_ok=True)
+        return False
+
+
 def _warm_cache() -> None:
     """Pre-render all fixed messages to WAV files in the cache directory."""
     import wave
 
     global _cache_dir
-    _cache_dir = Path("/tmp/shitbox-tts")
+    _cache_dir = Path("/var/lib/shitbox/tts/cache")
     _cache_dir.mkdir(parents=True, exist_ok=True)
 
     rendered = 0
@@ -132,6 +163,7 @@ def _warm_cache() -> None:
             with wave.open(str(wav_path), "wb") as wav_file:
                 _voice.synthesize_wav(text, wav_file)  # type: ignore[union-attr]
             if wav_path.stat().st_size > 0:
+                _pitch_shift(wav_path)
                 _cache[text] = wav_path
                 rendered += 1
             else:
@@ -187,7 +219,9 @@ def init(model_path: str) -> bool:
 
     try:
         _voice = PiperVoice.load(model_path)  # type: ignore[name-defined]
-        _voice.config.length_scale = 1.15  # type: ignore[union-attr]
+        _voice.config.length_scale = 1.25  # type: ignore[union-attr]
+        _voice.config.noise_scale = 0.6  # type: ignore[union-attr]
+        _voice.config.sentence_silence = 0.5  # type: ignore[union-attr]
         log.info("piper_model_loaded", model=model_path, device=_alsa_device)
     except Exception as e:
         log.warning("piper_model_load_failed", error=str(e))
@@ -278,6 +312,8 @@ def _synthesise_and_play(text: str) -> None:
         with wave.open(wav_path, "wb") as wav_file:
             _voice.synthesize_wav(text, wav_file)  # type: ignore[union-attr]
 
+        _pitch_shift(Path(wav_path))
+
         subprocess.run(
             ["aplay", "-D", str(_alsa_device), "-q", str(wav_path)],
             timeout=10,
@@ -323,9 +359,9 @@ def speak_boot(was_crash: bool = False) -> None:
         was_crash: True if the previous shutdown was an unclean crash.
     """
     if was_crash:
-        _enqueue("System recovered after crash.")
+        _enqueue("Knife in the dark. Still standing. Systems restored.")
     else:
-        _enqueue("System ready.")
+        _enqueue("Winter is here. Systems stand ready.")
 
 
 def speak_thermal_warning() -> None:
@@ -335,7 +371,7 @@ def speak_thermal_warning() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Warning. CPU temperature high.")
+    _enqueue("The forge burns hot. Temperature rising.")
 
 
 def speak_thermal_critical() -> None:
@@ -345,7 +381,7 @@ def speak_thermal_critical() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Critical. CPU temperature critical.")
+    _enqueue("Seven hells. The CPU burns hotter than a dragon's arrs hole.")
 
 
 def speak_thermal_recovered() -> None:
@@ -355,7 +391,7 @@ def speak_thermal_recovered() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("CPU temperature recovered.")
+    _enqueue("The heat breaks. Temperature restored.")
 
 
 def speak_under_voltage() -> None:
@@ -365,7 +401,7 @@ def speak_under_voltage() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Warning. Under voltage detected.")
+    _enqueue("We are bleeding power. Under voltage.")
 
 
 def speak_service_crash() -> None:
@@ -375,7 +411,7 @@ def speak_service_crash() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Warning. Service failure detected.")
+    _enqueue("A sworn brother has fallen. Service down.")
 
 
 def speak_service_recovered() -> None:
@@ -385,7 +421,7 @@ def speak_service_recovered() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Service recovered.")
+    _enqueue("Back on his feet. Service restored.")
 
 
 def speak_health_alarm() -> None:
@@ -395,7 +431,7 @@ def speak_health_alarm() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Warning. Health check failing.")
+    _enqueue("Dark wings. Dark words. Health failing.")
 
 
 def speak_i2c_lockup() -> None:
@@ -405,7 +441,7 @@ def speak_i2c_lockup() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Warning. Sensor bus lockup.")
+    _enqueue("The ravens are silent. Sensor bus locked.")
 
 
 def speak_ffmpeg_stall() -> None:
@@ -415,7 +451,7 @@ def speak_ffmpeg_stall() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Warning. Video recording stalled.")
+    _enqueue("The maester's quill has snapped. Recording stalled.")
 
 
 def speak_capture_failed() -> None:
@@ -427,15 +463,15 @@ def speak_capture_failed() -> None:
         return
     if not _should_alert():
         return
-    _enqueue("Video save failed.")
+    _enqueue("The moment is lost. Capture failed.")
 
 
 _EVENT_TYPE_MESSAGES: dict[str, str] = {
-    "hard_brake": "Hard braking detected.",
-    "big_corner": "Big corner detected.",
-    "high_g": "High G force detected.",
-    "rough_road": "Rough road detected.",
-    "manual_capture": "Manual capture.",
+    "hard_brake": "Hold fast. Hard braking.",
+    "big_corner": "Steady now. Big corner.",
+    "high_g": "Gods be good. High G.",
+    "rough_road": "Hold together. Rough road.",
+    "manual_capture": "Maester. Write this down.",
 }
 
 
@@ -456,7 +492,7 @@ def speak_capture_end() -> None:
 
     Not suppressed by the grace period — captures don't happen at boot.
     """
-    _enqueue("Capture complete.")
+    _enqueue("It is written.")
 
 
 def speak_waypoint_reached(name: str, day: int) -> None:
@@ -469,7 +505,7 @@ def speak_waypoint_reached(name: str, day: int) -> None:
         name: Human-readable waypoint name (e.g. "Broken Hill").
         day: Rally day number (e.g. 3).
     """
-    _enqueue(f"Waypoint reached. {name}. Day {day}.")
+    _enqueue(f"{name}. Day {day}. Still marching.")
 
 
 def speak_distance_update(km: int) -> None:
@@ -481,4 +517,4 @@ def speak_distance_update(km: int) -> None:
     Args:
         km: Kilometres driven today (integer).
     """
-    _enqueue(f"{km} kilometres driven today.")
+    _enqueue(f"{km} kilometres. We endure.")
