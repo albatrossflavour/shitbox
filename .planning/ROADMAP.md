@@ -188,7 +188,12 @@ Plans:
 3. When ffmpeg crashes or stalls during an active event recording, the system recovers and produces a valid MP4 from whatever segments were captured before the crash — partial footage is preserved, not discarded
 4. Boot events that fire before ffmpeg is ready do not attempt a video save with zero segments — the system waits for capture readiness or skips the video gracefully
 
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 08-01-PLAN.md — Test scaffolds, buzzer/speaker capture-failed alert functions (CAPT-01, CAPT-02, CAPT-03)
+- [ ] 08-02-PLAN.md — Post-save verification, timelapse gap watchdog, boot save guard (CAPT-01, CAPT-02, CAPT-03)
 
 ### Phase 9: Sync Reliability
 
