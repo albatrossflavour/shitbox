@@ -47,6 +47,24 @@ Requirements for rally-ready hardening. Each maps to roadmap phases.
 - [x] **AUDIO-02**: TTS engine (Piper) generates spoken alerts replacing buzzer tone patterns
 - [x] **AUDIO-03**: Contextual announcements for system events (boot, thermal, waypoints, distance, recovery)
 
+### Sync Reliability (v1.1)
+
+- [ ] **SYNC-01**: Batch sync never advances the cursor past data that Prometheus rejected — retries before eventually skipping, data remains in SQLite
+- [ ] **SYNC-02**: Prometheus accepts offline telemetry data regardless of age (fix "too old" rejections by resolving label conflicts or config issues)
+- [ ] **SYNC-03**: Operator can manually trigger a full sync of pending data via a script or signal
+
+### Capture Integrity (v1.1)
+
+- [ ] **CAPT-01**: After a video save completes, the system verifies the MP4 file exists and has non-zero size, logging an error and retrying if missing
+- [ ] **CAPT-02**: Timelapse capture is monitored — if no frame has been captured in the expected interval, the system logs a warning and attempts recovery
+- [ ] **CAPT-03**: When ffmpeg stalls or crashes during an active event save, the system recovers and preserves whatever footage was captured
+
+### Self-Healing (v1.1)
+
+- [ ] **HEAL-01**: When the TTS speaker stops producing audio, the system detects the failure and re-initialises the speaker subsystem
+- [ ] **HEAL-02**: When I2C bus lockups recur after a reset attempt, the system escalates (multiple reset attempts before reboot fallback)
+- [ ] **HEAL-03**: Each self-healing subsystem follows a consistent pattern: detect failure → log → alert → attempt recovery → escalate if recovery fails
+
 ## v2 Requirements
 
 Deferred to post-rally or if time permits before departure.

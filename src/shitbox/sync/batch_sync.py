@@ -33,7 +33,17 @@ class BatchSyncService:
 
     Uses cursor-based tracking to ensure no data is lost or duplicated.
     Only syncs when network is available.
+
+    Rejection handling:
+    - Duplicate samples: safe to skip (already in Prometheus).
+    - Too-old samples: retried for MAX_TOO_OLD_RETRIES cycles before
+      skipping. Data remains in SQLite and can be recovered manually.
     """
+
+    # Number of consecutive sync cycles to retry before skipping a
+    # batch that Prometheus rejects as "too old".  At 15 s intervals
+    # this gives ~5 minutes for transient issues to clear.
+    MAX_TOO_OLD_RETRIES = 20
 
     def __init__(
         self,
@@ -55,6 +65,8 @@ class BatchSyncService:
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._cursor_name = "prometheus"
+        self._too_old_failures: int = 0
+        self._too_old_cursor: int = -1
 
     def start(self) -> None:
         """Start batch sync service."""
@@ -97,7 +109,14 @@ class BatchSyncService:
                 log.error("batch_sync_error", error=str(e))
 
     def _sync_batch(self) -> None:
-        """Sync a single batch of readings."""
+        """Sync a single batch of readings.
+
+        On "too old" rejection the cursor is NOT advanced immediately.
+        The batch is retried for MAX_TOO_OLD_RETRIES cycles.  If it
+        still fails, the batch is skipped with an ERROR-level log so
+        the pipeline does not stall permanently.  Data remains in
+        SQLite for manual recovery.
+        """
         # Get unsynced readings
         readings = self.db.get_unsynced_readings(
             cursor_name=self._cursor_name,
@@ -108,36 +127,77 @@ class BatchSyncService:
             log.debug("batch_sync_no_data")
             return
 
-        log.info("batch_sync_starting", count=len(readings))
+        first_id = readings[0].id
         last_id = readings[-1].id
+        oldest = readings[0].timestamp_utc.isoformat()
+        newest = readings[-1].timestamp_utc.isoformat()
+
+        log.info(
+            "batch_sync_starting",
+            count=len(readings),
+            first_id=first_id,
+            last_id=last_id,
+            oldest=oldest,
+            newest=newest,
+        )
 
         # Convert to Prometheus format and send
         try:
             self._send_to_prometheus(readings)
 
-            # Update cursor on success
+            # Success — reset failure tracking and advance cursor
+            self._too_old_failures = 0
+            self._too_old_cursor = -1
             self.db.update_sync_cursor(self._cursor_name, last_id)
             log.info("batch_sync_complete", count=len(readings), last_id=last_id)
 
         except DuplicateDataError:
-            # Data already exists in Prometheus - skip this batch and continue
+            # Data already exists in Prometheus — safe to skip
             log.warning(
                 "batch_sync_duplicate_skipped",
                 count=len(readings),
+                first_id=first_id,
                 last_id=last_id,
                 hint="Data already synced via another path",
             )
+            self._too_old_failures = 0
+            self._too_old_cursor = -1
             self.db.update_sync_cursor(self._cursor_name, last_id)
 
         except TooOldSampleError:
-            # Data is too old for Prometheus to accept - skip and advance
-            log.warning(
-                "batch_sync_too_old_skipped",
-                count=len(readings),
-                last_id=last_id,
-                oldest_reading=readings[0].timestamp_utc.isoformat(),
-            )
-            self.db.update_sync_cursor(self._cursor_name, last_id)
+            # Track consecutive failures at the same cursor position
+            if self._too_old_cursor != first_id:
+                self._too_old_cursor = first_id
+                self._too_old_failures = 1
+            else:
+                self._too_old_failures += 1
+
+            if self._too_old_failures < self.MAX_TOO_OLD_RETRIES:
+                log.warning(
+                    "batch_sync_too_old_retrying",
+                    count=len(readings),
+                    first_id=first_id,
+                    last_id=last_id,
+                    oldest=oldest,
+                    newest=newest,
+                    attempt=self._too_old_failures,
+                    max_retries=self.MAX_TOO_OLD_RETRIES,
+                )
+                # Do NOT advance cursor — will retry next cycle
+            else:
+                log.error(
+                    "batch_sync_too_old_abandoned",
+                    count=len(readings),
+                    first_id=first_id,
+                    last_id=last_id,
+                    oldest=oldest,
+                    newest=newest,
+                    attempts=self._too_old_failures,
+                    hint="Data remains in SQLite for manual recovery",
+                )
+                self._too_old_failures = 0
+                self._too_old_cursor = -1
+                self.db.update_sync_cursor(self._cursor_name, last_id)
 
         except Exception as e:
             log.error("batch_sync_send_failed", error=str(e))
@@ -346,11 +406,19 @@ class BatchSyncService:
                 )
                 raise DuplicateDataError(response_text)
 
-            # Check for too old sample error - don't retry, just skip
+            # Check for too old sample error
             if response.status_code == 400 and "too old sample" in response_text.lower():
+                oldest_ms = metrics[0][3] if metrics else 0
+                newest_ms = metrics[-1][3] if metrics else 0
+                now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
                 log.warning(
                     "prometheus_too_old_detected",
-                    response_text=response_text,
+                    response_text=response_text.strip(),
+                    oldest_sample_ms=oldest_ms,
+                    newest_sample_ms=newest_ms,
+                    now_ms=now_ms,
+                    age_seconds=(now_ms - oldest_ms) // 1000 if oldest_ms else 0,
+                    readings_count=len(readings),
                 )
                 raise TooOldSampleError(response_text)
 

@@ -77,5 +77,18 @@ Never lose telemetry data or video — the system must survive thousands of kilo
 | 7" Pi screen for driver display | Already have the hardware, directly attached to Pi | — Pending |
 | No OBD integration | OBD-I too complex for the value it adds | ✓ Good |
 
+## Current Milestone: v1.1 Field-Test Hardening
+
+**Goal:** Fix all issues discovered during the first test drive — sync reliability, capture integrity, and self-healing recovery across subsystems.
+
+**Target fixes:**
+
+- Prometheus sync "too old" rejections — data lost on every drive
+- Missing video captures and timelapse gaps
+- IMU I2C bus alarms recurring
+- TTS speaker intermittently silent
+- No way to manually trigger data upload
+- Cursor advances past unsynced data
+
 ---
-*Last updated: 2026-02-25 after initialisation*
+*Last updated: 2026-02-28 after v1.1 milestone start*
