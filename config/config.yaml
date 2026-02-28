@@ -148,5 +148,5 @@ capture:
     intro_video: "/var/lib/shitbox/intro.mp4"
   speaker:
     enabled: true
-    model_path: /var/lib/shitbox/tts/en_US-lessac-medium.onnx
+    model_path: /var/lib/shitbox/tts/en_GB-northern_english_male-medium.onnx
     distance_announce_interval_km: 50

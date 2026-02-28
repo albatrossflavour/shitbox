@@ -124,16 +124,21 @@ def _warm_cache() -> None:
     rendered = 0
     for key, text in _CACHED_MESSAGES.items():
         wav_path = _cache_dir / f"{key}.wav"
-        if wav_path.exists():
+        if wav_path.exists() and wav_path.stat().st_size > 0:
             _cache[text] = wav_path
             rendered += 1
             continue
         try:
             with wave.open(str(wav_path), "wb") as wav_file:
                 _voice.synthesize_wav(text, wav_file)  # type: ignore[union-attr]
-            _cache[text] = wav_path
-            rendered += 1
+            if wav_path.stat().st_size > 0:
+                _cache[text] = wav_path
+                rendered += 1
+            else:
+                wav_path.unlink(missing_ok=True)
+                log.warning("cache_render_empty", key=key)
         except Exception as e:
+            wav_path.unlink(missing_ok=True)
             log.warning("cache_render_failed", key=key, error=str(e))
 
     log.info("speaker_cache_warmed", count=rendered, total=len(_CACHED_MESSAGES))
@@ -182,6 +187,7 @@ def init(model_path: str) -> bool:
 
     try:
         _voice = PiperVoice.load(model_path)  # type: ignore[name-defined]
+        _voice.config.length_scale = 1.15  # type: ignore[union-attr]
         log.info("piper_model_loaded", model=model_path, device=_alsa_device)
     except Exception as e:
         log.warning("piper_model_load_failed", error=str(e))

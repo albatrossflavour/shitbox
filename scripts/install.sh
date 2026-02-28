@@ -79,8 +79,8 @@ TTS_DIR="/var/lib/shitbox/tts"
 mkdir -p "$TTS_DIR"
 chown $ACTUAL_USER:$ACTUAL_USER "$TTS_DIR"
 
-PIPER_MODEL="en_US-lessac-medium"
-PIPER_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium"
+PIPER_MODEL="en_GB-northern_english_male-medium"
+PIPER_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/northern_english_male/medium"
 
 if [ ! -f "$TTS_DIR/${PIPER_MODEL}.onnx" ]; then
     echo "Downloading Piper voice model (${PIPER_MODEL}, ~63 MB)..."
