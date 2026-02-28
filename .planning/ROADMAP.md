@@ -37,7 +37,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 7: Self-Healing and Crash-Loop Prevention** - I2C crash-loops eliminated, all subsystems follow detect-alert-recover-escalate pattern (completed 2026-02-28)
 - [x] **Phase 8: Capture Integrity** - Video saves verified, timelapse monitored, ffmpeg crashes recovered with footage preserved (completed 2026-02-28)
-- [ ] **Phase 9: Sync Reliability** - Prometheus never loses data, cursor never advances past rejections, manual sync available
+- [x] **Phase 9: Sync Reliability** - Dropped; criteria met by prior work (confirmed in field test 2026-02-28)
 
 ## Phase Details
 
@@ -195,19 +195,14 @@ Plans:
 - [ ] 08-01-PLAN.md — Test scaffolds, buzzer/speaker capture-failed alert functions (CAPT-01, CAPT-02, CAPT-03)
 - [ ] 08-02-PLAN.md — Post-save verification, timelapse gap watchdog, boot save guard (CAPT-01, CAPT-02, CAPT-03)
 
-### Phase 9: Sync Reliability
+### Phase 9: Sync Reliability (Dropped)
 
-**Goal**: Prometheus sync never silently loses data, cursor management is safe, and the operator can force a sync when connectivity is available
-**Depends on**: Phase 7 (stable system prevents sync interruption from crash-loops)
-**Requirements**: SYNC-01, SYNC-02, SYNC-03
-**Success Criteria** (what must be TRUE):
+**Status**: Dropped — criteria already met by prior work and phase 8 session.
 
-1. When Prometheus rejects a batch of samples (HTTP 400, "too old", or any non-success response), the cursor does not advance past those samples — they remain in SQLite for retry
-2. After repeated rejections of the same batch (e.g. label conflict), the system eventually skips forward with a structured log entry recording exactly which samples were abandoned and why
-3. Offline telemetry data collected hours or days ago is accepted by Prometheus — the "too old" rejection is resolved (whether by fixing label conflicts, adjusting Prometheus config, or both)
-4. The operator can trigger a manual sync of all pending data via a script or signal (e.g. `systemctl kill -s SIGUSR1 shitbox-telemetry` or a helper script)
-
-**Plans**: TBD
+Cursor-safe rejection handling (criteria 1-2) was implemented in batch_sync.py
+during earlier phases. Offline data sync (criterion 3) confirmed working in
+field test (1,288 readings / 45 min backlog synced in 281ms). Manual sync
+trigger (criterion 4) deferred — not needed for rally.
 
 ## Progress
 
@@ -224,4 +219,4 @@ Phases execute in numeric order: 1 through 5 (complete), then 7, 8, 9. Phase 6 d
 | 6. Driver Display | v2 | 0/TBD | Deferred | - |
 | 7. Self-Healing and Crash-Loop Prevention | 2/2 | Complete   | 2026-02-28 | - |
 | 8. Capture Integrity | 2/2 | Complete   | 2026-02-28 | - |
-| 9. Sync Reliability | v1.1 | 0/TBD | Not started | - |
+| 9. Sync Reliability | v1.1 | N/A | Dropped | 2026-02-28 |
