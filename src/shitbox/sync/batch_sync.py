@@ -2,8 +2,9 @@
 
 import threading
 import time
+from collections import Counter
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -68,6 +69,14 @@ class BatchSyncService:
         self._too_old_failures: int = 0
         self._too_old_cursor: int = -1
 
+        # Cumulative stats for sync state logging
+        self._total_synced: int = 0
+        self._total_failed: int = 0
+        self._total_skipped: int = 0
+        self._consecutive_errors: int = 0
+        self._last_success_time: Optional[str] = None
+        self._last_error: Optional[str] = None
+
     def start(self) -> None:
         """Start batch sync service."""
         if self._running:
@@ -98,15 +107,71 @@ class BatchSyncService:
             if not self._running:
                 break
 
+            # Log sync state every cycle
+            self._log_sync_state()
+
             # Only sync if connected
             if not self.connection.is_connected:
-                log.debug("batch_sync_skipped_no_connection")
+                log.info("batch_sync_skipped_no_connection")
                 continue
 
             try:
                 self._sync_batch()
             except Exception as e:
+                self._consecutive_errors += 1
+                self._total_failed += 1
+                self._last_error = str(e)
                 log.error("batch_sync_error", error=str(e))
+
+    def _log_sync_state(self) -> None:
+        """Log full sync state for debugging."""
+        try:
+            now_utc = datetime.now(timezone.utc)
+            cursor = self.db.get_sync_cursor(self._cursor_name)
+            backlog = self.db.get_sync_backlog_count(self._cursor_name)
+            oldest, newest = self.db.get_sync_backlog_time_range(
+                self._cursor_name,
+            )
+
+            # Calculate sync lag in seconds
+            sync_lag_seconds: Optional[float] = None
+            if oldest:
+                try:
+                    oldest_dt = datetime.fromisoformat(oldest)
+                    if oldest_dt.tzinfo is None:
+                        oldest_dt = oldest_dt.replace(tzinfo=timezone.utc)
+                    sync_lag_seconds = round(
+                        (now_utc - oldest_dt).total_seconds(), 1,
+                    )
+                except (ValueError, TypeError):
+                    pass
+
+            log.info(
+                "sync_state",
+                now_utc=now_utc.isoformat(),
+                connected=self.connection.is_connected,
+                cursor_position=cursor.last_synced_id,
+                cursor_updated=(
+                    cursor.last_synced_at.isoformat()
+                    if cursor.last_synced_at
+                    else None
+                ),
+                backlog=backlog,
+                backlog_oldest=oldest,
+                backlog_newest=newest,
+                sync_lag_seconds=sync_lag_seconds,
+                total_synced=self._total_synced,
+                total_failed=self._total_failed,
+                total_skipped=self._total_skipped,
+                consecutive_errors=self._consecutive_errors,
+                too_old_failures=self._too_old_failures,
+                last_success=self._last_success_time,
+                last_error=self._last_error,
+                endpoint=self.config.remote_write_url,
+                batch_size=self.config.batch_size,
+            )
+        except Exception as e:
+            log.warning("sync_state_log_error", error=str(e))
 
     def _sync_batch(self) -> None:
         """Sync a single batch of readings.
@@ -132,6 +197,11 @@ class BatchSyncService:
         oldest = readings[0].timestamp_utc.isoformat()
         newest = readings[-1].timestamp_utc.isoformat()
 
+        # Sensor type breakdown
+        sensor_counts: Dict[str, int] = dict(
+            Counter(r.sensor_type.value for r in readings)
+        )
+
         log.info(
             "batch_sync_starting",
             count=len(readings),
@@ -139,6 +209,7 @@ class BatchSyncService:
             last_id=last_id,
             oldest=oldest,
             newest=newest,
+            sensor_types=sensor_counts,
         )
 
         # Convert to Prometheus format and send
@@ -148,6 +219,9 @@ class BatchSyncService:
             # Success — reset failure tracking and advance cursor
             self._too_old_failures = 0
             self._too_old_cursor = -1
+            self._total_synced += len(readings)
+            self._consecutive_errors = 0
+            self._last_success_time = datetime.now(timezone.utc).isoformat()
             self.db.update_sync_cursor(self._cursor_name, last_id)
             log.info("batch_sync_complete", count=len(readings), last_id=last_id)
 
@@ -162,6 +236,8 @@ class BatchSyncService:
             )
             self._too_old_failures = 0
             self._too_old_cursor = -1
+            self._total_skipped += len(readings)
+            self._consecutive_errors = 0
             self.db.update_sync_cursor(self._cursor_name, last_id)
 
         except TooOldSampleError:
@@ -197,9 +273,13 @@ class BatchSyncService:
                 )
                 self._too_old_failures = 0
                 self._too_old_cursor = -1
+                self._total_skipped += len(readings)
                 self.db.update_sync_cursor(self._cursor_name, last_id)
 
         except Exception as e:
+            self._consecutive_errors += 1
+            self._total_failed += 1
+            self._last_error = str(e)
             log.error("batch_sync_send_failed", error=str(e))
             raise
 
@@ -215,15 +295,6 @@ class BatchSyncService:
 
         for reading in readings:
             timestamp_ms = int(reading.timestamp_utc.timestamp() * 1000)
-
-            # Debug: log first reading's timestamp
-            if len(metrics) == 0:
-                log.info(
-                    "batch_sync_debug",
-                    reading_time=reading.timestamp_utc.isoformat(),
-                    timestamp_ms=timestamp_ms,
-                    now_ms=int(datetime.now(timezone.utc).timestamp() * 1000),
-                )
 
             if reading.sensor_type.value == "gps":
                 if reading.latitude is not None:
@@ -351,7 +422,8 @@ class BatchSyncService:
             retry_state.outcome is not None
             and retry_state.outcome.exception() is not None
             and not isinstance(
-                retry_state.outcome.exception(), (DuplicateDataError, TooOldSampleError)
+                retry_state.outcome.exception(),
+                (DuplicateDataError, TooOldSampleError),
             )
         ),
     )
@@ -362,7 +434,8 @@ class BatchSyncService:
             readings: List of readings to send.
 
         Raises:
-            DuplicateDataError: If Prometheus rejects as duplicate (don't retry).
+            DuplicateDataError: If Prometheus rejects as duplicate.
+            TooOldSampleError: If Prometheus rejects as too old.
             RuntimeError: For other errors (will retry).
         """
         metrics = self._readings_to_metrics(readings)
@@ -373,13 +446,22 @@ class BatchSyncService:
         # Encode as protobuf + snappy
         data = encode_remote_write(metrics)
 
+        # Determine tenacity attempt number
+        attempt = 1
+        if hasattr(self._send_to_prometheus, "statistics"):
+            stats = self._send_to_prometheus.statistics
+            attempt = stats.get("attempt_number", 1)
+
         log.info(
             "prometheus_write_attempt",
+            attempt=attempt,
             readings_count=len(readings),
             metrics_count=len(metrics),
             payload_bytes=len(data),
+            url=self.config.remote_write_url,
         )
 
+        t0 = time.monotonic()
         try:
             response = requests.post(
                 self.config.remote_write_url,
@@ -392,33 +474,67 @@ class BatchSyncService:
                 timeout=30,
             )
         except requests.RequestException as e:
-            log.error("prometheus_write_request_error", error=str(e))
+            duration_ms = round(
+                (time.monotonic() - t0) * 1000, 1,
+            )
+            log.error(
+                "prometheus_write_request_error",
+                error=str(e),
+                error_type=type(e).__name__,
+                duration_ms=duration_ms,
+                attempt=attempt,
+            )
             raise RuntimeError(f"Prometheus request failed: {e}")
+
+        duration_ms = round((time.monotonic() - t0) * 1000, 1)
+
+        # Extract useful response headers for debugging
+        resp_headers = {
+            k: v
+            for k, v in response.headers.items()
+            if k.lower().startswith("x-") or k.lower() == "retry-after"
+        }
 
         if response.status_code not in (200, 204):
             response_text = response.text[:500] if response.text else ""
 
-            # Check for duplicate sample error - don't retry, just skip
-            if response.status_code == 400 and "duplicate sample" in response_text.lower():
+            if (
+                response.status_code == 400
+                and "duplicate sample" in response_text.lower()
+            ):
                 log.warning(
                     "prometheus_duplicate_detected",
                     response_text=response_text,
+                    duration_ms=duration_ms,
+                    attempt=attempt,
+                    response_headers=resp_headers,
                 )
                 raise DuplicateDataError(response_text)
 
-            # Check for too old sample error
-            if response.status_code == 400 and "too old sample" in response_text.lower():
+            if (
+                response.status_code == 400
+                and "too old sample" in response_text.lower()
+            ):
                 oldest_ms = metrics[0][3] if metrics else 0
                 newest_ms = metrics[-1][3] if metrics else 0
-                now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+                now_ms = int(
+                    datetime.now(timezone.utc).timestamp() * 1000,
+                )
                 log.warning(
                     "prometheus_too_old_detected",
                     response_text=response_text.strip(),
                     oldest_sample_ms=oldest_ms,
                     newest_sample_ms=newest_ms,
                     now_ms=now_ms,
-                    age_seconds=(now_ms - oldest_ms) // 1000 if oldest_ms else 0,
+                    age_seconds=(
+                        (now_ms - oldest_ms) // 1000
+                        if oldest_ms
+                        else 0
+                    ),
                     readings_count=len(readings),
+                    duration_ms=duration_ms,
+                    attempt=attempt,
+                    response_headers=resp_headers,
                 )
                 raise TooOldSampleError(response_text)
 
@@ -426,12 +542,22 @@ class BatchSyncService:
                 "prometheus_write_http_error",
                 status_code=response.status_code,
                 response_text=response_text,
+                duration_ms=duration_ms,
+                attempt=attempt,
+                response_headers=resp_headers,
             )
             raise RuntimeError(
-                f"Prometheus write failed: {response.status_code} {response_text}"
+                f"Prometheus write failed: "
+                f"{response.status_code} {response_text}"
             )
 
-        log.info("prometheus_write_success", metrics_count=len(metrics))
+        log.info(
+            "prometheus_write_success",
+            metrics_count=len(metrics),
+            duration_ms=duration_ms,
+            attempt=attempt,
+            response_headers=resp_headers,
+        )
 
     def get_backlog_count(self) -> int:
         """Get number of unsynced readings."""

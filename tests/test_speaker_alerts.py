@@ -216,7 +216,7 @@ def test_queue_drops_when_full() -> None:
 def test_boot_grace_suppresses_alerts() -> None:
     """Boot grace period suppresses non-boot alerts within 30 seconds of startup."""
     # Set boot time to now — we are within the grace period
-    speaker.set_boot_start_time(time.time())
+    speaker.set_boot_start_time(time.monotonic())
 
     with patch.object(speaker, "_enqueue") as mock_enqueue:
         speaker.speak_thermal_warning()
@@ -234,7 +234,7 @@ def test_boot_grace_suppresses_alerts() -> None:
 
 def test_boot_not_suppressed_by_grace() -> None:
     """speak_boot() bypasses the grace period check and always enqueues."""
-    speaker.set_boot_start_time(time.time())  # within grace period
+    speaker.set_boot_start_time(time.monotonic())  # within grace period
 
     with patch.object(speaker, "_enqueue") as mock_enqueue:
         speaker.speak_boot(was_crash=False)

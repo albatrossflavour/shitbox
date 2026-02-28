@@ -124,7 +124,7 @@ class VideoRecorder:
                 stderr=subprocess.PIPE,
             )
             self._current_output = output_path
-            self._recording_start = time.time()
+            self._recording_start = time.monotonic()
 
             # Start thread to monitor completion
             threading.Thread(
@@ -165,7 +165,7 @@ class VideoRecorder:
 
         # Wait for process to complete
         returncode = self._current_process.wait()
-        duration = time.time() - self._recording_start if self._recording_start else 0
+        duration = time.monotonic() - self._recording_start if self._recording_start else 0
 
         if returncode == 0:
             # Check file size

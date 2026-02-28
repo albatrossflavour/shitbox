@@ -51,7 +51,7 @@ class BuzzerAlertState:
         Returns:
             True if this alert_type was seen within ESCALATION_WINDOW_SECONDS.
         """
-        now = time.time()
+        now = time.monotonic()
         last = self._last_alerts.get(alert_type)
         self._last_alerts[alert_type] = now
         if last is None:
@@ -77,11 +77,11 @@ def set_boot_start_time(t: float) -> None:
     """Record the engine boot timestamp so alerts can suppress during grace period.
 
     The engine calls this once at startup. Alert functions compare
-    time.time() against this value and skip playback for
+    time.monotonic() against this value and skip playback for
     BOOT_GRACE_PERIOD_SECONDS after boot.
 
     Args:
-        t: Unix timestamp (time.time()) of engine start.
+        t: Monotonic timestamp (time.monotonic()) of engine start.
     """
     global _boot_start_time
     _boot_start_time = t
@@ -89,7 +89,7 @@ def set_boot_start_time(t: float) -> None:
 
 def _should_alert() -> bool:
     """Return False if we are still within the boot grace period."""
-    return time.time() - _boot_start_time >= BOOT_GRACE_PERIOD_SECONDS
+    return time.monotonic() - _boot_start_time >= BOOT_GRACE_PERIOD_SECONDS
 
 
 def init() -> bool:
