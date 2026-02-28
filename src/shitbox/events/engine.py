@@ -624,6 +624,9 @@ class UnifiedEngine:
     # WAL checkpoint interval (5 minutes)
     WAL_CHECKPOINT_INTERVAL_S = 300.0
 
+    # Timelapse gap watchdog: alert if 3x interval passes with no capture
+    TIMELAPSE_GAP_FACTOR = 3
+
     def _on_event(self, event: Event) -> None:
         """Called when an event is detected."""
         # Suppress auto-detected events while a capture is already in progress.
@@ -659,6 +662,18 @@ class UnifiedEngine:
         video_path = None
         if event.event_type in self.VIDEO_CAPTURE_EVENTS:
             if self.video_ring_buffer and self.video_ring_buffer.is_running:
+                # Skip boot capture if buffer has no complete segments
+                if event.event_type == EventType.BOOT:
+                    segments = self.video_ring_buffer._get_buffer_segments()
+                    if len(segments) < 2:
+                        log.info(
+                            "boot_capture_skipped_no_segments",
+                            segment_count=len(segments),
+                        )
+                        # Still save event metadata without video
+                        self.event_storage.save_event(event)
+                        return
+
                 buzzer.beep_capture_start()
                 speaker.speak_capture_start(event.event_type.value)
                 eid = id(event)
@@ -1389,6 +1404,26 @@ class UnifiedEngine:
         has_capture_source = self.video_ring_buffer or self.video_recorder
         if not has_capture_source:
             return
+
+        # Gap watchdog: detect stuck timelapse extraction
+        elapsed = now - self._last_timelapse_time
+        gap_threshold = self.config.timelapse_interval_seconds * UnifiedEngine.TIMELAPSE_GAP_FACTOR
+        if (
+            elapsed > gap_threshold
+            and self._last_timelapse_time > 0.0
+            and self._current_speed_kmh >= self.config.timelapse_min_speed_kmh
+        ):
+            log.warning(
+                "timelapse_gap_detected",
+                elapsed_seconds=round(elapsed),
+                expected_interval=self.config.timelapse_interval_seconds,
+            )
+            # Attempt recovery: restart ffmpeg
+            if self.video_ring_buffer and self.video_ring_buffer.is_running:
+                self.video_ring_buffer._kill_current()
+                self.video_ring_buffer._start_ffmpeg()
+            self._last_timelapse_time = now  # Reset to avoid repeat alerts
+            return  # Skip normal capture this iteration
 
         # Check if enough time has passed
         if (now - self._last_timelapse_time) < self.config.timelapse_interval_seconds:

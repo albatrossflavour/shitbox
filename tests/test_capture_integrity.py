@@ -415,6 +415,9 @@ def test_boot_save_skipped_no_segments(tmp_path: Path) -> None:
         start_time=time.time(),
         end_time=time.time(),
         peak_value=0.0,
+        peak_ax=0.0,
+        peak_ay=0.0,
+        peak_az=0.0,
     )
 
     UnifiedEngine._on_event(engine, boot_event)
