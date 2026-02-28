@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### v1.1 — Field-Test Hardening
 
-- [ ] **Phase 7: Self-Healing and Crash-Loop Prevention** - I2C crash-loops eliminated, all subsystems follow detect-alert-recover-escalate pattern
+- [x] **Phase 7: Self-Healing and Crash-Loop Prevention** - I2C crash-loops eliminated, all subsystems follow detect-alert-recover-escalate pattern (completed 2026-02-28)
 - [ ] **Phase 8: Capture Integrity** - Video saves verified, timelapse monitored, ffmpeg crashes recovered with footage preserved
 - [ ] **Phase 9: Sync Reliability** - Prometheus never loses data, cursor never advances past rejections, manual sync available
 
@@ -169,7 +169,7 @@ Plans:
 3. Every self-healing subsystem (I2C, TTS, ffmpeg) follows the same pattern: detect failure, log structured event, alert via available audio, attempt recovery, escalate if recovery fails
 4. After a self-healing recovery event, the system announces the recovery via TTS (or buzzer fallback) so the driver knows it happened
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 
@@ -217,6 +217,6 @@ Phases execute in numeric order: 1 through 5 (complete), then 7, 8, 9. Phase 6 d
 | 4. Remote Health and Stage Tracking | v1.0 | 2/2 | Complete | 2026-02-27 |
 | 5. Audio Alerts and TTS | v1.0 | 2/2 | Complete | 2026-02-27 |
 | 6. Driver Display | v2 | 0/TBD | Deferred | - |
-| 7. Self-Healing and Crash-Loop Prevention | 1/2 | In Progress|  | - |
+| 7. Self-Healing and Crash-Loop Prevention | 2/2 | Complete   | 2026-02-28 | - |
 | 8. Capture Integrity | v1.1 | 0/TBD | Not started | - |
 | 9. Sync Reliability | v1.1 | 0/TBD | Not started | - |

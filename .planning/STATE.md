@@ -11,9 +11,9 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 ## Current Position
 
 Phase: 7 of 9 (Self-Healing and Crash-Loop Prevention)
-Plan: 2 of 2 completed in current phase
+Plan: 2 of 2 completed in current phase (07-01 + 07-02 both done)
 Status: Phase 7 complete
-Last activity: 2026-02-28 — 07-02 speaker watchdog and recovery confirmations
+Last activity: 2026-02-28 — 07-01 escalating I2C recovery (completed retroactively after 07-02)
 
 Progress: [############░░░░░░░░] v1.0 complete, v1.1 Phase 7 complete
 
@@ -35,6 +35,8 @@ Progress: [############░░░░░░░░] v1.0 complete, v1.1 Phase 7 com
 - [v1.1]: USB speaker volume capped at 75% to prevent USB power contention causing xHCI errors
 - [v1.1]: Event suppression is by design — consecutive auto events extend capture window, not separate videos
 - [v1.1]: Crash-looping is the root cause — fix I2C escalation first (Phase 7), then capture/sync
+- [07-01]: _reset_count resets in stop() so engine health check's stop()/start() cycle gives restarted sampler fresh escalation state
+- [07-01]: start() escalation calls _i2c_bus_reset() (not setup()) — _i2c_bus_reset already calls setup() internally; double-call avoided
 - [07-02]: Speaker reinit guarded by _voice is not None AND _worker is not None — avoids spurious
   reinit when speaker was never initialised, and AttributeError after cleanup() zeroed worker ref
 - [07-02]: Recovery confirmation (TTS + buzzer) fires at shared if recovered: block — DRY and covers
@@ -57,12 +59,11 @@ Progress: [############░░░░░░░░] v1.0 complete, v1.1 Phase 7 com
 
 ### Blockers/Concerns
 
-- **Priority #1**: I2C crash-loop escalation (Phase 7 addresses this)
 - **Prometheus**: Scrape job label conflict may cause "too old" rejection (Phase 9)
-- **TTS**: Need targeted logging to diagnose intermittent failures (Phase 7)
+- Pre-existing mypy errors in sampler.py (_bus typed as None vs Optional[SMBus]) — deferred
 
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 07-02-PLAN.md — speaker watchdog and recovery confirmations
+Stopped at: Completed 07-01-PLAN.md — escalating I2C recovery (Phase 7 all plans done)
 Resume file: None
