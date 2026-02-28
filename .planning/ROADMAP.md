@@ -169,7 +169,12 @@ Plans:
 3. Every self-healing subsystem (I2C, TTS, ffmpeg) follows the same pattern: detect failure, log structured event, alert via available audio, attempt recovery, escalate if recovery fails
 4. After a self-healing recovery event, the system announces the recovery via TTS (or buzzer fallback) so the driver knows it happened
 
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+
+- [ ] 07-01-PLAN.md — Escalating I2C bus recovery with counter, backoff, and startup protection (HEAL-02, HEAL-03)
+- [ ] 07-02-PLAN.md — Speaker worker watchdog in health check and recovery confirmation announcements (HEAL-01, HEAL-03)
 
 ### Phase 8: Capture Integrity
 
