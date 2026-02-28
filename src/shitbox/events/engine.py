@@ -1824,6 +1824,25 @@ class UnifiedEngine:
         except OSError as e:
             log.warning("disk_usage_check_failed", error=str(e))
 
+        # 6. Speaker worker health (HEAL-01)
+        if self.config.speaker_enabled:
+            if (
+                speaker._voice is not None
+                and speaker._worker is not None
+                and not speaker._worker.is_alive()
+            ):
+                log.warning("speaker_worker_dead", restarting=True)
+                issues.append("speaker_worker_dead")
+                try:
+                    speaker.cleanup()
+                    if speaker.init(self.config.speaker_model_path):
+                        recovered.append("speaker")
+                        log.info("speaker_reinitialised")
+                    else:
+                        log.error("speaker_reinit_failed_no_device")
+                except Exception as e:
+                    log.error("speaker_reinit_exception", error=str(e))
+
         # Alarm logic
         if issues:
             self._health_failures += 1
@@ -1845,6 +1864,8 @@ class UnifiedEngine:
 
         if recovered:
             log.info("health_check_recovered", subsystems=recovered)
+            buzzer.beep_service_recovered("subsystem")
+            speaker.speak_service_recovered()
 
     @staticmethod
     def _notify_systemd(state: str) -> None:
