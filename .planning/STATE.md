@@ -6,16 +6,16 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Milestone v1.1 — Phase 8: Capture Integrity
+**Current focus:** Milestone v1.1 — Phase 8: Capture Integrity (complete), Phase 9: Prometheus Label Conflict
 
 ## Current Position
 
-Phase: 8 of 9 (Capture Integrity)
-Plan: 1 of 2 completed in current phase (08-01 done)
-Status: Phase 8 in progress
-Last activity: 2026-02-28 — 08-01 capture integrity test scaffolds and alert functions
+Phase: 8 of 9 (Capture Integrity) — COMPLETE
+Plan: 2 of 2 completed in current phase (08-02 done)
+Status: Phase 8 complete, ready for Phase 9
+Last activity: 2026-02-28 — 08-02 post-save verification, timelapse gap watchdog, boot save guard
 
-Progress: [#############░░░░░░░] v1.0 complete, v1.1 Phase 7 complete, Phase 8 plan 1/2 done
+Progress: [###############░░░░░] v1.0 complete, v1.1 Phase 7 complete, Phase 8 complete
 
 ## Performance Metrics
 
@@ -24,6 +24,13 @@ Progress: [#############░░░░░░░] v1.0 complete, v1.1 Phase 7 compl
 - Total plans completed: 9 (v1.0) + 2 (v1.0 wiring) = 11
 - Average duration: ~2-3 min
 - Total execution time: ~41 min
+
+**v1.1 Phase 8:**
+
+| Phase | Plan | Duration | Tasks | Files |
+| ----- | ---- | -------- | ----- | ----- |
+| 08    | 01   | ~3 min   | 2     | 3     |
+| 08    | 02   | ~3 min   | 3     | 3     |
 
 ## Accumulated Context
 
@@ -44,6 +51,9 @@ Progress: [#############░░░░░░░] v1.0 complete, v1.1 Phase 7 compl
 - [08-01]: beep_capture_failed uses 440→330 Hz descending pair to distinguish from beep_ffmpeg_stall (330 Hz only)
 - [08-01]: speak_capture_failed guards _voice is None first then _should_alert() — consistent with speak_* pattern
 - [08-01]: RED-phase tests written for _do_save_event, _check_timelapse, and _on_event; all 10 will fail until Plan 02
+- [Phase 08-02]: TIMELAPSE_GAP_FACTOR referenced as UnifiedEngine.TIMELAPSE_GAP_FACTOR — MagicMock(spec=) does not expose class constants as real values
+- [Phase 08-02]: Alert calls wrapped in try/except in _do_save_event — buzzer/speaker failures never prevent callback from firing
+- [Phase 08-02]: Boot guard calls event_storage.save_event() before early return — boot event metadata always persisted even when video skipped
 
 ### Pending Todos
 
@@ -68,5 +78,5 @@ Progress: [#############░░░░░░░] v1.0 complete, v1.1 Phase 7 compl
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 08-01-PLAN.md — capture integrity test scaffolds and alert functions
+Stopped at: Completed 08-02-PLAN.md — capture integrity implementation (all 10 tests pass)
 Resume file: None

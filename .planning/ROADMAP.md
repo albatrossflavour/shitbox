@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### v1.1 — Field-Test Hardening
 
 - [x] **Phase 7: Self-Healing and Crash-Loop Prevention** - I2C crash-loops eliminated, all subsystems follow detect-alert-recover-escalate pattern (completed 2026-02-28)
-- [ ] **Phase 8: Capture Integrity** - Video saves verified, timelapse monitored, ffmpeg crashes recovered with footage preserved
+- [x] **Phase 8: Capture Integrity** - Video saves verified, timelapse monitored, ffmpeg crashes recovered with footage preserved (completed 2026-02-28)
 - [ ] **Phase 9: Sync Reliability** - Prometheus never loses data, cursor never advances past rejections, manual sync available
 
 ## Phase Details
@@ -188,7 +188,7 @@ Plans:
 3. When ffmpeg crashes or stalls during an active event recording, the system recovers and produces a valid MP4 from whatever segments were captured before the crash — partial footage is preserved, not discarded
 4. Boot events that fire before ffmpeg is ready do not attempt a video save with zero segments — the system waits for capture readiness or skips the video gracefully
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 
@@ -223,5 +223,5 @@ Phases execute in numeric order: 1 through 5 (complete), then 7, 8, 9. Phase 6 d
 | 5. Audio Alerts and TTS | v1.0 | 2/2 | Complete | 2026-02-27 |
 | 6. Driver Display | v2 | 0/TBD | Deferred | - |
 | 7. Self-Healing and Crash-Loop Prevention | 2/2 | Complete   | 2026-02-28 | - |
-| 8. Capture Integrity | 1/2 | In Progress|  | - |
+| 8. Capture Integrity | 2/2 | Complete   | 2026-02-28 | - |
 | 9. Sync Reliability | v1.1 | 0/TBD | Not started | - |
