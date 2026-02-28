@@ -55,9 +55,9 @@ Requirements for rally-ready hardening. Each maps to roadmap phases.
 
 ### Capture Integrity (v1.1)
 
-- [ ] **CAPT-01**: After a video save completes, the system verifies the MP4 file exists and has non-zero size — if missing or empty, an error is logged and the driver is alerted via TTS and buzzer
-- [ ] **CAPT-02**: Timelapse capture is monitored — if no frame has been captured in the expected interval, the system logs a warning and attempts recovery
-- [ ] **CAPT-03**: When ffmpeg stalls or crashes during an active event save, the system recovers and preserves whatever footage was captured
+- [x] **CAPT-01**: After a video save completes, the system verifies the MP4 file exists and has non-zero size — if missing or empty, an error is logged and the driver is alerted via TTS and buzzer
+- [x] **CAPT-02**: Timelapse capture is monitored — if no frame has been captured in the expected interval, the system logs a warning and attempts recovery
+- [x] **CAPT-03**: When ffmpeg stalls or crashes during an active event save, the system recovers and preserves whatever footage was captured
 
 ### Self-Healing (v1.1)
 
@@ -130,9 +130,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HEAL-01 | Phase 7 | Complete |
 | HEAL-02 | Phase 7 | Complete |
 | HEAL-03 | Phase 7 | Complete |
-| CAPT-01 | Phase 8 | Pending |
-| CAPT-02 | Phase 8 | Pending |
-| CAPT-03 | Phase 8 | Pending |
+| CAPT-01 | Phase 8 | Complete |
+| CAPT-02 | Phase 8 | Complete |
+| CAPT-03 | Phase 8 | Complete |
 | SYNC-01 | Phase 9 | Pending |
 | SYNC-02 | Phase 9 | Pending |
 | SYNC-03 | Phase 9 | Pending |

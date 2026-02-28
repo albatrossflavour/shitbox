@@ -6,16 +6,16 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Milestone v1.1 — Phase 7: Self-Healing and Crash-Loop Prevention
+**Current focus:** Milestone v1.1 — Phase 8: Capture Integrity
 
 ## Current Position
 
-Phase: 7 of 9 (Self-Healing and Crash-Loop Prevention)
-Plan: 2 of 2 completed in current phase (07-01 + 07-02 both done)
-Status: Phase 7 complete
-Last activity: 2026-02-28 — 07-01 escalating I2C recovery (completed retroactively after 07-02)
+Phase: 8 of 9 (Capture Integrity)
+Plan: 1 of 2 completed in current phase (08-01 done)
+Status: Phase 8 in progress
+Last activity: 2026-02-28 — 08-01 capture integrity test scaffolds and alert functions
 
-Progress: [############░░░░░░░░] v1.0 complete, v1.1 Phase 7 complete
+Progress: [#############░░░░░░░] v1.0 complete, v1.1 Phase 7 complete, Phase 8 plan 1/2 done
 
 ## Performance Metrics
 
@@ -41,6 +41,9 @@ Progress: [############░░░░░░░░] v1.0 complete, v1.1 Phase 7 com
   reinit when speaker was never initialised, and AttributeError after cleanup() zeroed worker ref
 - [07-02]: Recovery confirmation (TTS + buzzer) fires at shared if recovered: block — DRY and covers
   all subsystems (IMU, telemetry, video, GPS, speaker)
+- [08-01]: beep_capture_failed uses 440→330 Hz descending pair to distinguish from beep_ffmpeg_stall (330 Hz only)
+- [08-01]: speak_capture_failed guards _voice is None first then _should_alert() — consistent with speak_* pattern
+- [08-01]: RED-phase tests written for _do_save_event, _check_timelapse, and _on_event; all 10 will fail until Plan 02
 
 ### Pending Todos
 
@@ -65,5 +68,5 @@ Progress: [############░░░░░░░░] v1.0 complete, v1.1 Phase 7 com
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 07-01-PLAN.md — escalating I2C recovery (Phase 7 all plans done)
+Stopped at: Completed 08-01-PLAN.md — capture integrity test scaffolds and alert functions
 Resume file: None
