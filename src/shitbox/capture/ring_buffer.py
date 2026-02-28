@@ -464,43 +464,51 @@ class VideoRingBuffer:
         self._last_segment_size = 0
         self._stall_check_armed = False
 
-    def _check_stall(self) -> bool:
+    def _check_stall(self) -> Optional[dict[str, object]]:
         """Check whether the ffmpeg segment output has stalled.
 
         Uses the newest segment's mtime and size to detect frozen output.
-        Returns True only when the stall timeout has elapsed with no file
-        activity. Returns False during the startup grace period (no segments
-        yet) and on the first observation (baselining).
+        Returns diagnostic info when a stall is detected, or None otherwise.
+        Returns None during the startup grace period (no segments yet) and
+        on the first observation (baselining).
 
         Returns:
-            True if a stall is detected, False otherwise.
+            Dict with diagnostic info if stalled, None otherwise.
         """
         segments = self._get_buffer_segments()
         if not segments:
             # ffmpeg still starting up — no segments yet
-            return False
+            return None
 
         newest = segments[-1]
         try:
             st = newest.stat()
         except OSError:
-            return False
+            return None
 
         if not self._stall_check_armed:
             # First observation — arm the detector and record baseline
             self._stall_check_armed = True
             self._last_segment_mtime = st.st_mtime
             self._last_segment_size = st.st_size
-            return False
+            return None
 
         if st.st_mtime != self._last_segment_mtime or st.st_size != self._last_segment_size:
             # File activity detected — update baseline and reset timer
             self._last_segment_mtime = st.st_mtime
             self._last_segment_size = st.st_size
-            return False
+            return None
 
         # No activity — check whether the stall timeout has elapsed
-        return (time.time() - self._last_segment_mtime) > self.STALL_TIMEOUT_SECONDS
+        now = time.time()
+        if (now - self._last_segment_mtime) > self.STALL_TIMEOUT_SECONDS:
+            return {
+                "segment": newest.name,
+                "size_kb": round(st.st_size / 1024, 1),
+                "mtime_age_s": round(now - st.st_mtime, 1),
+                "segment_count": len(segments),
+            }
+        return None
 
     def _health_monitor(self) -> None:
         """Background thread that restarts ffmpeg if it crashes or stalls.
@@ -529,10 +537,18 @@ class VideoRingBuffer:
                 continue
 
             # Restart if ffmpeg is alive but producing no output
-            if self._check_stall():
+            stall_info = self._check_stall()
+            if stall_info:
                 log.warning(
                     "ffmpeg_stall_detected",
                     timeout_seconds=self.STALL_TIMEOUT_SECONDS,
+                    newest_segment=stall_info.get("segment"),
+                    segment_size_kb=stall_info.get("size_kb"),
+                    segment_mtime_age_s=stall_info.get("mtime_age_s"),
+                    segment_count=stall_info.get("segment_count"),
+                    ffmpeg_pid=self._process.pid if self._process else None,
+                    ffmpeg_alive=self._process.poll() is None if self._process else False,
+                    stderr_tail=self._read_stderr(),
                 )
                 from shitbox.capture import buzzer, speaker
 
@@ -614,6 +630,13 @@ class VideoRingBuffer:
                 size_mb=round(post_bytes / (1024 * 1024), 2),
             )
 
+            if not post_segments:
+                log.warning(
+                    "video_save_post_event_empty",
+                    save_id=save_id,
+                    hint="ffmpeg may have been restarting during post-event window",
+                )
+
             all_segments = pre_segments + post_segments
             if not all_segments:
                 log.warning("video_save_no_segments", save_id=save_id)
@@ -623,7 +646,7 @@ class VideoRingBuffer:
 
             # 4. Concatenate into a single MP4
             output_path = self._concatenate_segments(all_segments, prefix)
-            if output_path:
+            if output_path and output_path.exists() and output_path.stat().st_size > 0:
                 log.info(
                     "video_save_complete",
                     save_id=save_id,
@@ -631,7 +654,23 @@ class VideoRingBuffer:
                     size_mb=round(output_path.stat().st_size / (1024 * 1024), 2),
                 )
             else:
-                log.error("video_save_concatenation_failed", save_id=save_id)
+                log.error(
+                    "video_save_verification_failed",
+                    save_id=save_id,
+                    output=str(output_path) if output_path else "None",
+                    exists=output_path.exists() if output_path else False,
+                    size=output_path.stat().st_size
+                    if output_path and output_path.exists()
+                    else 0,
+                )
+                try:
+                    from shitbox.capture import buzzer, speaker
+
+                    buzzer.beep_capture_failed()
+                    speaker.speak_capture_failed()
+                except Exception:
+                    pass  # Alert is best-effort; save callback must still fire
+                output_path = None
 
             if callback:
                 callback(output_path)
