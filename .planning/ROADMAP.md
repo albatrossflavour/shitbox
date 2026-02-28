@@ -183,7 +183,7 @@ Plans:
 **Requirements**: CAPT-01, CAPT-02, CAPT-03
 **Success Criteria** (what must be TRUE):
 
-1. After every video save completes, the system verifies the MP4 file exists and has non-zero size — if the file is missing or empty, an error is logged and the save is retried from available segments
+1. After every video save completes, the system verifies the MP4 file exists and has non-zero size — if the file is missing or empty, an error is logged and the driver is alerted via TTS and buzzer
 2. If no timelapse frame has been captured within the expected interval, the system logs a warning and attempts to restart timelapse extraction without losing future frames
 3. When ffmpeg crashes or stalls during an active event recording, the system recovers and produces a valid MP4 from whatever segments were captured before the crash — partial footage is preserved, not discarded
 4. Boot events that fire before ffmpeg is ready do not attempt a video save with zero segments — the system waits for capture readiness or skips the video gracefully

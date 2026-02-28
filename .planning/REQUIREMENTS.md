@@ -55,7 +55,7 @@ Requirements for rally-ready hardening. Each maps to roadmap phases.
 
 ### Capture Integrity (v1.1)
 
-- [ ] **CAPT-01**: After a video save completes, the system verifies the MP4 file exists and has non-zero size, logging an error and retrying if missing
+- [ ] **CAPT-01**: After a video save completes, the system verifies the MP4 file exists and has non-zero size — if missing or empty, an error is logged and the driver is alerted via TTS and buzzer
 - [ ] **CAPT-02**: Timelapse capture is monitored — if no frame has been captured in the expected interval, the system logs a warning and attempts recovery
 - [ ] **CAPT-03**: When ffmpeg stalls or crashes during an active event save, the system recovers and preserves whatever footage was captured
 
