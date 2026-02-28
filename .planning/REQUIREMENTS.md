@@ -61,9 +61,9 @@ Requirements for rally-ready hardening. Each maps to roadmap phases.
 
 ### Self-Healing (v1.1)
 
-- [ ] **HEAL-01**: When the TTS speaker stops producing audio, the system detects the failure and re-initialises the speaker subsystem
+- [x] **HEAL-01**: When the TTS speaker stops producing audio, the system detects the failure and re-initialises the speaker subsystem
 - [ ] **HEAL-02**: When I2C bus lockups recur after a reset attempt, the system escalates (multiple reset attempts before reboot fallback)
-- [ ] **HEAL-03**: Each self-healing subsystem follows a consistent pattern: detect failure → log → alert → attempt recovery → escalate if recovery fails
+- [x] **HEAL-03**: Each self-healing subsystem follows a consistent pattern: detect failure → log → alert → attempt recovery → escalate if recovery fails
 
 ## v2 Requirements
 
@@ -127,9 +127,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUDIO-01 | Phase 5 | Complete |
 | AUDIO-02 | Phase 5 | Complete |
 | AUDIO-03 | Phase 5 | Complete |
-| HEAL-01 | Phase 7 | Pending |
+| HEAL-01 | Phase 7 | Complete |
 | HEAL-02 | Phase 7 | Pending |
-| HEAL-03 | Phase 7 | Pending |
+| HEAL-03 | Phase 7 | Complete |
 | CAPT-01 | Phase 8 | Pending |
 | CAPT-02 | Phase 8 | Pending |
 | CAPT-03 | Phase 8 | Pending |

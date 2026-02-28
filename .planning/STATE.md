@@ -11,11 +11,11 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 ## Current Position
 
 Phase: 7 of 9 (Self-Healing and Crash-Loop Prevention)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-02-28 — v1.1 roadmap created (Phases 7-9)
+Plan: 2 of 2 completed in current phase
+Status: Phase 7 complete
+Last activity: 2026-02-28 — 07-02 speaker watchdog and recovery confirmations
 
-Progress: [##########░░░░░░░░░░] v1.0 complete, v1.1 0%
+Progress: [############░░░░░░░░] v1.0 complete, v1.1 Phase 7 complete
 
 ## Performance Metrics
 
@@ -35,6 +35,10 @@ Progress: [##########░░░░░░░░░░] v1.0 complete, v1.1 0%
 - [v1.1]: USB speaker volume capped at 75% to prevent USB power contention causing xHCI errors
 - [v1.1]: Event suppression is by design — consecutive auto events extend capture window, not separate videos
 - [v1.1]: Crash-looping is the root cause — fix I2C escalation first (Phase 7), then capture/sync
+- [07-02]: Speaker reinit guarded by _voice is not None AND _worker is not None — avoids spurious
+  reinit when speaker was never initialised, and AttributeError after cleanup() zeroed worker ref
+- [07-02]: Recovery confirmation (TTS + buzzer) fires at shared if recovered: block — DRY and covers
+  all subsystems (IMU, telemetry, video, GPS, speaker)
 
 ### Pending Todos
 
@@ -60,5 +64,5 @@ Progress: [##########░░░░░░░░░░] v1.0 complete, v1.1 0%
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: v1.1 roadmap created, ready to plan Phase 7
+Stopped at: Completed 07-02-PLAN.md — speaker watchdog and recovery confirmations
 Resume file: None
