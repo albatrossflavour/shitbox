@@ -127,14 +127,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUDIO-01 | Phase 5 | Complete |
 | AUDIO-02 | Phase 5 | Complete |
 | AUDIO-03 | Phase 5 | Complete |
+| HEAL-01 | Phase 7 | Pending |
+| HEAL-02 | Phase 7 | Pending |
+| HEAL-03 | Phase 7 | Pending |
+| CAPT-01 | Phase 8 | Pending |
+| CAPT-02 | Phase 8 | Pending |
+| CAPT-03 | Phase 8 | Pending |
+| SYNC-01 | Phase 9 | Pending |
+| SYNC-02 | Phase 9 | Pending |
+| SYNC-03 | Phase 9 | Pending |
 
 **Coverage:**
 
-- v1 requirements: 19 total
-- Mapped to phases: 19
+- v1 requirements: 19 total, 19 mapped
+- v1.1 requirements: 9 total, 9 mapped
 - Unmapped: 0
 
 ---
 
 *Requirements defined: 2026-02-25*
-*Last updated: 2026-02-27 — added AUDIO-01/02/03 for Phase 5, updated STGE-03 to waypoint-based*
+*Last updated: 2026-02-28 — added v1.1 requirements (SYNC, CAPT, HEAL) mapped to Phases 7-9*
