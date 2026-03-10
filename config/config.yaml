@@ -12,21 +12,44 @@ sensors:
     port: 2947 # gpsd port
     sample_rate_hz: 1
     location_resolution_interval_seconds: 300
-    rally_start_lat: -16.483831
-    rally_start_lon: 145.467250
-    rally_destination_lat: -37.819142
-    rally_destination_lon: 144.960397
+    rally_start_lat: -16.4838
+    rally_start_lon: 145.4673
+    rally_destination_lat: -37.8679
+    rally_destination_lon: 144.9743
     route:
-      waypoints: []
-      # Populate before the rally, e.g.:
-      # - name: "Port Douglas"
-      #   day: 1
-      #   lat: -16.4838
-      #   lon: 145.4673
-      # - name: "Townsville"
-      #   day: 1
-      #   lat: -19.2590
-      #   lon: 146.8169
+      waypoints:
+        - name: "Port Douglas"
+          day: 1
+          lat: -16.4838
+          lon: 145.4673
+        - name: "The Oasis Roadhouse"
+          day: 1
+          lat: -18.8797
+          lon: 144.5436
+        - name: "Aramac"
+          day: 2
+          lat: -22.9667
+          lon: 145.2333
+        - name: "Toompine"
+          day: 3
+          lat: -27.8500
+          lon: 144.4833
+        - name: "Louth"
+          day: 4
+          lat: -30.5333
+          lon: 145.1167
+        - name: "Narrandera"
+          day: 5
+          lat: -34.7475
+          lon: 146.5533
+        - name: "Dargo"
+          day: 6
+          lat: -37.4975
+          lon: 147.2692
+        - name: "Melbourne"
+          day: 7
+          lat: -37.8679
+          lon: 144.9743
 
   imu:
     enabled: true
