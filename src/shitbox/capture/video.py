@@ -46,6 +46,29 @@ class VideoRecorder:
         self._current_output: Optional[Path] = None
         self._recording_start: Optional[float] = None
 
+        self._configure_camera()
+
+    def _configure_camera(self) -> None:
+        """Apply V4L2 camera settings before recording."""
+        controls = {
+            "backlight_compensation": 0,
+            "exposure_dynamic_framerate": 0,
+        }
+        for ctrl, value in controls.items():
+            try:
+                subprocess.run(
+                    ["v4l2-ctl", "--device", self.device, "--set-ctrl", f"{ctrl}={value}"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    timeout=5,
+                )
+                log.debug("camera_ctrl_set", device=self.device, ctrl=ctrl, value=value)
+            except FileNotFoundError:
+                log.warning("v4l2ctl_not_found", hint="Install with: sudo apt install v4l-utils")
+                return
+            except Exception as e:
+                log.warning("camera_ctrl_failed", ctrl=ctrl, error=str(e))
+
     @property
     def is_recording(self) -> bool:
         """Check if currently recording."""

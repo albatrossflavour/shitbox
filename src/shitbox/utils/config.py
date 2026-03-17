@@ -50,6 +50,9 @@ class IMUConfig:
     sample_rate_hz: float = 10.0
     accel_range: int = 4  # +/- g
     gyro_range: int = 500  # +/- deg/s
+    accel_offset_x: float = 0.0  # g — subtracted from raw ax
+    accel_offset_y: float = 0.0  # g — subtracted from raw ay
+    accel_offset_z: float = 0.0  # g — subtracted from raw az (after gravity)
 
 
 @dataclass
@@ -202,6 +205,7 @@ class TimelapseConfig:
     enabled: bool = True
     interval_seconds: int = 60
     min_speed_kmh: float = 5.0
+    compile_fps: int = 24
 
 
 @dataclass
@@ -211,7 +215,7 @@ class VideoBufferConfig:
     enabled: bool = True
     buffer_dir: str = "/var/lib/shitbox/video_buffer"
     segment_seconds: int = 10
-    buffer_segments: int = 5
+    buffer_segments: int = 3
     overlay_enabled: bool = True
     intro_video: str = ""
 

@@ -7,6 +7,7 @@ from typing import Optional
 
 from shitbox.events.storage import EventStorage
 from shitbox.sync.connection import ConnectionMonitor
+from shitbox.sync.timelapse_compiler import TimelapseCompiler
 from shitbox.utils.config import CaptureSyncConfig
 from shitbox.utils.logging import get_logger
 
@@ -30,11 +31,13 @@ class CaptureSyncService:
         connection_monitor: ConnectionMonitor,
         captures_dir: str,
         event_storage: Optional[EventStorage] = None,
+        timelapse_compiler: Optional[TimelapseCompiler] = None,
     ):
         self.config = config
         self.connection = connection_monitor
         self.captures_dir = captures_dir
         self.event_storage = event_storage
+        self.timelapse_compiler = timelapse_compiler
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -101,6 +104,13 @@ class CaptureSyncService:
             except Exception as e:
                 log.warning("capture_sync_events_json_error", error=str(e))
 
+        # Refresh timelapse index before syncing
+        if self.timelapse_compiler:
+            try:
+                self.timelapse_compiler.generate_timelapse_json()
+            except Exception as e:
+                log.warning("capture_sync_timelapse_json_error", error=str(e))
+
         # Ensure source path ends with / for rsync directory semantics
         source = self.captures_dir.rstrip("/") + "/"
 
@@ -108,7 +118,7 @@ class CaptureSyncService:
             "rsync",
             "-auv",
             f"--rsync-path={self.config.rsync_path}",
-            "-e", "ssh",
+            "-e", "ssh -o ConnectTimeout=15",
             source,
             self.config.remote_dest,
         ]

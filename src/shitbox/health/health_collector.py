@@ -11,6 +11,12 @@ import shutil
 from datetime import datetime, timezone
 from typing import Optional
 
+try:
+    import psutil
+    _PSUTIL_AVAILABLE = True
+except ImportError:
+    _PSUTIL_AVAILABLE = False
+
 from shitbox.health.thermal_monitor import ThermalMonitorService
 from shitbox.storage.models import Reading, SensorType
 from shitbox.sync.batch_sync import BatchSyncService
@@ -84,10 +90,19 @@ class HealthCollector:
         except Exception as exc:
             log.warning("health_collector_throttle_error", error=str(exc))
 
+        # CPU utilisation (1-second interval; non-blocking on first call)
+        cpu_pct: Optional[float] = None
+        try:
+            if _PSUTIL_AVAILABLE:
+                cpu_pct = psutil.cpu_percent(interval=None)
+        except Exception as exc:
+            log.warning("health_collector_cpu_pct_error", error=str(exc))
+
         return Reading(
             timestamp_utc=datetime.now(timezone.utc),
             sensor_type=SensorType.SYSTEM,
             cpu_temp_celsius=cpu_temp,
+            cpu_percent=cpu_pct,
             disk_percent=disk_pct,
             sync_backlog=backlog,
             throttle_flags=throttle,

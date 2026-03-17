@@ -195,8 +195,33 @@ def _should_alert() -> bool:
     return time.monotonic() - _boot_start_time >= BOOT_GRACE_PERIOD_SECONDS
 
 
+def _all_wavs_cached() -> bool:
+    """Return True if every fixed message has a non-empty WAV in the cache dir."""
+    cache_dir = Path("/var/lib/shitbox/tts/cache")
+    for key in _CACHED_MESSAGES:
+        wav = cache_dir / f"{key}.wav"
+        if not wav.exists() or wav.stat().st_size == 0:
+            return False
+    return True
+
+
+def _load_existing_cache() -> None:
+    """Populate _cache from pre-existing WAV files without running piper."""
+    global _cache_dir
+    _cache_dir = Path("/var/lib/shitbox/tts/cache")
+    for key, text in _CACHED_MESSAGES.items():
+        wav = _cache_dir / f"{key}.wav"
+        if wav.exists() and wav.stat().st_size > 0:
+            _cache[text] = wav
+    log.info("speaker_cache_loaded", count=len(_cache), total=len(_CACHED_MESSAGES))
+
+
 def init(model_path: str) -> bool:
-    """Initialise the speaker: detect USB device, load Piper model, warm cache, start worker.
+    """Initialise the speaker.
+
+    If all fixed-message WAV files already exist in the cache directory,
+    skips loading the Piper model entirely and uses the pre-rendered files.
+    Piper is only loaded when WAVs are missing (i.e. first run).
 
     Args:
         model_path: Path to the Piper ONNX voice model file.
@@ -206,10 +231,6 @@ def init(model_path: str) -> bool:
     """
     global _voice, _alsa_device, _worker, _running
 
-    if not PIPER_AVAILABLE:
-        log.warning("piper_not_available", hint="pip install piper-tts")
-        return False
-
     _alsa_device = _detect_usb_speaker()
     if not _alsa_device:
         log.warning("usb_speaker_not_detected", fallback="buzzer only")
@@ -217,18 +238,23 @@ def init(model_path: str) -> bool:
 
     _set_volume(75)
 
-    try:
-        _voice = PiperVoice.load(model_path)  # type: ignore[name-defined]
-        _voice.config.length_scale = 1.25  # type: ignore[union-attr]
-        _voice.config.noise_scale = 0.6  # type: ignore[union-attr]
-        _voice.config.sentence_silence = 0.5  # type: ignore[union-attr]
-        log.info("piper_model_loaded", model=model_path, device=_alsa_device)
-    except Exception as e:
-        log.warning("piper_model_load_failed", error=str(e))
-        _voice = None
-        return False
-
-    _warm_cache()
+    if _all_wavs_cached():
+        _load_existing_cache()
+        log.info("speaker_using_cached_wavs", device=_alsa_device)
+    else:
+        if not PIPER_AVAILABLE:
+            log.warning("piper_not_available", hint="pip install piper-tts")
+            return False
+        try:
+            _voice = PiperVoice.load(model_path)  # type: ignore[name-defined]
+            _voice.config.length_scale = 1.25  # type: ignore[union-attr]
+            _voice.config.noise_scale = 0.6  # type: ignore[union-attr]
+            _voice.config.sentence_silence = 0.5  # type: ignore[union-attr]
+            log.info("piper_model_loaded", model=model_path, device=_alsa_device)
+        except Exception as e:
+            log.warning("piper_model_load_failed", error=str(e))
+            return False
+        _warm_cache()
 
     _running = True
     _worker = threading.Thread(target=_worker_loop, name="speaker-worker", daemon=True)
@@ -336,9 +362,10 @@ def _enqueue(text: str) -> None:
     Args:
         text: The spoken text to enqueue.
     """
-    if _voice is None:
-        return
     item: Union[str, Path] = _cache.get(text, text)
+    # Without piper, drop anything that isn't pre-cached
+    if isinstance(item, str) and _voice is None:
+        return
     try:
         _queue.put_nowait(item)
     except queue.Full:

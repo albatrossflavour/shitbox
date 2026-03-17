@@ -332,7 +332,7 @@ class VideoRingBuffer:
         cmd = [
             "ffmpeg", "-y",
             # Video input (thread queue prevents drops during CPU pressure)
-            "-thread_queue_size", "64",
+            "-thread_queue_size", "512",
             "-f", "v4l2",
             "-input_format", "mjpeg",
             "-video_size", self.resolution,
@@ -371,6 +371,8 @@ class VideoRingBuffer:
             cmd += ["-pix_fmt", "yuv420p"]
 
         cmd += self._video_encoder
+        # Override GOP to align keyframes with segment boundaries — last -g wins
+        cmd += ["-g", str(self.fps * self.segment_seconds)]
 
         if with_audio:
             cmd += ["-c:a", "aac", "-b:a", "128k"]
@@ -381,7 +383,6 @@ class VideoRingBuffer:
             "-segment_time", str(self.segment_seconds),
             "-segment_wrap", str(self.buffer_segments),
             "-segment_format", "mpegts",
-            "-reset_timestamps", "1",
             segment_pattern,
         ]
 
@@ -441,10 +442,27 @@ class VideoRingBuffer:
             self._running = False
 
     def _read_stderr(self) -> str:
-        """Read tail of stderr from the current process."""
+        """Read available stderr from the current process without blocking.
+
+        Uses os.read() with a non-blocking flag so this is safe to call on
+        a live process (stall detection path).
+        """
         if self._process and self._process.stderr:
             try:
-                return self._process.stderr.read().decode()[-500:]
+                import os
+                fd = self._process.stderr.fileno()
+                flags = os.get_blocking(fd)
+                os.set_blocking(fd, False)
+                try:
+                    data = b""
+                    while True:
+                        chunk = os.read(fd, 4096)
+                        if not chunk:
+                            break
+                        data += chunk
+                finally:
+                    os.set_blocking(fd, flags)
+                return data.decode(errors="replace")[-500:]
             except Exception:
                 pass
         return ""

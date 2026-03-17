@@ -402,6 +402,10 @@ class BatchSyncService:
                     metrics.append(
                         ("shitbox_sync_backlog", labels, float(reading.sync_backlog), timestamp_ms)
                     )
+                if reading.cpu_percent is not None:
+                    metrics.append(
+                        ("shitbox_cpu_pct", labels, reading.cpu_percent, timestamp_ms)
+                    )
                 if reading.throttle_flags is not None:
                     metrics.append(
                         (

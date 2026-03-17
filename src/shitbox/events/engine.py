@@ -34,6 +34,7 @@ from shitbox.storage.models import Reading, SensorType
 from shitbox.sync.batch_sync import BatchSyncService
 from shitbox.sync.boot_recovery import BootRecoveryService, detect_unclean_shutdown
 from shitbox.sync.capture_sync import CaptureSyncService
+from shitbox.sync.timelapse_compiler import TimelapseCompiler
 from shitbox.sync.connection import ConnectionMonitor
 from shitbox.sync.grafana import GrafanaAnnotator
 from shitbox.sync.mqtt_publisher import MQTTPublisher
@@ -69,6 +70,9 @@ class EngineConfig:
     mpu6050_address: int = 0x68
     accel_range: int = 4  # ±4g
     gyro_range: int = 500  # ±500 deg/s
+    accel_offset_x: float = 0.0
+    accel_offset_y: float = 0.0
+    accel_offset_z: float = 0.0
 
     # Low-rate telemetry
     telemetry_interval_seconds: float = 1.0
@@ -134,6 +138,7 @@ class EngineConfig:
     timelapse_enabled: bool = True
     timelapse_interval_seconds: int = 60
     timelapse_min_speed_kmh: float = 5.0
+    timelapse_compile_fps: int = 24
 
     # Video ring buffer
     video_buffer_enabled: bool = True
@@ -188,6 +193,9 @@ class EngineConfig:
             mpu6050_address=config.sensors.imu.address,
             accel_range=config.sensors.imu.accel_range,
             gyro_range=config.sensors.imu.gyro_range,
+            accel_offset_x=config.sensors.imu.accel_offset_x,
+            accel_offset_y=config.sensors.imu.accel_offset_y,
+            accel_offset_z=config.sensors.imu.accel_offset_z,
             # GPS settings
             gps_enabled=config.sensors.gps.enabled,
             gps_host=config.sensors.gps.host,
@@ -239,6 +247,7 @@ class EngineConfig:
             timelapse_enabled=config.capture.timelapse.enabled,
             timelapse_interval_seconds=config.capture.timelapse.interval_seconds,
             timelapse_min_speed_kmh=config.capture.timelapse.min_speed_kmh,
+            timelapse_compile_fps=config.capture.timelapse.compile_fps,
             # Video ring buffer
             video_buffer_enabled=config.capture.video_buffer.enabled,
             video_buffer_dir=config.capture.video_buffer.buffer_dir,
@@ -308,6 +317,9 @@ class UnifiedEngine:
             sample_rate_hz=config.imu_sample_rate_hz,
             accel_range=config.accel_range,
             gyro_range=config.gyro_range,
+            accel_offset_x=config.accel_offset_x,
+            accel_offset_y=config.accel_offset_y,
+            accel_offset_z=config.accel_offset_z,
             on_sample=self._on_imu_sample,
         )
 
@@ -416,6 +428,14 @@ class UnifiedEngine:
             )
             self.grafana = GrafanaAnnotator(grafana_config, config.captures_dir)
 
+        # Timelapse compiler (compile previous days' frames at startup)
+        self.timelapse_compiler: Optional[TimelapseCompiler] = None
+        if config.timelapse_enabled and config.captures_dir:
+            self.timelapse_compiler = TimelapseCompiler(
+                captures_dir=config.captures_dir,
+                fps=config.timelapse_compile_fps,
+            )
+
         # Capture sync (rsync to NAS)
         self.capture_sync: Optional[CaptureSyncService] = None
         if (
@@ -434,6 +454,7 @@ class UnifiedEngine:
                 self.connection,
                 config.captures_dir,
                 self.event_storage,
+                self.timelapse_compiler,
             )
 
         # Thermal monitor
@@ -1610,6 +1631,10 @@ class UnifiedEngine:
         if self.capture_sync:
             self.capture_sync.start()
 
+        # Start timelapse compiler (non-blocking background compilation)
+        if self.timelapse_compiler:
+            self.timelapse_compiler.start()
+
         # Start thermal monitor
         self.thermal_monitor.start()
 
@@ -1724,6 +1749,9 @@ class UnifiedEngine:
 
         if self.capture_sync:
             self.capture_sync.stop()
+
+        if self.timelapse_compiler:
+            self.timelapse_compiler.stop()
 
         self.thermal_monitor.stop()
 

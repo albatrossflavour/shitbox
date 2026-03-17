@@ -54,6 +54,9 @@ class HighRateSampler:
         sample_rate_hz: float = 100.0,
         accel_range: int = 4,
         gyro_range: int = 500,
+        accel_offset_x: float = 0.0,
+        accel_offset_y: float = 0.0,
+        accel_offset_z: float = 0.0,
         on_sample: Optional[Callable[[IMUSample], None]] = None,
     ):
         """Initialise high-rate sampler.
@@ -65,6 +68,9 @@ class HighRateSampler:
             sample_rate_hz: Target sample rate.
             accel_range: Accelerometer range (2, 4, 8, 16 g).
             gyro_range: Gyroscope range (250, 500, 1000, 2000 deg/s).
+            accel_offset_x: Bias correction for ax (g), added to raw reading.
+            accel_offset_y: Bias correction for ay (g), added to raw reading.
+            accel_offset_z: Bias correction for az (g), added after removing gravity.
             on_sample: Optional callback for each sample.
         """
         self.ring_buffer = ring_buffer
@@ -73,6 +79,9 @@ class HighRateSampler:
         self.sample_rate_hz = sample_rate_hz
         self.sample_interval = 1.0 / sample_rate_hz
         self.on_sample = on_sample
+        self.accel_offset_x = accel_offset_x
+        self.accel_offset_y = accel_offset_y
+        self.accel_offset_z = accel_offset_z
 
         # Scale factors based on range
         self.accel_scale = {2: 16384.0, 4: 8192.0, 8: 4096.0, 16: 2048.0}[accel_range]
@@ -324,10 +333,10 @@ class HighRateSampler:
         raw_gy = struct.unpack(">h", bytes(data[10:12]))[0]
         raw_gz = struct.unpack(">h", bytes(data[12:14]))[0]
 
-        # Convert to physical units
-        ax = raw_ax / self.accel_scale
-        ay = raw_ay / self.accel_scale
-        az = raw_az / self.accel_scale
+        # Convert to physical units and apply calibration offsets
+        ax = raw_ax / self.accel_scale + self.accel_offset_x
+        ay = raw_ay / self.accel_scale + self.accel_offset_y
+        az = raw_az / self.accel_scale + self.accel_offset_z
         gx = raw_gx / self.gyro_scale
         gy = raw_gy / self.gyro_scale
         gz = raw_gz / self.gyro_scale
