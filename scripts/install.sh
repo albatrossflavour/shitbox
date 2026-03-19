@@ -34,7 +34,19 @@ else
 fi
 
 # Add user to required groups
-usermod -aG i2c,gpio,audio $ACTUAL_USER
+usermod -aG i2c,gpio,audio,video $ACTUAL_USER
+
+# Install udev rules for stable camera symlinks (/dev/camera-front, /dev/camera-cabin)
+echo ""
+echo "=== Installing udev rules ==="
+cp "$INSTALL_DIR/udev/99-shitbox-cameras.rules" /etc/udev/rules.d/
+udevadm control --reload-rules
+udevadm trigger --subsystem-match=video4linux
+echo "Camera udev rules installed. Symlinks:"
+echo "  /dev/camera-front  → UGREEN front camera"
+echo "  /dev/camera-cabin  → Logitech Brio 100 cabin camera"
+echo "If symlinks are missing after install, check product strings with:"
+echo "  udevadm info -a -n /dev/videoN | grep -E 'ATTRS\{product\}'"
 
 # Create data directory
 echo ""
