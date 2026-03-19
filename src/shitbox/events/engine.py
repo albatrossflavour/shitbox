@@ -464,6 +464,7 @@ class UnifiedEngine:
             self.timelapse_compiler = TimelapseCompiler(
                 captures_dir=config.captures_dir,
                 fps=config.timelapse_compile_fps,
+                intro_video=config.video_buffer_intro_video,
             )
 
         # Capture sync (rsync to NAS)

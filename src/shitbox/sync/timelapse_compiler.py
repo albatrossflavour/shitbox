@@ -31,9 +31,14 @@ class TimelapseCompiler:
     Gracefully skips days with no frames and days where the MP4 already exists.
     """
 
-    def __init__(self, captures_dir: str, fps: int = 24) -> None:
+    TARGET_MIN_SECONDS = 30
+    TARGET_MAX_SECONDS = 90
+    BASE_FPS = 24
+
+    def __init__(self, captures_dir: str, fps: int = 24, intro_video: str = "") -> None:
         self._captures_dir = Path(captures_dir)
-        self._fps = fps
+        self._fps = fps  # kept for compatibility; dynamic fps overrides per compile
+        self._intro_video = intro_video
         self._thread: Optional[threading.Thread] = None
         self._running = False
 
@@ -91,6 +96,12 @@ class TimelapseCompiler:
         if compiled_any:
             self.generate_timelapse_json()
 
+    def _target_fps(self, frame_count: int) -> float:
+        """Calculate fps so output duration falls between TARGET_MIN and TARGET_MAX seconds."""
+        ideal = frame_count / self.BASE_FPS
+        target_duration = max(self.TARGET_MIN_SECONDS, min(self.TARGET_MAX_SECONDS, ideal))
+        return frame_count / target_duration
+
     def _compile_day(self, day: str) -> None:
         """Compile all frames for a single day into an MP4."""
         day_dir = self._captures_dir / "timelapse" / day
@@ -102,43 +113,70 @@ class TimelapseCompiler:
         output_dir = self._captures_dir / day
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "timelapse.mp4"
+        tmp_frames = output_dir / "timelapse.frames.mp4"
         tmp_path = output_dir / "timelapse.tmp.mp4"
 
+        fps = self._target_fps(len(frames))
+        duration_s = round(len(frames) / fps)
+        log.info("timelapse_compiling", date=day, frame_count=len(frames), fps=round(fps, 2), duration_s=duration_s)
+
+        # Pass 1: compile frames → temp MP4
         cmd = [
             "ffmpeg", "-y",
-            "-framerate", str(self._fps),
+            "-framerate", str(fps),
             "-pattern_type", "glob",
             "-i", str(day_dir / "timelapse_*.jpg"),
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
             "-preset", "medium",
-            str(tmp_path),
+            str(tmp_frames),
         ]
-
-        log.info("timelapse_compiling", date=day, frame_count=len(frames))
         try:
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                timeout=300,
-            )
-            if result.returncode == 0 and tmp_path.exists():
-                os.replace(str(tmp_path), str(output_path))
-                log.info("timelapse_compiled", date=day, frame_count=len(frames), output=str(output_path))
-            else:
+            result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300)
+            if result.returncode != 0 or not tmp_frames.exists():
                 stderr = result.stderr.decode()[-500:] if result.stderr else ""
                 log.error("timelapse_compile_failed", date=day, stderr=stderr)
-                if tmp_path.exists():
-                    tmp_path.unlink()
+                tmp_frames.unlink(missing_ok=True)
+                return
         except subprocess.TimeoutExpired:
             log.error("timelapse_compile_timeout", date=day)
-            if tmp_path.exists():
-                tmp_path.unlink()
+            tmp_frames.unlink(missing_ok=True)
+            return
         except Exception as exc:
             log.error("timelapse_compile_error", date=day, error=str(exc))
-            if tmp_path.exists():
-                tmp_path.unlink()
+            tmp_frames.unlink(missing_ok=True)
+            return
+
+        # Pass 2: prepend intro if available
+        intro = Path(self._intro_video) if self._intro_video else None
+        if intro and intro.exists():
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", str(intro),
+                "-i", str(tmp_frames),
+                "-filter_complex", "[0:v][1:v]concat=n=2:v=1[out]",
+                "-map", "[out]",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium",
+                str(tmp_path),
+            ]
+            try:
+                result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300)
+                tmp_frames.unlink(missing_ok=True)
+                if result.returncode != 0 or not tmp_path.exists():
+                    stderr = result.stderr.decode()[-500:] if result.stderr else ""
+                    log.error("timelapse_intro_concat_failed", date=day, stderr=stderr)
+                    tmp_path.unlink(missing_ok=True)
+                    return
+            except Exception as exc:
+                log.error("timelapse_intro_concat_error", date=day, error=str(exc))
+                tmp_frames.unlink(missing_ok=True)
+                tmp_path.unlink(missing_ok=True)
+                return
+        else:
+            tmp_frames.rename(tmp_path)
+
+        os.replace(str(tmp_path), str(output_path))
+        log.info("timelapse_compiled", date=day, frame_count=len(frames), fps=round(fps, 2), duration_s=duration_s, output=str(output_path))
 
     def generate_timelapse_json(self, video_base_url: str = "/captures") -> Optional[Path]:
         """Write captures/timelapse.json listing all compiled timelapse videos."""
