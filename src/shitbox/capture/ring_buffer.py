@@ -355,6 +355,7 @@ class VideoRingBuffer:
 
         cmd = [
             "ffmpeg", "-y",
+            "-threads", "2",
             # Video input (thread queue prevents drops during CPU pressure)
             "-thread_queue_size", "512",
             "-f", "v4l2",
@@ -435,6 +436,9 @@ class VideoRingBuffer:
         )
 
         try:
+            import os as _os
+            _nice = lambda: _os.nice(5)  # noqa: E731 — yield to Python engine
+
             if self.audio_device:
                 # Try with audio
                 cmd = self._build_ffmpeg_cmd(with_audio=True)
@@ -443,6 +447,7 @@ class VideoRingBuffer:
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
+                    preexec_fn=_nice,
                 )
                 self._audio_available = True
 
@@ -462,6 +467,7 @@ class VideoRingBuffer:
                         stdin=subprocess.DEVNULL,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.PIPE,
+                        preexec_fn=_nice,
                     )
             else:
                 # No audio device configured — start video-only immediately
@@ -471,6 +477,7 @@ class VideoRingBuffer:
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
+                    preexec_fn=_nice,
                 )
 
         except FileNotFoundError:

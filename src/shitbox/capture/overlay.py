@@ -26,18 +26,14 @@ _G_ARROWS = ["\u2191", "\u2197", "\u2192", "\u2198", "\u2193", "\u2199", "\u2190
 # File paths — one file per drawtext instance to avoid multiline newline
 # rendering artifacts (ffmpeg drawtext shows \n as a visible null/box char)
 SPEED_FILE = os.path.join(_DIR, "shitbox_speed.txt")
-HEADING_FILE = os.path.join(_DIR, "shitbox_heading.txt")
 GFORCE_FILE = os.path.join(_DIR, "shitbox_gforce.txt")
 LOCATION_FILE = os.path.join(_DIR, "shitbox_location.txt")
 GPS_TIME_FILE = os.path.join(_DIR, "shitbox_gps_time.txt")
-GPS_COORDS_FILE = os.path.join(_DIR, "shitbox_gps_coords.txt")
-DIST_START_FILE = os.path.join(_DIR, "shitbox_dist_start.txt")
 DIST_DEST_FILE = os.path.join(_DIR, "shitbox_dist_dest.txt")
 
 ALL_FILES = [
-    SPEED_FILE, HEADING_FILE, GFORCE_FILE,
-    LOCATION_FILE, GPS_TIME_FILE, GPS_COORDS_FILE,
-    DIST_START_FILE, DIST_DEST_FILE,
+    SPEED_FILE, GFORCE_FILE,
+    LOCATION_FILE, GPS_TIME_FILE, DIST_DEST_FILE,
 ]
 
 # Pre-processed 80x80 PNG with circular alpha mask
@@ -95,19 +91,13 @@ def build_drawtext_filter() -> str:
         (
             f"drawtext=textfile='{SPEED_FILE}':reload=1"
             f":{mono}:fontsize=22:fontcolor=white"
-            f":{box}:x=20:y=h-76"
-        ),
-        # Heading — bottom-left, below speed
-        (
-            f"drawtext=textfile='{HEADING_FILE}':reload=1"
-            f":{mono}:fontsize=18:fontcolor=white@0.5"
-            f":{box}:x=20:y=h-40"
+            f":{box}:x=20:y=h-50"
         ),
         # G-force — bottom-right
         (
             f"drawtext=textfile='{GFORCE_FILE}':reload=1"
             f":{mono}:fontsize=22:fontcolor=white"
-            f":{box}:x=w-tw-20:y=h-76"
+            f":{box}:x=w-tw-20:y=h-50"
         ),
         # Location name — top-right, prominent
         (
@@ -121,23 +111,11 @@ def build_drawtext_filter() -> str:
             f":{mono}:fontsize=22:fontcolor=white@0.8"
             f":{box}:x=w-tw-20:y=56"
         ),
-        # GPS coords — top-right, below time, faded
-        (
-            f"drawtext=textfile='{GPS_COORDS_FILE}':reload=1"
-            f":{mono}:fontsize=18:fontcolor=white@0.5"
-            f":{box}:x=w-tw-20:y=94"
-        ),
-        # Distance from start — top-right, below coords
-        (
-            f"drawtext=textfile='{DIST_START_FILE}':reload=1"
-            f":{mono}:fontsize=22:fontcolor=white@0.8"
-            f":{box}:x=w-tw-20:y=130"
-        ),
-        # Distance to destination — top-right, below start distance
+        # Distance to destination — top-right, below time
         (
             f"drawtext=textfile='{DIST_DEST_FILE}':reload=1"
             f":{mono}:fontsize=22:fontcolor=white@0.8"
-            f":{box}:x=w-tw-20:y=168"
+            f":{box}:x=w-tw-20:y=94"
         ),
         # URL — bottom-centre, static
         (
@@ -193,13 +171,6 @@ def update(
     speed_str = f"{speed:.0f} km/h" if speed is not None else "-- km/h"
     _atomic_write(SPEED_FILE, speed_str)
 
-    # Heading
-    if heading is not None:
-        heading_str = f"{heading:.0f}\u00b0 {_heading_arrow(heading)}"
-    else:
-        heading_str = "--\u00b0"
-    _atomic_write(HEADING_FILE, heading_str)
-
     # G-force
     magnitude = math.sqrt(g_lat * g_lat + g_lon * g_lon)
     arrow = _g_arrow(g_lat, g_lon)
@@ -211,21 +182,7 @@ def update(
     # GPS time
     if timestamp is None:
         timestamp = datetime.now()
-    time_str = timestamp.strftime("%H:%M:%S")
-    _atomic_write(GPS_TIME_FILE, time_str)
-
-    # GPS coords (faded, bottom line)
-    if lat is not None and lon is not None:
-        coord = f"{lat:.4f}, {lon:.4f}"
-    else:
-        coord = "--, --"
-    _atomic_write(GPS_COORDS_FILE, coord)
-
-    # Distance from start
-    if distance_from_start_km is not None:
-        _atomic_write(DIST_START_FILE, f"Start: {distance_from_start_km:,.0f} km")
-    else:
-        _atomic_write(DIST_START_FILE, "Start: -- km")
+    _atomic_write(GPS_TIME_FILE, timestamp.strftime("%H:%M:%S"))
 
     # Distance to destination
     if distance_to_destination_km is not None:
