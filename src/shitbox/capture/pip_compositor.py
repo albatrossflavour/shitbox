@@ -91,7 +91,10 @@ class PipCompositor:
         x, y = _POSITION_OVERLAY.get(self.position, ("W-w-10", "H-h-10"))
         enable = f":enable='gte(t,{pip_offset_seconds:.3f})'" if pip_offset_seconds > 0 else ""
         filter_complex = (
-            f"[1:v]scale=iw*{self.scale}:-2[pip];"
+            f"[1:v]scale=iw*{self.scale}:-2,"
+            f"pad=iw+4:ih+20:2:18:color=black@0.7,"
+            f"drawtext=text='Cabin':fontsize=13:fontcolor=white@0.9"
+            f":x=6:y=3[pip];"
             f"[0:v][pip]overlay={x}:{y}{enable}"
         )
 
