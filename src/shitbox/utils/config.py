@@ -209,15 +209,35 @@ class TimelapseConfig:
 
 
 @dataclass
+class PipConfig:
+    """Secondary (cabin) ring buffer for picture-in-picture composite."""
+
+    enabled: bool = False
+    device: str = "/dev/video0"
+    input_format: str = "mjpeg"
+    resolution: str = "1280x720"
+    fps: int = 30
+    audio_device: str = ""  # empty = video-only (no audio retry loop)
+    buffer_dir: str = "/var/lib/shitbox/video_buffer_pip"
+    position: str = "bottom_right"  # bottom_right | bottom_left | top_right | top_left
+    scale: float = 0.25
+
+
+@dataclass
 class VideoBufferConfig:
     """Video ring buffer configuration for dashcam-style pre-event capture."""
 
     enabled: bool = True
+    device: str = "/dev/video0"
+    input_format: str = "mjpeg"
+    resolution: str = "1280x720"
+    fps: int = 30
     buffer_dir: str = "/var/lib/shitbox/video_buffer"
     segment_seconds: int = 10
     buffer_segments: int = 3
     overlay_enabled: bool = True
     intro_video: str = ""
+    pip: PipConfig = field(default_factory=PipConfig)
 
 
 @dataclass

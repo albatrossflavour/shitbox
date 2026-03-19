@@ -33,12 +33,14 @@ class VideoRingBuffer:
     RESTART_BACKOFF_SECONDS = 2.0
     AUDIO_RETRY_SECONDS = 30.0
     STALL_TIMEOUT_SECONDS = 30
+    DEVICE_MISSING_BACKOFF_SECONDS = 30.0
 
     def __init__(
         self,
         buffer_dir: str = "/var/lib/shitbox/video_buffer",
         output_dir: str = "/var/lib/shitbox/captures",
         device: str = "/dev/video0",
+        input_format: str = "mjpeg",
         resolution: str = "1280x720",
         fps: int = 30,
         audio_device: str = "default",
@@ -51,6 +53,7 @@ class VideoRingBuffer:
         self.buffer_dir = Path(buffer_dir)
         self.output_dir = Path(output_dir)
         self.device = device
+        self.input_format = input_format
         self.resolution = resolution
         self.fps = fps
         self.audio_device = audio_device
@@ -63,7 +66,7 @@ class VideoRingBuffer:
         self._process: Optional[subprocess.Popen] = None
         self._health_thread: Optional[threading.Thread] = None
         self._running = False
-        self._audio_available = True
+        self._audio_available = bool(audio_device)  # False when no device configured
         self._video_encoder = self._detect_encoder()
         self._save_counter = 0
         self._lock = threading.Lock()
@@ -105,6 +108,27 @@ class VideoRingBuffer:
         if self._process is None:
             return False
         return self._process.poll() is None
+
+    @property
+    def intro_duration_seconds(self) -> float:
+        """Duration of the intro clip in seconds, or 0.0 if none."""
+        if not self._intro_ts or not self._intro_ts.exists():
+            return 0.0
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    str(self._intro_ts),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            )
+            return float(result.stdout.decode().strip())
+        except Exception:
+            return 0.0
 
     def start(self) -> None:
         """Start the continuous segment recording and health monitor."""
@@ -334,7 +358,7 @@ class VideoRingBuffer:
             # Video input (thread queue prevents drops during CPU pressure)
             "-thread_queue_size", "512",
             "-f", "v4l2",
-            "-input_format", "mjpeg",
+            "-input_format", self.input_format,
             "-video_size", self.resolution,
             "-framerate", str(self.fps),
             "-i", self.device,
@@ -399,6 +423,11 @@ class VideoRingBuffer:
         self._reset_stall_state()
         self.buffer_dir.mkdir(parents=True, exist_ok=True)
 
+        import os
+        if not os.path.exists(self.device):
+            log.warning("video_device_missing_at_start", device=self.device)
+            return
+
         log.info(
             "video_ring_buffer_ffmpeg_starting",
             device=self.device,
@@ -406,26 +435,36 @@ class VideoRingBuffer:
         )
 
         try:
-            # Try with audio
-            cmd = self._build_ffmpeg_cmd(with_audio=True)
-            self._process = subprocess.Popen(
-                cmd,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-            )
-            self._audio_available = True
-
-            # Check for early crash (audio device not ready)
-            time.sleep(3.0)
-            if self._process.poll() is not None:
-                stderr = self._read_stderr()
-                log.warning(
-                    "video_ring_buffer_audio_unavailable",
-                    stderr=stderr,
+            if self.audio_device:
+                # Try with audio
+                cmd = self._build_ffmpeg_cmd(with_audio=True)
+                self._process = subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
                 )
-                # Fall back to video-only
-                self._audio_available = False
+                self._audio_available = True
+
+                # Check for early crash (audio device not ready)
+                time.sleep(3.0)
+                if self._process.poll() is not None:
+                    stderr = self._read_stderr()
+                    log.warning(
+                        "video_ring_buffer_audio_unavailable",
+                        stderr=stderr,
+                    )
+                    # Fall back to video-only
+                    self._audio_available = False
+                    cmd = self._build_ffmpeg_cmd(with_audio=False)
+                    self._process = subprocess.Popen(
+                        cmd,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.PIPE,
+                    )
+            else:
+                # No audio device configured — start video-only immediately
                 cmd = self._build_ffmpeg_cmd(with_audio=False)
                 self._process = subprocess.Popen(
                     cmd,
@@ -550,6 +589,18 @@ class VideoRingBuffer:
                     returncode=rc,
                     stderr=stderr,
                 )
+                # If the device node is missing, back off instead of tight-looping
+                import os
+                if not os.path.exists(self.device):
+                    log.warning(
+                        "video_device_missing",
+                        device=self.device,
+                        backoff_seconds=self.DEVICE_MISSING_BACKOFF_SECONDS,
+                    )
+                    backoff_end = time.time() + self.DEVICE_MISSING_BACKOFF_SECONDS
+                    while time.time() < backoff_end and self._running:
+                        time.sleep(1.0)
+                    continue
                 self._start_ffmpeg()
                 last_audio_retry = time.time()
                 continue
@@ -577,7 +628,8 @@ class VideoRingBuffer:
                 continue
 
             # If running without audio, periodically restart to retry
-            if not self._audio_available:
+            # (only when an audio device is configured but wasn't available at last start)
+            if self.audio_device and not self._audio_available:
                 now = time.time()
                 if (now - last_audio_retry) >= self.AUDIO_RETRY_SECONDS:
                     log.info("video_ring_buffer_retrying_audio")
@@ -800,18 +852,20 @@ class VideoRingBuffer:
             total_mb=round(total_input_bytes / (1024 * 1024), 2),
         )
 
-        # Remux combined TS → MP4
+        # Remux combined TS → MP4 into buffer dir first, then move to captures
+        # so rsync never sees a partial file in the output directory.
         # Increase probesize so ffmpeg scans past the first segment to find
         # SPS/PPS NAL units — the h264_v4l2m2m encoder may not emit them
         # until a few seconds after startup, so the first segment's headers
         # can lack video dimensions.
+        tmp_mp4 = combined_ts.parent / f".tmp_{output_path.name}"
         cmd = [
             "ffmpeg", "-y",
             "-analyzeduration", "20000000",
             "-probesize", "20000000",
             "-i", str(combined_ts),
             "-c", "copy",
-            str(output_path),
+            str(tmp_mp4),
         ]
 
         try:
@@ -823,33 +877,31 @@ class VideoRingBuffer:
             )
             combined_ts.unlink(missing_ok=True)
 
-            if result.returncode == 0 and output_path.exists():
-                size = output_path.stat().st_size
+            if result.returncode == 0 and tmp_mp4.exists():
+                size = tmp_mp4.stat().st_size
                 if size > 0:
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    tmp_mp4.rename(output_path)
                     return output_path
                 # ffmpeg succeeded but produced empty file
                 input_mb = round(total_input_bytes / (1024 * 1024), 2)
                 log.error("concat_empty_output", input_mb=input_mb)
-                output_path.unlink(missing_ok=True)
+                tmp_mp4.unlink(missing_ok=True)
                 return None
             else:
                 stderr = result.stderr.decode()[-500:] if result.stderr else ""
                 log.error("concat_failed", returncode=result.returncode, stderr=stderr)
-                # Clean up 0-byte output
-                if output_path.exists():
-                    output_path.unlink(missing_ok=True)
+                tmp_mp4.unlink(missing_ok=True)
                 return None
         except subprocess.TimeoutExpired:
             log.error("concat_timeout")
             combined_ts.unlink(missing_ok=True)
-            if output_path.exists():
-                output_path.unlink(missing_ok=True)
+            tmp_mp4.unlink(missing_ok=True)
             return None
         except Exception as e:
             log.error("concat_error", error=str(e))
             combined_ts.unlink(missing_ok=True)
-            if output_path.exists():
-                output_path.unlink(missing_ok=True)
+            tmp_mp4.unlink(missing_ok=True)
             return None
 
     def _cleanup_buffer(self) -> None:

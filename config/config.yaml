@@ -60,6 +60,9 @@ sensors:
     accel_range: 4
     # Gyroscope range: 250, 500, 1000, or 2000 (deg/s)
     gyro_range: 500
+    accel_offset_x: +0.2711   # g — subtracted from raw ax (measured static bias)
+    accel_offset_y: -0.0831   # g — subtracted from raw ay
+    accel_offset_z: +0.0216   # g — residual above 1g on gravity axis
 
   temperature:
     enabled: false # Enable when MCP9808 is wired
@@ -164,11 +167,25 @@ capture:
     min_speed_kmh: 5.0
   video_buffer:
     enabled: true
+    device: /dev/camera-front    # UGREEN (front-facing)
+    input_format: mjpeg
+    resolution: 1280x720
+    fps: 30
     buffer_dir: /var/lib/shitbox/video_buffer
     segment_seconds: 10
     buffer_segments: 5
     overlay_enabled: true
     intro_video: "/var/lib/shitbox/intro.mp4"
+    pip:
+      enabled: true
+      device: /dev/camera-cabin  # Brio 100 (cabin-facing)
+      input_format: mjpeg
+      resolution: 640x480
+      fps: 15
+      audio_device: ""           # video-only — cabin cam has no dedicated mic
+      buffer_dir: /var/lib/shitbox/video_buffer_pip
+      position: bottom_right
+      scale: 0.25
   speaker:
     enabled: true
     model_path: /var/lib/shitbox/tts/en_GB-northern_english_male-medium.onnx

@@ -132,6 +132,7 @@ class Reading:
 
     # System fields (Pi health)
     cpu_temp_celsius: Optional[float] = None
+    cpu_percent: Optional[float] = None
     disk_percent: Optional[float] = None
     sync_backlog: Optional[int] = None
     throttle_flags: Optional[int] = None
