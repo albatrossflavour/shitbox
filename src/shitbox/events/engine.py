@@ -827,6 +827,11 @@ class UnifiedEngine:
         Creates a MANUAL_CAPTURE event and routes it through the
         standard _on_event pipeline.
         """
+        if self._pip_pending:
+            log.info("manual_capture_rejected_busy", pending=len(self._pip_pending))
+            buzzer.beep_capture_busy()
+            return
+
         self._manual_capture_count += 1
         now = time.time()
 

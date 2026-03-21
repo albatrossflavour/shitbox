@@ -66,35 +66,11 @@ class VideoRingBuffer:
         self._health_thread: Optional[threading.Thread] = None
         self._running = False
         self._audio_available = bool(audio_device)  # False when no device configured
-        self._video_encoder = self._detect_encoder()
+        self._video_encoder = ["-c:v", "libx264", "-preset", "ultrafast", "-g", "30"]
         self._save_counter = 0
         self._lock = threading.Lock()
         self._intro_ts: Optional[Path] = None
-
-    @staticmethod
-    def _detect_encoder() -> list[str]:
-        """Probe ffmpeg for the best available H.264 encoder.
-
-        Prefers hardware (h264_v4l2m2m) over software (libx264).
-        GOP size of 30 frames (1 keyframe/sec at 30fps) ensures each
-        segment starts with a keyframe for clean concatenation.
-        """
-        try:
-            result = subprocess.run(
-                ["ffmpeg", "-hide_banner", "-encoders"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                timeout=5,
-            )
-            output = result.stdout.decode()
-            if "h264_v4l2m2m" in output:
-                log.info("video_encoder_selected", encoder="h264_v4l2m2m")
-                return ["-c:v", "h264_v4l2m2m", "-b:v", "4M", "-g", "30"]
-        except Exception as e:
-            log.warning("video_encoder_detection_failed", error=str(e))
-
-        log.info("video_encoder_selected", encoder="libx264")
-        return ["-c:v", "libx264", "-preset", "ultrafast", "-g", "30"]
+        self._last_timelapse_segment: Optional[Path] = None
 
     @property
     def is_running(self) -> bool:
@@ -214,6 +190,13 @@ class VideoRingBuffer:
         segment = self._latest_complete_segment()
         if segment is None:
             return None
+
+        # Skip if this segment was already used — guards against duplicate frames
+        # during a ffmpeg stall where the same segment stays newest indefinitely.
+        if segment == self._last_timelapse_segment:
+            log.debug("timelapse_frame_skipped_stale_segment", segment=str(segment))
+            return None
+        self._last_timelapse_segment = segment
 
         today = datetime.now().strftime("%Y-%m-%d")
         output_subdir = self.output_dir / "timelapse" / today
@@ -354,8 +337,11 @@ class VideoRingBuffer:
         cmd = [
             "ffmpeg", "-y",
             "-threads", "2",
-            # Video input (thread queue prevents drops during CPU pressure)
+            # Video input — rtbufsize absorbs short bursts; thread_queue_size
+            # prevents drops during CPU pressure. Neither prevents a hard stop
+            # in frame delivery (USB/driver level) — that's caught by stall detection.
             "-thread_queue_size", "512",
+            "-rtbufsize", "200M",
             "-f", "v4l2",
             "-input_format", self.input_format,
             "-video_size", self.resolution,

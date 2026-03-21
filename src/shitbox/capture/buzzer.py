@@ -244,6 +244,16 @@ def beep_ffmpeg_stall() -> None:
     _play_async(tones, name=name)
 
 
+def beep_capture_busy() -> None:
+    """Descending wah-waaah: button pressed while a save is already in progress.
+
+    Pattern: 600 Hz/300 ms then 400 Hz/500 ms — longer lower note sells the
+    "wrong answer" feel. No escalation or grace-period check; this is direct
+    driver feedback, not a fault alert.
+    """
+    _play_async([(600, 300), (400, 500)], name="buzzer-capture-busy")
+
+
 def beep_capture_failed() -> None:
     """Double descending tone pair: video save verification failed.
 
