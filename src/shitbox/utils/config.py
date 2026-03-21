@@ -247,6 +247,7 @@ class SpeakerConfig:
     enabled: bool = False
     model_path: str = "/var/lib/shitbox/tts/en_US-lessac-medium.onnx"
     distance_announce_interval_km: float = 50.0
+    volume: int = 75
 
 
 @dataclass

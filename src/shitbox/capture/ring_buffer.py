@@ -32,7 +32,6 @@ class VideoRingBuffer:
 
     RESTART_BACKOFF_SECONDS = 2.0
     AUDIO_RETRY_SECONDS = 30.0
-    STALL_TIMEOUT_SECONDS = 30
     DEVICE_MISSING_BACKOFF_SECONDS = 30.0
 
     def __init__(
@@ -71,11 +70,6 @@ class VideoRingBuffer:
         self._save_counter = 0
         self._lock = threading.Lock()
         self._intro_ts: Optional[Path] = None
-
-        # Stall detection state — reset on every ffmpeg restart
-        self._last_segment_mtime: float = 0.0
-        self._last_segment_size: int = 0
-        self._stall_check_armed: bool = False
 
     @staticmethod
     def _detect_encoder() -> list[str]:
@@ -136,6 +130,7 @@ class VideoRingBuffer:
             return
 
         self.buffer_dir.mkdir(parents=True, exist_ok=True)
+        self._cleanup_buffer()  # Clear stale segments from previous run
         self._prepare_intro()
         self._running = True
         self._start_ffmpeg()
@@ -178,7 +173,7 @@ class VideoRingBuffer:
         self,
         prefix: str = "event",
         post_seconds: Optional[int] = None,
-        callback: Optional[Callable[[Optional[Path]], None]] = None,
+        callback: Optional[Callable[[Optional[Path], float], None]] = None,
     ) -> None:
         """Save pre-event buffer + post-event recording to a single MP4.
 
@@ -188,7 +183,10 @@ class VideoRingBuffer:
             prefix: Filename prefix for the saved video.
             post_seconds: Seconds of post-event footage to capture.
                           Defaults to self.post_event_seconds.
-            callback: Called with the output Path on success, or None on failure.
+            callback: Called with (output Path or None, clip_start_mtime).
+                      clip_start_mtime is the filesystem mtime of the oldest
+                      pre-event segment — a GPS-clock wall-clock timestamp usable
+                      for cross-camera sync alignment.
         """
         if post_seconds is None:
             post_seconds = self.post_event_seconds
@@ -421,13 +419,16 @@ class VideoRingBuffer:
         so recording starts immediately. The next health-monitor restart
         will try audio again.
         """
-        self._reset_stall_state()
         self.buffer_dir.mkdir(parents=True, exist_ok=True)
 
         import os
         if not os.path.exists(self.device):
             log.warning("video_device_missing_at_start", device=self.device)
             return
+
+        # Release device before spawning — ensures any zombie holding it is gone.
+        subprocess.run(["fuser", "-k", self.device], stderr=subprocess.DEVNULL)
+        time.sleep(0.5)
 
         log.info(
             "video_ring_buffer_ffmpeg_starting",
@@ -488,11 +489,7 @@ class VideoRingBuffer:
             self._running = False
 
     def _read_stderr(self) -> str:
-        """Read available stderr from the current process without blocking.
-
-        Uses os.read() with a non-blocking flag so this is safe to call on
-        a live process (stall detection path).
-        """
+        """Read available stderr from the current process without blocking."""
         if self._process and self._process.stderr:
             try:
                 import os
@@ -522,60 +519,8 @@ class VideoRingBuffer:
             except subprocess.TimeoutExpired:
                 self._process.kill()
 
-    def _reset_stall_state(self) -> None:
-        """Reset stall detection state. Called at the start of every ffmpeg launch."""
-        self._last_segment_mtime = 0.0
-        self._last_segment_size = 0
-        self._stall_check_armed = False
-
-    def _check_stall(self) -> Optional[dict[str, object]]:
-        """Check whether the ffmpeg segment output has stalled.
-
-        Uses the newest segment's mtime and size to detect frozen output.
-        Returns diagnostic info when a stall is detected, or None otherwise.
-        Returns None during the startup grace period (no segments yet) and
-        on the first observation (baselining).
-
-        Returns:
-            Dict with diagnostic info if stalled, None otherwise.
-        """
-        segments = self._get_buffer_segments()
-        if not segments:
-            # ffmpeg still starting up — no segments yet
-            return None
-
-        newest = segments[-1]
-        try:
-            st = newest.stat()
-        except OSError:
-            return None
-
-        if not self._stall_check_armed:
-            # First observation — arm the detector and record baseline
-            self._stall_check_armed = True
-            self._last_segment_mtime = st.st_mtime
-            self._last_segment_size = st.st_size
-            return None
-
-        if st.st_mtime != self._last_segment_mtime or st.st_size != self._last_segment_size:
-            # File activity detected — update baseline and reset timer
-            self._last_segment_mtime = st.st_mtime
-            self._last_segment_size = st.st_size
-            return None
-
-        # No activity — check whether the stall timeout has elapsed
-        now = time.time()
-        if (now - self._last_segment_mtime) > self.STALL_TIMEOUT_SECONDS:
-            return {
-                "segment": newest.name,
-                "size_kb": round(st.st_size / 1024, 1),
-                "mtime_age_s": round(now - st.st_mtime, 1),
-                "segment_count": len(segments),
-            }
-        return None
-
     def _health_monitor(self) -> None:
-        """Background thread that restarts ffmpeg if it crashes or stalls.
+        """Background thread that restarts ffmpeg on crash.
 
         Also retries with audio periodically if running in video-only mode,
         since the USB audio device may not be available at boot.
@@ -610,28 +555,6 @@ class VideoRingBuffer:
                     continue
                 self._start_ffmpeg()
                 last_audio_retry = time.time()
-                continue
-
-            # Restart if ffmpeg is alive but producing no output
-            stall_info = self._check_stall()
-            if stall_info:
-                log.warning(
-                    "ffmpeg_stall_detected",
-                    timeout_seconds=self.STALL_TIMEOUT_SECONDS,
-                    newest_segment=stall_info.get("segment"),
-                    segment_size_kb=stall_info.get("size_kb"),
-                    segment_mtime_age_s=stall_info.get("mtime_age_s"),
-                    segment_count=stall_info.get("segment_count"),
-                    ffmpeg_pid=self._process.pid if self._process else None,
-                    ffmpeg_alive=self._process.poll() is None if self._process else False,
-                    stderr_tail=self._read_stderr(),
-                )
-                from shitbox.capture import buzzer, speaker
-
-                buzzer.beep_ffmpeg_stall()
-                speaker.speak_ffmpeg_stall()
-                self._kill_current()
-                self._start_ffmpeg()
                 continue
 
             # If running without audio, periodically restart to retry
@@ -684,6 +607,9 @@ class VideoRingBuffer:
             # 1. Copy completed buffer segments (pre-event footage)
             pre_cutoff = time.time()
             pre_segments = self._copy_complete_segments(tmp_dir, "pre")
+            # mtime of oldest segment = GPS-clock time when that segment closed;
+            # used by the PiP compositor to align two independently-rolling buffers.
+            clip_start_mtime = pre_segments[0].stat().st_mtime if pre_segments else pre_cutoff
             pre_bytes = sum(s.stat().st_size for s in pre_segments)
             log.info(
                 "video_save_pre_segments_copied",
@@ -718,7 +644,7 @@ class VideoRingBuffer:
             if not all_segments:
                 log.warning("video_save_no_segments", save_id=save_id)
                 if callback:
-                    callback(None)
+                    callback(None, 0.0)
                 return
 
             # 4. Concatenate into a single MP4
@@ -750,12 +676,12 @@ class VideoRingBuffer:
                 output_path = None
 
             if callback:
-                callback(output_path)
+                callback(output_path, clip_start_mtime)
 
         except Exception as e:
             log.error("video_save_error", save_id=save_id, error=str(e))
             if callback:
-                callback(None)
+                callback(None, 0.0)
         finally:
             # 5. Clean up temp copies
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -912,6 +838,15 @@ class VideoRingBuffer:
             return None
 
     def _cleanup_buffer(self) -> None:
-        """Remove all files from the buffer directory."""
-        if self.buffer_dir.exists():
-            shutil.rmtree(str(self.buffer_dir), ignore_errors=True)
+        """Remove segment files and temporary save dirs from the buffer directory.
+
+        Preserves intro.ts so it doesn't need to be re-converted on every restart.
+        """
+        if not self.buffer_dir.exists():
+            return
+        for f in self.buffer_dir.glob("seg_*.ts"):
+            f.unlink(missing_ok=True)
+        combined = self.buffer_dir / "combined.ts"
+        combined.unlink(missing_ok=True)
+        for d in self.buffer_dir.glob("save_*"):
+            shutil.rmtree(str(d), ignore_errors=True)

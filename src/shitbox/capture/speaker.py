@@ -216,7 +216,7 @@ def _load_existing_cache() -> None:
     log.info("speaker_cache_loaded", count=len(_cache), total=len(_CACHED_MESSAGES))
 
 
-def init(model_path: str) -> bool:
+def init(model_path: str, volume: int = 75) -> bool:
     """Initialise the speaker.
 
     If all fixed-message WAV files already exist in the cache directory,
@@ -236,7 +236,7 @@ def init(model_path: str) -> bool:
         log.warning("usb_speaker_not_detected", fallback="buzzer only")
         return False
 
-    _set_volume(75)
+    _set_volume(volume)
 
     if _all_wavs_cached():
         _load_existing_cache()

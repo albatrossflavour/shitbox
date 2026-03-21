@@ -71,7 +71,7 @@ def build_drawtext_filter() -> str:
     Eight drawtext instances reading from /dev/shm/ text files:
     - Speed (bottom-left, large)
     - Heading (bottom-left, smaller, below speed)
-    - G-force with direction arrow (bottom-right)
+    - G-force with direction arrow (right side, above PiP)
     - Location name (top-right, bold white)
     - GPS time (top-right, below location)
     - GPS coords (top-right, below time, faded)
@@ -93,11 +93,11 @@ def build_drawtext_filter() -> str:
             f":{mono}:fontsize=22:fontcolor=white"
             f":{box}:x=20:y=h-50"
         ),
-        # G-force — bottom-right
+        # G-force — right side, above PiP inset
         (
             f"drawtext=textfile='{GFORCE_FILE}':reload=1"
             f":{mono}:fontsize=22:fontcolor=white"
-            f":{box}:x=w-tw-20:y=h-50"
+            f":{box}:x=w-tw-20:y=h-200"
         ),
         # Location name — top-right, prominent
         (

@@ -31,9 +31,8 @@ class TimelapseCompiler:
     Gracefully skips days with no frames and days where the MP4 already exists.
     """
 
-    TARGET_MIN_SECONDS = 30
-    TARGET_MAX_SECONDS = 90
-    BASE_FPS = 24
+    OUTPUT_FPS = 24
+    MAX_SECONDS = 120
 
     def __init__(self, captures_dir: str, fps: int = 24, intro_video: str = "") -> None:
         self._captures_dir = Path(captures_dir)
@@ -96,12 +95,6 @@ class TimelapseCompiler:
         if compiled_any:
             self.generate_timelapse_json()
 
-    def _target_fps(self, frame_count: int) -> float:
-        """Calculate fps so output duration falls between TARGET_MIN and TARGET_MAX seconds."""
-        ideal = frame_count / self.BASE_FPS
-        target_duration = max(self.TARGET_MIN_SECONDS, min(self.TARGET_MAX_SECONDS, ideal))
-        return frame_count / target_duration
-
     def _compile_day(self, day: str) -> None:
         """Compile all frames for a single day into an MP4."""
         day_dir = self._captures_dir / "timelapse" / day
@@ -116,23 +109,32 @@ class TimelapseCompiler:
         tmp_frames = output_dir / "timelapse.frames.mp4"
         tmp_path = output_dir / "timelapse.tmp.mp4"
 
-        fps = self._target_fps(len(frames))
-        duration_s = round(len(frames) / fps)
-        log.info("timelapse_compiling", date=day, frame_count=len(frames), fps=round(fps, 2), duration_s=duration_s)
+        # Duration scales with frame count at OUTPUT_FPS; cap at MAX_SECONDS
+        duration_s = min(len(frames) / self.OUTPUT_FPS, self.MAX_SECONDS)
+        per_frame = duration_s / len(frames)
+        log.info("timelapse_compiling", date=day, frame_count=len(frames), fps=self.OUTPUT_FPS, duration_s=round(duration_s, 1))
+
+        # Write concat demuxer list — explicit per-frame duration avoids fps rounding issues
+        frames_txt = output_dir / "timelapse.frames.txt"
+        with frames_txt.open("w") as f:
+            for img in frames:
+                f.write(f"file '{img.as_posix()}'\n")
+                f.write(f"duration {per_frame:.6f}\n")
+            # Repeat last frame so its duration is honoured by the demuxer
+            f.write(f"file '{frames[-1].as_posix()}'\n")
 
         # Pass 1: compile frames → temp MP4
         cmd = [
             "ffmpeg", "-y",
-            "-framerate", str(fps),
-            "-pattern_type", "glob",
-            "-i", str(day_dir / "timelapse_*.jpg"),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-preset", "medium",
+            "-f", "concat", "-safe", "0", "-i", str(frames_txt),
+            "-vsync", "vfr",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-crf", "18", "-preset", "medium",
             str(tmp_frames),
         ]
         try:
             result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300)
+            frames_txt.unlink(missing_ok=True)
             if result.returncode != 0 or not tmp_frames.exists():
                 stderr = result.stderr.decode()[-500:] if result.stderr else ""
                 log.error("timelapse_compile_failed", date=day, stderr=stderr)
@@ -140,10 +142,12 @@ class TimelapseCompiler:
                 return
         except subprocess.TimeoutExpired:
             log.error("timelapse_compile_timeout", date=day)
+            frames_txt.unlink(missing_ok=True)
             tmp_frames.unlink(missing_ok=True)
             return
         except Exception as exc:
             log.error("timelapse_compile_error", date=day, error=str(exc))
+            frames_txt.unlink(missing_ok=True)
             tmp_frames.unlink(missing_ok=True)
             return
 
@@ -176,7 +180,7 @@ class TimelapseCompiler:
             tmp_frames.rename(tmp_path)
 
         os.replace(str(tmp_path), str(output_path))
-        log.info("timelapse_compiled", date=day, frame_count=len(frames), fps=round(fps, 2), duration_s=duration_s, output=str(output_path))
+        log.info("timelapse_compiled", date=day, frame_count=len(frames), fps=self.OUTPUT_FPS, duration_s=round(duration_s, 1), output=str(output_path))
 
     def generate_timelapse_json(self, video_base_url: str = "/captures") -> Optional[Path]:
         """Write captures/timelapse.json listing all compiled timelapse videos."""

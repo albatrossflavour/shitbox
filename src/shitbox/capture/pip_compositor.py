@@ -57,6 +57,7 @@ class PipCompositor:
         primary_path: Path,
         secondary_path: Path,
         output_path: Path,
+        sync_offset_seconds: float = 0.0,
         pip_offset_seconds: float = 0.0,
     ) -> bool:
         """Merge primary and secondary clips into a PIP composite.
@@ -88,8 +89,18 @@ class PipCompositor:
             secondary_path.unlink(missing_ok=True)
             return self._copy_primary(primary_path, output_path)
 
+        # sync_offset_seconds = pip_clip_start_mtime - primary_clip_start_mtime
+        # Derived from GPS-clock filesystem mtimes of the oldest pre-event segments.
+        # > 0: pip started later → delay pip with -itsoffset
+        # < 0: pip started earlier → trim pip start with -ss
+        excess = sync_offset_seconds
+        log.info("pip_sync", excess_s=round(excess, 3))
+
+        # PiP enable gate: after intro (if any) and after pip content starts
+        effective_pip_offset = max(pip_offset_seconds, max(0.0, excess))
+
         x, y = _POSITION_OVERLAY.get(self.position, ("W-w-10", "H-h-10"))
-        enable = f":enable='gte(t,{pip_offset_seconds:.3f})'" if pip_offset_seconds > 0 else ""
+        enable = f":enable='gte(t,{effective_pip_offset:.3f})'" if effective_pip_offset > 0 else ""
         filter_complex = (
             f"[1:v]scale=iw*{self.scale}:-2,"
             f"pad=iw+4:ih+20:2:18:color=black@0.7,"
@@ -104,12 +115,14 @@ class PipCompositor:
         # partial file at output_path if ffmpeg fails mid-way.
         tmp = output_path.parent / f".tmp_{output_path.name}"
         try:
-            cmd = [
-                "ffmpeg", "-y",
-                "-i", str(primary_path),
-                "-i", str(secondary_path),
-                "-filter_complex", filter_complex,
-            ]
+            cmd = ["ffmpeg", "-y", "-i", str(primary_path)]
+            if excess > 0.5:
+                # Front has more pre-event: delay secondary so events align
+                cmd += ["-itsoffset", f"{excess:.3f}"]
+            elif excess < -0.5:
+                # Cabin has more pre-event: trim secondary start
+                cmd += ["-ss", f"{-excess:.3f}"]
+            cmd += ["-i", str(secondary_path), "-filter_complex", filter_complex]
             cmd += self._encoder
             cmd += ["-c:a", "copy", str(tmp)]
 
@@ -172,8 +185,27 @@ class PipCompositor:
             return False
 
     @staticmethod
-    def _clip_long_enough(path: Path) -> bool:
-        """Return True if the clip is at least MIN_CLIP_SECONDS long."""
+    def _get_start_time(path: Path) -> float:
+        """Return clip start time in seconds (from shared monotonic clock), or 0.0 on error."""
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=start_time",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    str(path),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            )
+            return float(result.stdout.decode().strip())
+        except Exception:
+            return 0.0
+
+    @staticmethod
+    def _get_duration(path: Path) -> float:
+        """Return clip duration in seconds, or 0.0 on error."""
         try:
             result = subprocess.run(
                 [
@@ -186,7 +218,11 @@ class PipCompositor:
                 stderr=subprocess.DEVNULL,
                 timeout=10,
             )
-            duration = float(result.stdout.decode().strip())
-            return duration >= MIN_CLIP_SECONDS
+            return float(result.stdout.decode().strip())
         except Exception:
-            return False
+            return 0.0
+
+    @staticmethod
+    def _clip_long_enough(path: Path) -> bool:
+        """Return True if the clip is at least MIN_CLIP_SECONDS long."""
+        return PipCompositor._get_duration(path) >= MIN_CLIP_SECONDS

@@ -92,8 +92,8 @@ class DetectorConfig:
     rough_road_window_ms: int = 1000
 
     # High G: sqrt(ax² + ay²) > threshold
-    high_g_threshold: float = 0.85
-    high_g_min_duration_ms: int = 150
+    high_g_threshold: float = 1.0
+    high_g_min_duration_ms: int = 300
 
     # Cooldown: minimum time between events of same type
     cooldown_seconds: float = 10.0

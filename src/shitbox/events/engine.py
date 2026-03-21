@@ -196,6 +196,7 @@ class EngineConfig:
     speaker_enabled: bool = False
     speaker_model_path: str = "/var/lib/shitbox/tts/en_US-lessac-medium.onnx"
     speaker_distance_announce_interval_km: float = 50.0
+    speaker_volume: int = 75
 
     # Route waypoints (WaypointConfig objects loaded from YAML)
     route_waypoints: list = field(default_factory=list)
@@ -314,6 +315,7 @@ class EngineConfig:
             speaker_distance_announce_interval_km=(
                 config.capture.speaker.distance_announce_interval_km
             ),
+            speaker_volume=config.capture.speaker.volume,
             # Route waypoints
             route_waypoints=config.sensors.gps.route.waypoints,
         )
@@ -749,19 +751,21 @@ class UnifiedEngine:
                             "pip_done": False,
                             "primary_path": None,
                             "pip_path": None,
+                            "primary_clip_start": 0.0,
+                            "pip_clip_start": 0.0,
                         }
                     self.video_ring_buffer.save_event(
                         prefix=event.event_type.value,
                         post_seconds=int(self.config.capture_post_seconds),
-                        callback=lambda path, _eid=eid: self._on_primary_saved(
-                            _eid, path
+                        callback=lambda path, cs, _eid=eid: self._on_primary_saved(
+                            _eid, path, cs
                         ),
                     )
                     self.pip_ring_buffer.save_event(
                         prefix=event.event_type.value + "_pip",
                         post_seconds=int(self.config.capture_post_seconds),
-                        callback=lambda path, _eid=eid: self._on_pip_saved(
-                            _eid, path
+                        callback=lambda path, cs, _eid=eid: self._on_pip_saved(
+                            _eid, path, cs
                         ),
                     )
                     log.info(
@@ -773,7 +777,7 @@ class UnifiedEngine:
                     self.video_ring_buffer.save_event(
                         prefix=event.event_type.value,
                         post_seconds=int(self.config.capture_post_seconds),
-                        callback=lambda path, _eid=eid: self._on_video_complete(
+                        callback=lambda path, _cs, _eid=eid: self._on_video_complete(
                             _eid, path
                         ),
                     )
@@ -891,7 +895,7 @@ class UnifiedEngine:
             # _check_post_captures to pick up.
             self._event_video_paths[event_id] = path
 
-    def _on_primary_saved(self, event_id: int, path: Optional[Path]) -> None:
+    def _on_primary_saved(self, event_id: int, path: Optional[Path], clip_start: float = 0.0) -> None:
         """Called when the primary ring buffer save finishes (dual-camera path)."""
         with self._pip_lock:
             if event_id not in self._pip_pending:
@@ -899,18 +903,20 @@ class UnifiedEngine:
                 self._on_video_complete(event_id, path)
                 return
             self._pip_pending[event_id]["primary_path"] = path
+            self._pip_pending[event_id]["primary_clip_start"] = clip_start
             self._pip_pending[event_id]["primary_done"] = True
             all_done = self._pip_pending[event_id]["pip_done"]
 
         if all_done:
             self._do_pip_composite(event_id)
 
-    def _on_pip_saved(self, event_id: int, path: Optional[Path]) -> None:
+    def _on_pip_saved(self, event_id: int, path: Optional[Path], clip_start: float = 0.0) -> None:
         """Called when the PIP ring buffer save finishes (dual-camera path)."""
         with self._pip_lock:
             if event_id not in self._pip_pending:
                 return
             self._pip_pending[event_id]["pip_path"] = path
+            self._pip_pending[event_id]["pip_clip_start"] = clip_start
             self._pip_pending[event_id]["pip_done"] = True
             all_done = self._pip_pending[event_id]["primary_done"]
 
@@ -937,21 +943,26 @@ class UnifiedEngine:
             self._on_video_complete(event_id, primary_path)
             return
 
+        sync_offset = entry["pip_clip_start"] - entry["primary_clip_start"]
         threading.Thread(
             target=self._run_pip_composite,
-            args=(event_id, primary_path, pip_path),
+            args=(event_id, primary_path, pip_path, sync_offset),
             daemon=True,
             name=f"pip-composite-{event_id}",
         ).start()
 
     def _run_pip_composite(
-        self, event_id: int, primary: Path, pip_clip: Path
+        self, event_id: int, primary: Path, pip_clip: Path, sync_offset: float = 0.0
     ) -> None:
         """Worker thread: composite clips then call _on_video_complete."""
         output_path = primary.parent / f"pip_{primary.name}"
         assert self.pip_compositor is not None
         intro_offset = self.video_ring_buffer.intro_duration_seconds if self.video_ring_buffer else 0.0
-        success = self.pip_compositor.composite(primary, pip_clip, output_path, pip_offset_seconds=intro_offset)
+        success = self.pip_compositor.composite(
+            primary, pip_clip, output_path,
+            sync_offset_seconds=sync_offset,
+            pip_offset_seconds=intro_offset,
+        )
         if success and output_path.exists():
             self._on_video_complete(event_id, output_path)
         else:
@@ -1834,7 +1845,7 @@ class UnifiedEngine:
         # Initialise speaker (after buzzer so boot tones precede spoken announcement)
         if self.config.speaker_enabled:
             self._notify_systemd("WATCHDOG=1")  # Piper model load takes ~5-7s
-            speaker.init(self.config.speaker_model_path)
+            speaker.init(self.config.speaker_model_path, volume=self.config.speaker_volume)
             speaker.set_boot_start_time(time.monotonic())
             was_crash = self.boot_recovery.was_crash if self.boot_recovery else False
             speaker.speak_boot(was_crash=was_crash)
@@ -2060,7 +2071,7 @@ class UnifiedEngine:
                 issues.append("speaker_worker_dead")
                 try:
                     speaker.cleanup()
-                    if speaker.init(self.config.speaker_model_path):
+                    if speaker.init(self.config.speaker_model_path, volume=self.config.speaker_volume):
                         recovered.append("speaker")
                         log.info("speaker_reinitialised")
                     else:
