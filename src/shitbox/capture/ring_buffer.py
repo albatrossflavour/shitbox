@@ -420,6 +420,10 @@ class VideoRingBuffer:
         will try audio again.
         """
         self.buffer_dir.mkdir(parents=True, exist_ok=True)
+        # Clear stale segments before every spawn. Without this, segments from
+        # a previous ffmpeg run remain on disk with old mtimes and corrupt the
+        # cross-camera sync offset calculation after a crash+restart.
+        self._cleanup_buffer()
 
         import os
         if not os.path.exists(self.device):
@@ -519,8 +523,22 @@ class VideoRingBuffer:
             except subprocess.TimeoutExpired:
                 self._process.kill()
 
+    def _is_stalled(self) -> bool:
+        """Return True if ffmpeg is alive but has stopped writing segments.
+
+        Checks whether the newest segment file has been updated within
+        2 × segment_seconds. A stalled ffmpeg holds the device open but
+        produces no new footage, so it must be killed and restarted.
+        """
+        segments = self._get_buffer_segments()
+        if not segments:
+            return False  # buffer empty — may still be starting up
+        newest_mtime = segments[-1].stat().st_mtime
+        age = time.time() - newest_mtime
+        return age > 2 * self.segment_seconds
+
     def _health_monitor(self) -> None:
-        """Background thread that restarts ffmpeg on crash.
+        """Background thread that restarts ffmpeg on crash or stall.
 
         Also retries with audio periodically if running in video-only mode,
         since the USB audio device may not be available at boot.
@@ -532,6 +550,8 @@ class VideoRingBuffer:
             if not self._running:
                 break
 
+            import os
+
             # Restart if ffmpeg crashed
             if self._process is not None and self._process.poll() is not None:
                 rc = self._process.returncode
@@ -542,7 +562,6 @@ class VideoRingBuffer:
                     stderr=stderr,
                 )
                 # If the device node is missing, back off instead of tight-looping
-                import os
                 if not os.path.exists(self.device):
                     log.warning(
                         "video_device_missing",
@@ -556,6 +575,20 @@ class VideoRingBuffer:
                 self._start_ffmpeg()
                 last_audio_retry = time.time()
                 continue
+
+            # Restart if ffmpeg is alive but has stopped writing segments
+            if self._process is not None and self._process.poll() is None:
+                if self._is_stalled():
+                    log.warning(
+                        "video_ring_buffer_ffmpeg_stalled",
+                        device=self.device,
+                        stale_after_seconds=2 * self.segment_seconds,
+                    )
+                    # Kill before replacing _process reference to avoid zombies
+                    self._kill_current()
+                    self._start_ffmpeg()
+                    last_audio_retry = time.time()
+                    continue
 
             # If running without audio, periodically restart to retry
             # (only when an audio device is configured but wasn't available at last start)
@@ -733,9 +766,10 @@ class VideoRingBuffer:
     def _concatenate_segments(self, segments: list[Path], prefix: str) -> Optional[Path]:
         """Concatenate MPEG-TS segments into a single MP4.
 
-        MPEG-TS is byte-concatenatable by design, so we join the .ts files
-        directly and then remux to MP4 with stream copy.  This is simpler
-        and more robust than the ffmpeg concat demuxer.
+        Uses the ffmpeg concat demuxer (not byte-concatenation) so that PTS is
+        adjusted at each file boundary. Byte-joining TS files with different PTS
+        origins (intro vs live segments, or segments from different ffmpeg runs)
+        causes timestamp discontinuities that players show as freezes/stutters.
         """
         if not segments:
             return None
@@ -753,50 +787,44 @@ class VideoRingBuffer:
                 break
             counter += 1
 
-        # Byte-concatenate TS segments (MPEG-TS is designed for this)
-        combined_ts = segments[0].parent / "combined.ts"
-        total_input_bytes = 0
-        try:
-            with open(combined_ts, "wb") as out:
-                # Prepend intro if available
-                if self._intro_ts and self._intro_ts.exists():
-                    intro_size = self._intro_ts.stat().st_size
-                    total_input_bytes += intro_size
-                    with open(self._intro_ts, "rb") as intro:
-                        shutil.copyfileobj(intro, out)
+        # Build file list for the concat demuxer
+        files: list[Path] = []
+        if self._intro_ts and self._intro_ts.exists():
+            files.append(self._intro_ts)
+        files.extend(segments)
 
-                for seg in segments:
-                    seg_size = seg.stat().st_size
-                    total_input_bytes += seg_size
-                    with open(seg, "rb") as inp:
-                        shutil.copyfileobj(inp, out)
-        except Exception as e:
-            log.error("concat_ts_join_error", error=str(e))
-            return None
-
+        total_input_bytes = sum(f.stat().st_size for f in files if f.exists())
         if total_input_bytes == 0:
             log.warning("concat_no_data", segment_count=len(segments))
-            combined_ts.unlink(missing_ok=True)
+            return None
+
+        # concat.txt lives in the save_N/ tmp dir and is cleaned up with it
+        concat_list = segments[0].parent / "concat.txt"
+        try:
+            with open(concat_list, "w") as f:
+                for p in files:
+                    f.write(f"file '{p}'\n")
+        except Exception as e:
+            log.error("concat_list_write_error", error=str(e))
             return None
 
         log.info(
-            "concat_ts_joined",
+            "concat_segments",
             segment_count=len(segments),
             total_mb=round(total_input_bytes / (1024 * 1024), 2),
         )
 
-        # Remux combined TS → MP4 into buffer dir first, then move to captures
-        # so rsync never sees a partial file in the output directory.
-        # Increase probesize so ffmpeg scans past the first segment to find
-        # SPS/PPS NAL units — the h264_v4l2m2m encoder may not emit them
-        # until a few seconds after startup, so the first segment's headers
-        # can lack video dimensions.
-        tmp_mp4 = combined_ts.parent / f".tmp_{output_path.name}"
+        # Remux via concat demuxer → MP4 into buffer dir first, then move to
+        # captures so rsync never sees a partial file in the output directory.
+        # Large probesize ensures ffmpeg finds SPS/PPS NAL units even if the
+        # h264_v4l2m2m encoder didn't emit them until a few seconds after startup.
+        tmp_mp4 = segments[0].parent / f".tmp_{output_path.name}"
         cmd = [
             "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
             "-analyzeduration", "20000000",
             "-probesize", "20000000",
-            "-i", str(combined_ts),
+            "-i", str(concat_list),
             "-c", "copy",
             str(tmp_mp4),
         ]
@@ -808,7 +836,7 @@ class VideoRingBuffer:
                 stderr=subprocess.PIPE,
                 timeout=60,
             )
-            combined_ts.unlink(missing_ok=True)
+            concat_list.unlink(missing_ok=True)
 
             if result.returncode == 0 and tmp_mp4.exists():
                 size = tmp_mp4.stat().st_size
@@ -828,12 +856,12 @@ class VideoRingBuffer:
                 return None
         except subprocess.TimeoutExpired:
             log.error("concat_timeout")
-            combined_ts.unlink(missing_ok=True)
+            concat_list.unlink(missing_ok=True)
             tmp_mp4.unlink(missing_ok=True)
             return None
         except Exception as e:
             log.error("concat_error", error=str(e))
-            combined_ts.unlink(missing_ok=True)
+            concat_list.unlink(missing_ok=True)
             tmp_mp4.unlink(missing_ok=True)
             return None
 

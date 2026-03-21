@@ -89,15 +89,16 @@ class PipCompositor:
             secondary_path.unlink(missing_ok=True)
             return self._copy_primary(primary_path, output_path)
 
-        # sync_offset_seconds = pip_clip_start_mtime - primary_clip_start_mtime
-        # Derived from GPS-clock filesystem mtimes of the oldest pre-event segments.
-        # > 0: pip started later → delay pip with -itsoffset
-        # < 0: pip started earlier → trim pip start with -ss
-        excess = sync_offset_seconds
-        log.info("pip_sync", excess_s=round(excess, 3))
+        # Total offset to apply to the pip input:
+        #   pip_offset_seconds = intro duration prepended to primary (pip has no intro)
+        #   sync_offset_seconds = pip_clip_start_mtime - primary_clip_start_mtime
+        # > 0: delay pip input with -itsoffset so events align with primary timeline
+        # < 0: trim pip start with -ss
+        total_offset = pip_offset_seconds + sync_offset_seconds
+        log.info("pip_sync", intro_s=round(pip_offset_seconds, 3), sync_s=round(sync_offset_seconds, 3), total_s=round(total_offset, 3))
 
-        # PiP enable gate: after intro (if any) and after pip content starts
-        effective_pip_offset = max(pip_offset_seconds, max(0.0, excess))
+        # PiP overlay enable gate: show pip overlay only once pip content is present
+        effective_pip_offset = max(0.0, total_offset)
 
         x, y = _POSITION_OVERLAY.get(self.position, ("W-w-10", "H-h-10"))
         enable = f":enable='gte(t,{effective_pip_offset:.3f})'" if effective_pip_offset > 0 else ""
@@ -116,12 +117,12 @@ class PipCompositor:
         tmp = output_path.parent / f".tmp_{output_path.name}"
         try:
             cmd = ["ffmpeg", "-y", "-i", str(primary_path)]
-            if excess > 0.5:
-                # Front has more pre-event: delay secondary so events align
-                cmd += ["-itsoffset", f"{excess:.3f}"]
-            elif excess < -0.5:
-                # Cabin has more pre-event: trim secondary start
-                cmd += ["-ss", f"{-excess:.3f}"]
+            if total_offset > 0.5:
+                # Primary has intro + more pre-event: delay pip so events align
+                cmd += ["-itsoffset", f"{total_offset:.3f}"]
+            elif total_offset < -0.5:
+                # Pip has more content than primary intro + pre-event: trim pip start
+                cmd += ["-ss", f"{-total_offset:.3f}"]
             cmd += ["-i", str(secondary_path), "-filter_complex", filter_complex]
             cmd += self._encoder
             cmd += ["-c:a", "copy", str(tmp)]
