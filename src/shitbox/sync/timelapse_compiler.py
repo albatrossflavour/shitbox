@@ -106,81 +106,120 @@ class TimelapseCompiler:
         output_dir = self._captures_dir / day
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "timelapse.mp4"
+        lock_path = output_dir / "timelapse.lock"
         tmp_frames = output_dir / "timelapse.frames.mp4"
         tmp_path = output_dir / "timelapse.tmp.mp4"
 
-        # Duration scales with frame count at OUTPUT_FPS; cap at MAX_SECONDS
-        duration_s = min(len(frames) / self.OUTPUT_FPS, self.MAX_SECONDS)
-        per_frame = duration_s / len(frames)
-        log.info("timelapse_compiling", date=day, frame_count=len(frames), fps=self.OUTPUT_FPS, duration_s=round(duration_s, 1))
-
-        # Write concat demuxer list — explicit per-frame duration avoids fps rounding issues
-        frames_txt = output_dir / "timelapse.frames.txt"
-        with frames_txt.open("w") as f:
-            for img in frames:
-                f.write(f"file '{img.as_posix()}'\n")
-                f.write(f"duration {per_frame:.6f}\n")
-            # Repeat last frame so its duration is honoured by the demuxer
-            f.write(f"file '{frames[-1].as_posix()}'\n")
-
-        # Pass 1: compile frames → temp MP4
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat", "-safe", "0", "-i", str(frames_txt),
-            "-vsync", "vfr",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            "-crf", "18", "-preset", "medium",
-            str(tmp_frames),
-        ]
+        # Guard against multiple processes compiling the same day simultaneously
         try:
-            result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300)
-            frames_txt.unlink(missing_ok=True)
-            if result.returncode != 0 or not tmp_frames.exists():
-                stderr = result.stderr.decode()[-500:] if result.stderr else ""
-                log.error("timelapse_compile_failed", date=day, stderr=stderr)
-                tmp_frames.unlink(missing_ok=True)
-                return
-        except subprocess.TimeoutExpired:
-            log.error("timelapse_compile_timeout", date=day)
-            frames_txt.unlink(missing_ok=True)
-            tmp_frames.unlink(missing_ok=True)
-            return
-        except Exception as exc:
-            log.error("timelapse_compile_error", date=day, error=str(exc))
-            frames_txt.unlink(missing_ok=True)
-            tmp_frames.unlink(missing_ok=True)
+            lock_path.touch(exist_ok=False)
+        except FileExistsError:
+            log.debug("timelapse_compile_skipped_locked", date=day)
             return
 
-        # Pass 2: prepend intro if available
-        intro = Path(self._intro_video) if self._intro_video else None
-        if intro and intro.exists():
+        try:
+            # Duration scales with frame count at OUTPUT_FPS; cap at MAX_SECONDS
+            duration_s = min(len(frames) / self.OUTPUT_FPS, self.MAX_SECONDS)
+            per_frame = duration_s / len(frames)
+            log.info("timelapse_compiling", date=day, frame_count=len(frames), fps=self.OUTPUT_FPS, duration_s=round(duration_s, 1))
+
+            # Write concat demuxer list — explicit per-frame duration avoids fps rounding issues
+            frames_txt = output_dir / "timelapse.frames.txt"
+            with frames_txt.open("w") as f:
+                for img in frames:
+                    f.write(f"file '{img.as_posix()}'\n")
+                    f.write(f"duration {per_frame:.6f}\n")
+                # Repeat last frame so its duration is honoured by the demuxer
+                f.write(f"file '{frames[-1].as_posix()}'\n")
+
+            # Pass 1: compile frames → temp MP4
             cmd = [
                 "ffmpeg", "-y",
-                "-i", str(intro),
-                "-i", str(tmp_frames),
-                "-filter_complex", "[0:v][1:v]concat=n=2:v=1[out]",
-                "-map", "[out]",
-                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium",
-                str(tmp_path),
+                "-f", "concat", "-safe", "0", "-i", str(frames_txt),
+                "-r", "24",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-crf", "18", "-preset", "ultrafast",
+                str(tmp_frames),
             ]
             try:
                 result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300)
-                tmp_frames.unlink(missing_ok=True)
-                if result.returncode != 0 or not tmp_path.exists():
+                frames_txt.unlink(missing_ok=True)
+                if result.returncode != 0 or not tmp_frames.exists():
                     stderr = result.stderr.decode()[-500:] if result.stderr else ""
-                    log.error("timelapse_intro_concat_failed", date=day, stderr=stderr)
-                    tmp_path.unlink(missing_ok=True)
+                    log.error("timelapse_compile_failed", date=day, stderr=stderr)
+                    tmp_frames.unlink(missing_ok=True)
                     return
-            except Exception as exc:
-                log.error("timelapse_intro_concat_error", date=day, error=str(exc))
+            except subprocess.TimeoutExpired:
+                log.error("timelapse_compile_timeout", date=day)
+                frames_txt.unlink(missing_ok=True)
                 tmp_frames.unlink(missing_ok=True)
-                tmp_path.unlink(missing_ok=True)
                 return
-        else:
-            tmp_frames.rename(tmp_path)
+            except Exception as exc:
+                log.error("timelapse_compile_error", date=day, error=str(exc))
+                frames_txt.unlink(missing_ok=True)
+                tmp_frames.unlink(missing_ok=True)
+                return
 
-        os.replace(str(tmp_path), str(output_path))
-        log.info("timelapse_compiled", date=day, frame_count=len(frames), fps=self.OUTPUT_FPS, duration_s=round(duration_s, 1), output=str(output_path))
+            # Pass 2: prepend intro if available.
+            # Pre-transcode intro to match timelapse specs (1280x720, 24fps, yuv420p)
+            # before concatenating — avoids resolution/fps mismatch in the concat filter.
+            intro = Path(self._intro_video) if self._intro_video else None
+            if intro and intro.exists() and intro.stat().st_size > 0:
+                tmp_intro = output_dir / "timelapse.intro.mp4"
+                intro_cmd = [
+                    "ffmpeg", "-y", "-i", str(intro),
+                    "-vf", "scale=1280:720,fps=24,format=yuv420p",
+                    "-c:v", "libx264", "-preset", "ultrafast",
+                    "-an",
+                    str(tmp_intro),
+                ]
+                intro_ok = False
+                try:
+                    r = subprocess.run(intro_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
+                    intro_ok = r.returncode == 0 and tmp_intro.exists() and tmp_intro.stat().st_size > 0
+                    if not intro_ok:
+                        stderr = r.stderr.decode()[-300:] if r.stderr else ""
+                        log.warning("timelapse_intro_transcode_failed", date=day, stderr=stderr)
+                        tmp_intro.unlink(missing_ok=True)
+                except Exception as exc:
+                    log.error("timelapse_intro_transcode_error", date=day, error=str(exc))
+                    tmp_intro.unlink(missing_ok=True)
+
+                if intro_ok:
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-i", str(tmp_intro),
+                        "-i", str(tmp_frames),
+                        "-filter_complex", "[0:v][1:v]concat=n=2:v=1[out]",
+                        "-map", "[out]",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast",
+                        str(tmp_path),
+                    ]
+                    try:
+                        result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300)
+                        tmp_intro.unlink(missing_ok=True)
+                        if result.returncode != 0 or not tmp_path.exists():
+                            stderr = result.stderr.decode()[-500:] if result.stderr else ""
+                            log.warning("timelapse_intro_concat_failed", date=day, stderr=stderr,
+                                        hint="falling back to frames-only")
+                            tmp_path.unlink(missing_ok=True)
+                            tmp_frames.rename(tmp_path)
+                        else:
+                            tmp_frames.unlink(missing_ok=True)
+                    except Exception as exc:
+                        log.error("timelapse_intro_concat_error", date=day, error=str(exc))
+                        tmp_intro.unlink(missing_ok=True)
+                        tmp_path.unlink(missing_ok=True)
+                        tmp_frames.rename(tmp_path)
+                else:
+                    tmp_frames.rename(tmp_path)
+            else:
+                tmp_frames.rename(tmp_path)
+
+            os.replace(str(tmp_path), str(output_path))
+            log.info("timelapse_compiled", date=day, frame_count=len(frames), fps=self.OUTPUT_FPS, duration_s=round(duration_s, 1), output=str(output_path))
+        finally:
+            lock_path.unlink(missing_ok=True)
 
     def generate_timelapse_json(self, video_base_url: str = "/captures") -> Optional[Path]:
         """Write captures/timelapse.json listing all compiled timelapse videos."""
