@@ -949,6 +949,12 @@ class UnifiedEngine:
             return
 
         sync_offset = entry["pip_clip_start"] - entry["primary_clip_start"]
+        log.info(
+            "pip_sync_mtimes",
+            primary_clip_start=round(entry["primary_clip_start"], 3),
+            pip_clip_start=round(entry["pip_clip_start"], 3),
+            sync_offset=round(sync_offset, 3),
+        )
         threading.Thread(
             target=self._run_pip_composite,
             args=(event_id, primary_path, pip_path, sync_offset),

@@ -95,15 +95,43 @@ class PipCompositor:
         # > 0: delay pip input with -itsoffset so events align with primary timeline
         # < 0: trim pip start with -ss
         total_offset = pip_offset_seconds + sync_offset_seconds
-        log.info("pip_sync", intro_s=round(pip_offset_seconds, 3), sync_s=round(sync_offset_seconds, 3), total_s=round(total_offset, 3))
 
-        # PiP overlay enable gate: show pip overlay only once pip content is present
-        effective_pip_offset = max(0.0, total_offset)
+        # Probe both clips so we can sanity-check sync assumptions in logs
+        primary_dur = self._get_duration(primary_path)
+        pip_dur = self._get_duration(secondary_path)
+        primary_start = self._get_start_time(primary_path)
+        pip_start = self._get_start_time(secondary_path)
+        primary_first_pts = self._get_first_pts(primary_path)
+        pip_first_pts = self._get_first_pts(secondary_path)
+
+        log.info(
+            "pip_sync",
+            intro_s=round(pip_offset_seconds, 3),
+            sync_s=round(sync_offset_seconds, 3),
+            total_s=round(total_offset, 3),
+            primary_dur=round(primary_dur, 3),
+            pip_dur=round(pip_dur, 3),
+            primary_start_time=round(primary_start, 6),
+            pip_start_time=round(pip_start, 6),
+            primary_first_pts=round(primary_first_pts, 6),
+            pip_first_pts=round(pip_first_pts, 6),
+        )
+
+        # Shift pip PTS by total_offset so that, at output T=intro_dur, the pip
+        # frame shown corresponds to the same wall-clock moment as the primary's
+        # first live frame.  setpts handles all signs uniformly — no need for
+        # separate -itsoffset / -ss input options.
+        #
+        # Enable gate is clamped to at least intro_dur so the pip overlay never
+        # appears while the intro is still playing, even when total_offset < intro_dur
+        # (negative sync_offset case, e.g. pip camera restarted independently).
+        effective_pip_offset = max(0.0, pip_offset_seconds, total_offset)
 
         x, y = _POSITION_OVERLAY.get(self.position, ("W-w-10", "H-h-10"))
         enable = f":enable='gte(t,{effective_pip_offset:.3f})'" if effective_pip_offset > 0 else ""
         filter_complex = (
-            f"[1:v]scale=iw*{self.scale}:-2,"
+            f"[1:v]setpts=PTS+({total_offset:.6f}/TB),"
+            f"scale=iw*{self.scale}:-2,"
             f"pad=iw+4:ih+20:2:18:color=black@0.7,"
             f"drawtext=text='Cabin':fontsize=13:fontcolor=white@0.9"
             f":x=6:y=3[pip];"
@@ -116,16 +144,11 @@ class PipCompositor:
         # partial file at output_path if ffmpeg fails mid-way.
         tmp = output_path.parent / f".tmp_{output_path.name}"
         try:
-            cmd = ["ffmpeg", "-y", "-i", str(primary_path)]
-            if total_offset > 0.5:
-                # Primary has intro + more pre-event: delay pip so events align
-                cmd += ["-itsoffset", f"{total_offset:.3f}"]
-            elif total_offset < -0.5:
-                # Pip has more content than primary intro + pre-event: trim pip start
-                cmd += ["-ss", f"{-total_offset:.3f}"]
-            cmd += ["-i", str(secondary_path), "-filter_complex", filter_complex]
+            cmd = ["ffmpeg", "-y", "-i", str(primary_path), "-i", str(secondary_path),
+                   "-filter_complex", filter_complex]
             cmd += self._encoder
             cmd += ["-c:a", "copy", str(tmp)]
+            log.info("pip_composite_cmd", cmd=" ".join(cmd))
 
             result = subprocess.run(
                 cmd,
@@ -220,6 +243,28 @@ class PipCompositor:
                 timeout=10,
             )
             return float(result.stdout.decode().strip())
+        except Exception:
+            return 0.0
+
+    @staticmethod
+    def _get_first_pts(path: Path) -> float:
+        """Return the PTS of the first video frame in seconds, or 0.0 on error."""
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe", "-v", "error",
+                    "-select_streams", "v:0",
+                    "-show_entries", "packet=pts_time",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    "-read_intervals", "%+#1",
+                    str(path),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            )
+            val = result.stdout.decode().strip()
+            return float(val) if val else 0.0
         except Exception:
             return 0.0
 
