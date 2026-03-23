@@ -354,7 +354,6 @@ class VideoRingBuffer:
 
         cmd = [
             "ffmpeg", "-y",
-            "-threads", "2",
             # Primary camera — rtbufsize absorbs short bursts; thread_queue_size
             # prevents drops during CPU pressure.
             "-thread_queue_size", "512",
@@ -604,10 +603,12 @@ class VideoRingBuffer:
             # Restart if ffmpeg is alive but has stopped writing segments
             if self._process is not None and self._process.poll() is None:
                 if self._is_stalled():
+                    stderr = self._read_stderr()
                     log.warning(
                         "video_ring_buffer_ffmpeg_stalled",
                         device=self.device,
                         stale_after_seconds=2 * self.segment_seconds,
+                        stderr=stderr,
                     )
                     # Kill before replacing _process reference to avoid zombies
                     self._kill_current()
