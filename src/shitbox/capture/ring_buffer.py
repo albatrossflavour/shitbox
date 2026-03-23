@@ -720,6 +720,10 @@ class VideoRingBuffer:
         older than min_mtime (to avoid duplicating pre-event footage in
         the post-event copy).
         """
+        # Re-create dest_dir in case _cleanup_buffer() deleted it during a
+        # stall-triggered restart while this save was sleeping between pre/post.
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
         segments = self._get_buffer_segments()
         if len(segments) < 2:
             return []
