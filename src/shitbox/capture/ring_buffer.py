@@ -17,6 +17,12 @@ from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
 
+_PIP_POSITION_MAP = {
+    "bottom_right": ("W-w-10", "H-h-10"),
+    "bottom_left": ("10", "H-h-10"),
+    "top_right": ("W-w-10", "10"),
+    "top_left": ("10", "10"),
+}
 
 class VideoRingBuffer:
     """Continuous video ring buffer with event-triggered save.
@@ -48,6 +54,12 @@ class VideoRingBuffer:
         post_event_seconds: int = 30,
         overlay_path: Optional[str] = None,
         intro_video: str = "",
+        pip_device: str = "",
+        pip_input_format: str = "mjpeg",
+        pip_resolution: str = "640x480",
+        pip_fps: int = 15,
+        pip_position: str = "bottom_right",
+        pip_scale: float = 0.25,
     ):
         self.buffer_dir = Path(buffer_dir)
         self.output_dir = Path(output_dir)
@@ -61,6 +73,12 @@ class VideoRingBuffer:
         self.post_event_seconds = post_event_seconds
         self.overlay_path = overlay_path
         self.intro_video = intro_video
+        self.pip_device = pip_device
+        self.pip_input_format = pip_input_format
+        self.pip_resolution = pip_resolution
+        self.pip_fps = pip_fps
+        self.pip_position = pip_position
+        self.pip_scale = pip_scale
 
         self._process: Optional[subprocess.Popen] = None
         self._health_thread: Optional[threading.Thread] = None
@@ -337,9 +355,8 @@ class VideoRingBuffer:
         cmd = [
             "ffmpeg", "-y",
             "-threads", "2",
-            # Video input — rtbufsize absorbs short bursts; thread_queue_size
-            # prevents drops during CPU pressure. Neither prevents a hard stop
-            # in frame delivery (USB/driver level) — that's caught by stall detection.
+            # Primary camera — rtbufsize absorbs short bursts; thread_queue_size
+            # prevents drops during CPU pressure.
             "-thread_queue_size", "512",
             "-rtbufsize", "200M",
             "-f", "v4l2",
@@ -349,11 +366,36 @@ class VideoRingBuffer:
             "-i", self.device,
         ]
 
+        if self.pip_device:
+            # Secondary (cabin) camera
+            cmd += [
+                "-thread_queue_size", "512",
+                "-rtbufsize", "200M",
+                "-f", "v4l2",
+                "-input_format", self.pip_input_format,
+                "-video_size", self.pip_resolution,
+                "-framerate", str(self.pip_fps),
+                "-i", self.pip_device,
+            ]
+
         if with_audio:
             cmd += ["-f", "alsa", "-i", self.audio_device]
 
-        # Video filter — drawtext overlay reads text files with reload=1
-        if self.overlay_path:
+        if self.pip_device:
+            # Real-time PiP composite — [0:v] primary, [1:v] cabin
+            # Audio input index is 2 (after primary + pip).
+            x, y = _PIP_POSITION_MAP.get(self.pip_position, ("W-w-10", "H-h-10"))
+            filter_complex = (
+                f"[1:v]scale=iw*{self.pip_scale}:-2,"
+                f"pad=iw+4:ih+20:2:18:color=black@0.7,"
+                f"drawtext=text='Cabin':fontsize=13:fontcolor=white@0.9:x=6:y=3[pip];"
+                f"[0:v][pip]overlay={x}:{y},format=yuv420p[out]"
+            )
+            cmd += ["-filter_complex", filter_complex, "-map", "[out]"]
+            if with_audio:
+                cmd += ["-map", "2:a"]
+        elif self.overlay_path:
+            # Single-camera drawtext overlay
             from pathlib import Path as P
 
             from shitbox.capture.overlay import (
@@ -364,13 +406,9 @@ class VideoRingBuffer:
 
             logo_exists = P(LOGO_PATH).exists()
             if logo_exists:
-                # Static logo image as second (or third) input
                 cmd += ["-i", LOGO_PATH]
                 logo_idx = 2 if with_audio else 1
-                cmd += [
-                    "-filter_complex",
-                    build_filter_complex(logo_idx),
-                ]
+                cmd += ["-filter_complex", build_filter_complex(logo_idx)]
                 cmd += ["-map", "[out]"]
                 if with_audio:
                     cmd += ["-map", "1:a"]
@@ -387,7 +425,6 @@ class VideoRingBuffer:
             cmd += ["-c:a", "aac", "-b:a", "128k"]
 
         cmd += [
-            # Segment muxer
             "-f", "segment",
             "-segment_time", str(self.segment_seconds),
             "-segment_wrap", str(self.buffer_segments),
@@ -416,8 +453,10 @@ class VideoRingBuffer:
             log.warning("video_device_missing_at_start", device=self.device)
             return
 
-        # Release device before spawning — ensures any zombie holding it is gone.
+        # Release devices before spawning — ensures any zombie holding them is gone.
         subprocess.run(["fuser", "-k", self.device], stderr=subprocess.DEVNULL)
+        if self.pip_device and os.path.exists(self.pip_device):
+            subprocess.run(["fuser", "-k", self.pip_device], stderr=subprocess.DEVNULL)
         time.sleep(0.5)
 
         log.info(

@@ -182,8 +182,6 @@ capture:
       input_format: mjpeg
       resolution: 640x480
       fps: 15
-      audio_device: "" # video-only — cabin cam has no dedicated mic
-      buffer_dir: /var/lib/shitbox/video_buffer_pip
       position: bottom_right
       scale: 0.25
   speaker:

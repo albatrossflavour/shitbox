@@ -20,7 +20,6 @@ from typing import Any, Optional
 
 from shitbox.capture import buzzer, overlay, speaker
 from shitbox.capture.button import ButtonHandler
-from shitbox.capture.pip_compositor import PipCompositor
 from shitbox.capture.ring_buffer import VideoRingBuffer
 from shitbox.capture.video import VideoRecorder
 from shitbox.display.oled import OLEDDisplayService
@@ -511,12 +510,10 @@ class UnifiedEngine:
         self.button_handler: Optional[ButtonHandler] = None
         self.video_recorder: Optional[VideoRecorder] = None
         self.video_ring_buffer: Optional[VideoRingBuffer] = None
-        self.pip_ring_buffer: Optional[VideoRingBuffer] = None
-        self.pip_compositor: Optional[PipCompositor] = None
 
         if config.capture_enabled:
             if config.video_buffer_enabled:
-                overlay_path = "drawtext" if config.overlay_enabled else None
+                overlay_path = "drawtext" if config.overlay_enabled and not config.video_buffer_pip_enabled else None
                 self.video_ring_buffer = VideoRingBuffer(
                     buffer_dir=config.video_buffer_dir,
                     output_dir=config.captures_dir,
@@ -530,26 +527,13 @@ class UnifiedEngine:
                     post_event_seconds=int(config.capture_post_seconds),
                     overlay_path=overlay_path,
                     intro_video=config.video_buffer_intro_video,
+                    pip_device=config.video_buffer_pip_device if config.video_buffer_pip_enabled else "",
+                    pip_input_format=config.video_buffer_pip_input_format,
+                    pip_resolution=config.video_buffer_pip_resolution,
+                    pip_fps=config.video_buffer_pip_fps,
+                    pip_position=config.video_buffer_pip_position,
+                    pip_scale=config.video_buffer_pip_scale,
                 )
-                if config.video_buffer_pip_enabled:
-                    self.pip_ring_buffer = VideoRingBuffer(
-                        buffer_dir=config.video_buffer_pip_dir,
-                        output_dir=config.captures_dir,
-                        device=config.video_buffer_pip_device,
-                        input_format=config.video_buffer_pip_input_format,
-                        resolution=config.video_buffer_pip_resolution,
-                        fps=config.video_buffer_pip_fps,
-                        audio_device=config.video_buffer_pip_audio_device,
-                        segment_seconds=config.video_buffer_segment_seconds,
-                        buffer_segments=config.video_buffer_segments,
-                        post_event_seconds=int(config.capture_post_seconds),
-                        overlay_path=None,
-                        intro_video="",
-                    )
-                    self.pip_compositor = PipCompositor(
-                        position=config.video_buffer_pip_position,
-                        scale=config.video_buffer_pip_scale,
-                    )
             else:
                 self.video_recorder = VideoRecorder(
                     output_dir=config.captures_dir,
@@ -570,9 +554,6 @@ class UnifiedEngine:
         self._pending_post_capture: dict = {}
         self._event_json_paths: dict[int, Path] = {}
         self._event_video_paths: dict[int, Path] = {}
-        # PIP coordination: event_id → {primary_done, pip_done, primary_path, pip_path}
-        self._pip_pending: dict[int, dict] = {}
-        self._pip_lock = threading.Lock()
         self._manual_capture_count = 0
         self._last_timelapse_time = 0.0
         self._last_wal_checkpoint: float = 0.0
@@ -743,48 +724,17 @@ class UnifiedEngine:
                 buzzer.beep_capture_start()
                 speaker.speak_capture_start(event.event_type.value)
                 eid = id(event)
-                if self.pip_ring_buffer and self.pip_ring_buffer.is_running:
-                    # Dual-camera save — coordinate via _pip_pending
-                    with self._pip_lock:
-                        self._pip_pending[eid] = {
-                            "primary_done": False,
-                            "pip_done": False,
-                            "primary_path": None,
-                            "pip_path": None,
-                            "primary_clip_start": 0.0,
-                            "pip_clip_start": 0.0,
-                        }
-                    self.video_ring_buffer.save_event(
-                        prefix=event.event_type.value,
-                        post_seconds=int(self.config.capture_post_seconds),
-                        callback=lambda path, cs, _eid=eid: self._on_primary_saved(
-                            _eid, path, cs
-                        ),
-                    )
-                    self.pip_ring_buffer.save_event(
-                        prefix=event.event_type.value + "_pip",
-                        post_seconds=int(self.config.capture_post_seconds),
-                        callback=lambda path, cs, _eid=eid: self._on_pip_saved(
-                            _eid, path, cs
-                        ),
-                    )
-                    log.info(
-                        "dual_camera_video_save_triggered",
-                        event_type=event.event_type.value,
-                    )
-                else:
-                    # Single-camera save (original path)
-                    self.video_ring_buffer.save_event(
-                        prefix=event.event_type.value,
-                        post_seconds=int(self.config.capture_post_seconds),
-                        callback=lambda path, _cs, _eid=eid: self._on_video_complete(
-                            _eid, path
-                        ),
-                    )
-                    log.info(
-                        "auto_event_video_save_triggered",
-                        event_type=event.event_type.value,
-                    )
+                self.video_ring_buffer.save_event(
+                    prefix=event.event_type.value,
+                    post_seconds=int(self.config.capture_post_seconds),
+                    callback=lambda path, _cs, _eid=eid: self._on_video_complete(
+                        _eid, path
+                    ),
+                )
+                log.info(
+                    "video_save_triggered",
+                    event_type=event.event_type.value,
+                )
             elif self.video_recorder and not self.video_recorder.is_recording:
                 video_path = self.video_recorder.start_recording(
                     duration_seconds=self.config.capture_video_duration,
@@ -827,10 +777,11 @@ class UnifiedEngine:
         Creates a MANUAL_CAPTURE event and routes it through the
         standard _on_event pipeline.
         """
-        if self._pip_pending:
-            log.info("manual_capture_rejected_busy", pending=len(self._pip_pending))
-            buzzer.beep_capture_busy()
-            return
+        # If ring buffer has stalled or crashed, restart it so the button press
+        # captures post-event footage rather than silently saving nothing.
+        if self.video_ring_buffer and not self.video_ring_buffer.is_running:
+            log.warning("manual_capture_ring_buffer_not_running_restarting")
+            self.video_ring_buffer._start_ffmpeg()
 
         self._manual_capture_count += 1
         now = time.time()
@@ -899,88 +850,6 @@ class UnifiedEngine:
             # Event hasn't been saved yet — stash path for
             # _check_post_captures to pick up.
             self._event_video_paths[event_id] = path
-
-    def _on_primary_saved(self, event_id: int, path: Optional[Path], clip_start: float = 0.0) -> None:
-        """Called when the primary ring buffer save finishes (dual-camera path)."""
-        with self._pip_lock:
-            if event_id not in self._pip_pending:
-                # No coordination state — fall through to single-camera handler
-                self._on_video_complete(event_id, path)
-                return
-            self._pip_pending[event_id]["primary_path"] = path
-            self._pip_pending[event_id]["primary_clip_start"] = clip_start
-            self._pip_pending[event_id]["primary_done"] = True
-            all_done = self._pip_pending[event_id]["pip_done"]
-
-        if all_done:
-            self._do_pip_composite(event_id)
-
-    def _on_pip_saved(self, event_id: int, path: Optional[Path], clip_start: float = 0.0) -> None:
-        """Called when the PIP ring buffer save finishes (dual-camera path)."""
-        with self._pip_lock:
-            if event_id not in self._pip_pending:
-                return
-            self._pip_pending[event_id]["pip_path"] = path
-            self._pip_pending[event_id]["pip_clip_start"] = clip_start
-            self._pip_pending[event_id]["pip_done"] = True
-            all_done = self._pip_pending[event_id]["primary_done"]
-
-        if all_done:
-            self._do_pip_composite(event_id)
-
-    def _do_pip_composite(self, event_id: int) -> None:
-        """Dispatch a background thread to composite primary + PIP clips."""
-        with self._pip_lock:
-            entry = self._pip_pending.pop(event_id, None)
-        if entry is None:
-            return
-
-        primary_path = entry["primary_path"]
-        pip_path = entry["pip_path"]
-
-        if primary_path is None:
-            # Primary failed — nothing to show
-            self._on_video_complete(event_id, None)
-            return
-
-        if pip_path is None or self.pip_compositor is None:
-            # No PIP clip or compositor — use primary as-is
-            self._on_video_complete(event_id, primary_path)
-            return
-
-        sync_offset = entry["pip_clip_start"] - entry["primary_clip_start"]
-        log.info(
-            "pip_sync_mtimes",
-            primary_clip_start=round(entry["primary_clip_start"], 3),
-            pip_clip_start=round(entry["pip_clip_start"], 3),
-            sync_offset=round(sync_offset, 3),
-        )
-        threading.Thread(
-            target=self._run_pip_composite,
-            args=(event_id, primary_path, pip_path, sync_offset),
-            daemon=True,
-            name=f"pip-composite-{event_id}",
-        ).start()
-
-    def _run_pip_composite(
-        self, event_id: int, primary: Path, pip_clip: Path, sync_offset: float = 0.0
-    ) -> None:
-        """Worker thread: composite clips then call _on_video_complete."""
-        output_path = primary.parent / f"pip_{primary.name}"
-        assert self.pip_compositor is not None
-        intro_offset = self.video_ring_buffer.intro_duration_seconds if self.video_ring_buffer else 0.0
-        success = self.pip_compositor.composite(
-            primary, pip_clip, output_path,
-            sync_offset_seconds=sync_offset,
-            pip_offset_seconds=intro_offset,
-        )
-        if success and output_path.exists():
-            self._on_video_complete(event_id, output_path)
-        else:
-            # Compositor deleted primary on success but failed — use primary if
-            # it still exists, otherwise signal failure.
-            fallback = primary if primary.exists() else None
-            self._on_video_complete(event_id, fallback)
 
     def _check_post_captures(self) -> None:
         """Complete any pending post-event captures."""
@@ -1826,8 +1695,6 @@ class UnifiedEngine:
         # Start video ring buffers (primary + PIP)
         if self.video_ring_buffer:
             self.video_ring_buffer.start()
-        if self.pip_ring_buffer:
-            self.pip_ring_buffer.start()
 
         # Start high-rate sampler
         self.sampler.start()
@@ -1912,8 +1779,6 @@ class UnifiedEngine:
         # Stop video ring buffers and active recording
         if self.video_ring_buffer:
             self.video_ring_buffer.stop()
-        if self.pip_ring_buffer:
-            self.pip_ring_buffer.stop()
         if self.video_recorder and self.video_recorder.is_recording:
             self.video_recorder.stop_recording()
 
