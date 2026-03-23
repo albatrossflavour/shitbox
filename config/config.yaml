@@ -170,7 +170,7 @@ capture:
     device: /dev/camera-front # UGREEN (front-facing)
     input_format: mjpeg
     resolution: 1280x720
-    fps: 15
+    fps: 10
     buffer_dir: /var/lib/shitbox/video_buffer
     segment_seconds: 10
     buffer_segments: 5
@@ -181,7 +181,7 @@ capture:
       device: /dev/camera-cabin # Brio 100 (cabin-facing)
       input_format: mjpeg
       resolution: 640x480
-      fps: 15
+      fps: 10
       position: bottom_right
       scale: 0.25
   speaker:
