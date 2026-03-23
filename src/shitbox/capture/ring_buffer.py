@@ -638,15 +638,16 @@ class VideoRingBuffer:
         return segments
 
     def _latest_complete_segment(self) -> Optional[Path]:
-        """Return the most recently completed (not currently being written) segment.
+        """Return a completed segment suitable for timelapse frame extraction.
 
-        The newest segment by mtime is the one currently being written to,
-        so we return the second-newest.
+        Skips the two newest segments: the newest is currently being written,
+        and the second-newest may be mid-transition as ffmpeg opens a new file.
+        The third-newest is ~20s old and guaranteed stable.
         """
         segments = self._get_buffer_segments()
-        if len(segments) < 2:
+        if len(segments) < 3:
             return None
-        return segments[-2]
+        return segments[-3]
 
     def _do_save_event(
         self,
