@@ -42,6 +42,7 @@ class CaptureSyncService:
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._sync_lock = threading.Lock()
+        self._sync_requested = threading.Event()
 
     def start(self) -> None:
         """Start the capture sync service."""
@@ -64,10 +65,15 @@ class CaptureSyncService:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5.0)
 
+    def trigger_sync(self) -> None:
+        """Request an immediate sync on the background thread."""
+        self._sync_requested.set()
+
     def _sync_loop(self) -> None:
         """Main sync loop."""
         while self._running:
-            time.sleep(self.config.interval_seconds)
+            self._sync_requested.wait(timeout=self.config.interval_seconds)
+            self._sync_requested.clear()
 
             if not self._running:
                 break

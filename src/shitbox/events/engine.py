@@ -554,6 +554,7 @@ class UnifiedEngine:
         self._pending_post_capture: dict = {}
         self._event_json_paths: dict[int, Path] = {}
         self._event_video_paths: dict[int, Path] = {}
+        self._event_paths_lock = threading.Lock()
         self._manual_capture_count = 0
         self._last_timelapse_time = 0.0
         self._last_wal_checkpoint: float = 0.0
@@ -837,19 +838,17 @@ class UnifiedEngine:
 
         log.info("capture_complete", path=str(path), event_id=event_id)
 
-        json_path = self._event_json_paths.get(event_id)
+        with self._event_paths_lock:
+            json_path = self._event_json_paths.get(event_id)
+            if not json_path:
+                # Event hasn't been saved yet — stash path for
+                # _check_post_captures to pick up.
+                self._event_video_paths[event_id] = path
         if json_path:
             self.event_storage.update_event_video(json_path, path)
             self.event_storage.generate_events_json()
             if self.capture_sync:
-                try:
-                    self.capture_sync._do_sync()
-                except Exception as e:
-                    log.error("post_video_sync_error", error=str(e))
-        else:
-            # Event hasn't been saved yet — stash path for
-            # _check_post_captures to pick up.
-            self._event_video_paths[event_id] = path
+                self.capture_sync.trigger_sync()
 
     def _check_post_captures(self) -> None:
         """Complete any pending post-event captures."""
@@ -876,7 +875,8 @@ class UnifiedEngine:
 
                 # Check if video callback already fired
                 eid = id(event)
-                video_path = self._event_video_paths.pop(eid, None)
+                with self._event_paths_lock:
+                    video_path = self._event_video_paths.pop(eid, None)
                 if not video_path:
                     video_path = self._find_capture_video(event)
 
@@ -888,7 +888,8 @@ class UnifiedEngine:
                     self.events_captured += 1
                     # Store json_path so late video callbacks can
                     # update this event.
-                    self._event_json_paths[eid] = json_path
+                    with self._event_paths_lock:
+                        self._event_json_paths[eid] = json_path
                     self.event_storage.generate_events_json()
                     log.info(
                         "event_saved_to_disk",
@@ -901,10 +902,7 @@ class UnifiedEngine:
                         connected = self.connection.check_connectivity()
                         log.info("post_event_connectivity_check", connected=connected)
                         if connected and self.capture_sync:
-                            try:
-                                self.capture_sync._do_sync()
-                            except Exception as e:
-                                log.error("post_event_sync_error", error=str(e))
+                            self.capture_sync.trigger_sync()
                 except Exception as e:
                     log.error(
                         "event_save_error",

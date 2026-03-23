@@ -5,6 +5,7 @@ When an event fires, copies buffer segments + waits for post-event footage,
 then concatenates into a single MP4.
 """
 
+import os
 import shutil
 import subprocess
 import threading
@@ -447,7 +448,6 @@ class VideoRingBuffer:
         # cross-camera sync offset calculation after a crash+restart.
         self._cleanup_buffer()
 
-        import os
         if not os.path.exists(self.device):
             log.warning("video_device_missing_at_start", device=self.device)
             return
@@ -465,8 +465,7 @@ class VideoRingBuffer:
         )
 
         try:
-            import os as _os
-            _nice = lambda: _os.nice(5)  # noqa: E731 — yield to Python engine
+            _nice = lambda: os.nice(5)  # noqa: E731 — yield to Python engine
 
             if self.audio_device:
                 # Try with audio
@@ -520,7 +519,6 @@ class VideoRingBuffer:
         """Read available stderr from the current process without blocking."""
         if self._process and self._process.stderr:
             try:
-                import os
                 fd = self._process.stderr.fileno()
                 flags = os.get_blocking(fd)
                 os.set_blocking(fd, False)
@@ -573,8 +571,6 @@ class VideoRingBuffer:
             time.sleep(self.RESTART_BACKOFF_SECONDS)
             if not self._running:
                 break
-
-            import os
 
             # Drain ffmpeg's stderr pipe every cycle to prevent the 64KB pipe
             # buffer from filling up. A full pipe causes ffmpeg to block on its
