@@ -576,6 +576,12 @@ class VideoRingBuffer:
 
             import os
 
+            # Drain ffmpeg's stderr pipe every cycle to prevent the 64KB pipe
+            # buffer from filling up. A full pipe causes ffmpeg to block on its
+            # next stats write, stalling the entire process (~150s at 1Hz output).
+            if self._process is not None and self._process.poll() is None:
+                self._read_stderr()
+
             # Restart if ffmpeg crashed
             if self._process is not None and self._process.poll() is not None:
                 rc = self._process.returncode
