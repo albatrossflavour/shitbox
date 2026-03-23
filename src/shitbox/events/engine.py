@@ -1476,10 +1476,9 @@ class UnifiedEngine:
                 elapsed_seconds=round(elapsed),
                 expected_interval=self.config.timelapse_interval_seconds,
             )
-            # Attempt recovery: restart ffmpeg
-            if self.video_ring_buffer and self.video_ring_buffer.is_running:
-                self.video_ring_buffer._kill_current()
-                self.video_ring_buffer._start_ffmpeg()
+            # Don't restart ffmpeg here — ring_buffer health monitor owns restarts.
+            # Killing from two threads simultaneously caused double-start races and
+            # "Device or resource busy" cascades.
             self._last_timelapse_time = now  # Reset to avoid repeat alerts
             return  # Skip normal capture this iteration
 
