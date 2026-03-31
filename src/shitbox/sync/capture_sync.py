@@ -120,29 +120,50 @@ class CaptureSyncService:
         # Ensure source path ends with / for rsync directory semantics
         source = self.captures_dir.rstrip("/") + "/"
 
-        cmd = [
+        base_cmd = [
             "rsync",
             "-auv",
             f"--rsync-path={self.config.rsync_path}",
             "-e", "ssh -o ConnectTimeout=15",
+        ]
+
+        # Pass 1: sync all media first, excluding index files.
+        # This ensures videos are on the NAS before the JSON files that reference them.
+        media_cmd = base_cmd + [
+            "--exclude=events.json",
+            "--exclude=timelapse.json",
             source,
             self.config.remote_dest,
         ]
-
-        log.info("capture_sync_running", cmd=" ".join(cmd))
-
+        log.info("capture_sync_media_running")
         result = subprocess.run(
-            cmd,
+            media_cmd,
             capture_output=True,
             text=True,
             timeout=RSYNC_TIMEOUT_SECONDS,
         )
+        if result.returncode != 0:
+            log.error(
+                "capture_sync_media_failed",
+                returncode=result.returncode,
+                stderr=result.stderr[-500:] if result.stderr else "",
+            )
+            return
 
+        # Pass 2: sync index files now that media is in place.
+        index_cmd = base_cmd + [source, self.config.remote_dest]
+        log.info("capture_sync_index_running")
+        result = subprocess.run(
+            index_cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         if result.returncode == 0:
             log.info("capture_sync_complete", stdout=result.stdout[-500:] if result.stdout else "")
         else:
             log.error(
-                "capture_sync_failed",
+                "capture_sync_index_failed",
                 returncode=result.returncode,
                 stderr=result.stderr[-500:] if result.stderr else "",
             )

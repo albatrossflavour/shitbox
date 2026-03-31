@@ -237,6 +237,7 @@ class VideoBufferConfig:
     buffer_segments: int = 3
     overlay_enabled: bool = True
     intro_video: str = ""
+    camera_controls: dict[str, int] = field(default_factory=dict)
     pip: PipConfig = field(default_factory=PipConfig)
 
 

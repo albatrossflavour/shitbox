@@ -151,6 +151,9 @@ class EngineConfig:
     video_buffer_segments: int = 5
     overlay_enabled: bool = True
     video_buffer_intro_video: str = ""
+    video_buffer_camera_controls: dict[str, int] = field(
+        default_factory=dict,
+    )
 
     # Video ring buffer (PIP / cabin cam)
     video_buffer_pip_enabled: bool = False
@@ -275,6 +278,7 @@ class EngineConfig:
             video_buffer_segments=config.capture.video_buffer.buffer_segments,
             overlay_enabled=config.capture.video_buffer.overlay_enabled,
             video_buffer_intro_video=config.capture.video_buffer.intro_video,
+            video_buffer_camera_controls=config.capture.video_buffer.camera_controls,
             # Video ring buffer (PIP / cabin cam)
             video_buffer_pip_enabled=config.capture.video_buffer.pip.enabled,
             video_buffer_pip_device=config.capture.video_buffer.pip.device,
@@ -513,7 +517,7 @@ class UnifiedEngine:
 
         if config.capture_enabled:
             if config.video_buffer_enabled:
-                overlay_path = "drawtext" if config.overlay_enabled and not config.video_buffer_pip_enabled else None
+                overlay_path = "drawtext" if config.overlay_enabled else None
                 self.video_ring_buffer = VideoRingBuffer(
                     buffer_dir=config.video_buffer_dir,
                     output_dir=config.captures_dir,
@@ -533,6 +537,7 @@ class UnifiedEngine:
                     pip_fps=config.video_buffer_pip_fps,
                     pip_position=config.video_buffer_pip_position,
                     pip_scale=config.video_buffer_pip_scale,
+                    camera_controls=config.video_buffer_camera_controls,
                 )
             else:
                 self.video_recorder = VideoRecorder(
@@ -702,6 +707,8 @@ class UnifiedEngine:
                 new_until = time.monotonic() + extension
                 if new_until > pending["capture_until"]:
                     pending["capture_until"] = new_until
+            if event.event_type == EventType.MANUAL_CAPTURE:
+                buzzer.beep_capture_busy()
             log.info(
                 "event_suppressed_capture_active",
                 suppressed_type=event.event_type.value,

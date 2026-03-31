@@ -61,6 +61,7 @@ class VideoRingBuffer:
         pip_fps: int = 15,
         pip_position: str = "bottom_right",
         pip_scale: float = 0.25,
+        camera_controls: Optional[dict[str, int]] = None,
     ):
         self.buffer_dir = Path(buffer_dir)
         self.output_dir = Path(output_dir)
@@ -80,6 +81,7 @@ class VideoRingBuffer:
         self.pip_fps = pip_fps
         self.pip_position = pip_position
         self.pip_scale = pip_scale
+        self.camera_controls = camera_controls or {}
 
         self._process: Optional[subprocess.Popen] = None
         self._health_thread: Optional[threading.Thread] = None
@@ -90,6 +92,41 @@ class VideoRingBuffer:
         self._lock = threading.Lock()
         self._intro_ts: Optional[Path] = None
         self._last_timelapse_segment: Optional[Path] = None
+        self._ffmpeg_started_at: float = 0.0
+
+    def _configure_cameras(self) -> None:
+        """Apply v4l2 controls to cameras before recording starts."""
+        if not self.camera_controls:
+            return
+        for device in [self.device, self.pip_device]:
+            if not device or not os.path.exists(device):
+                continue
+            for ctrl, value in self.camera_controls.items():
+                try:
+                    subprocess.run(
+                        [
+                            "v4l2-ctl", "--device", device,
+                            "--set-ctrl", f"{ctrl}={value}",
+                        ],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.PIPE,
+                        timeout=5,
+                    )
+                    log.info(
+                        "camera_ctrl_set",
+                        device=device, ctrl=ctrl, value=value,
+                    )
+                except FileNotFoundError:
+                    log.warning(
+                        "v4l2ctl_not_found",
+                        hint="Install: sudo apt install v4l-utils",
+                    )
+                    return
+                except Exception as e:
+                    log.warning(
+                        "camera_ctrl_failed",
+                        device=device, ctrl=ctrl, error=str(e),
+                    )
 
     @property
     def is_running(self) -> bool:
@@ -127,6 +164,7 @@ class VideoRingBuffer:
         self.buffer_dir.mkdir(parents=True, exist_ok=True)
         self._cleanup_buffer()  # Clear stale segments from previous run
         self._prepare_intro()
+        self._configure_cameras()
         self._running = True
         self._start_ffmpeg()
 
@@ -228,7 +266,7 @@ class VideoRingBuffer:
             "ffmpeg", "-y",
             "-i", str(segment),
             "-frames:v", "1",
-            "-q:v", "2",
+            "-q:v", "5",
             str(output_path),
         ]
 
@@ -314,6 +352,9 @@ class VideoRingBuffer:
             if self._intro_ts.stat().st_mtime > intro_path.stat().st_mtime:
                 size_mb = round(self._intro_ts.stat().st_size / (1024 * 1024), 2)
                 log.info("intro_video_cached", size_mb=size_mb)
+                poster_path = self.output_dir / "intro_poster.jpg"
+                if not poster_path.exists():
+                    self._extract_intro_poster(intro_path)
                 return
 
         w, h = self.resolution.split("x")
@@ -338,6 +379,7 @@ class VideoRingBuffer:
             if result.returncode == 0 and self._intro_ts.exists():
                 size_mb = round(self._intro_ts.stat().st_size / (1024 * 1024), 2)
                 log.info("intro_video_prepared", size_mb=size_mb)
+                self._extract_intro_poster(intro_path)
             else:
                 stderr = result.stderr.decode()[-500:] if result.stderr else ""
                 log.error("intro_video_conversion_failed", stderr=stderr)
@@ -348,6 +390,25 @@ class VideoRingBuffer:
         except Exception as e:
             log.error("intro_video_conversion_error", error=str(e))
             self._intro_ts = None
+
+    def _extract_intro_poster(self, intro_path: Path) -> None:
+        """Extract a single JPEG frame from the intro video for use as a video poster."""
+        poster_path = self.output_dir / "intro_poster.jpg"
+        try:
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-ss", "0.5", "-i", str(intro_path),
+                    "-frames:v", "1", "-q:v", "3",
+                    str(poster_path),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+            if result.returncode == 0 and poster_path.exists():
+                log.info("intro_poster_extracted", path=str(poster_path))
+        except Exception as e:
+            log.warning("intro_poster_extraction_failed", error=str(e))
 
     def _build_ffmpeg_cmd(self, with_audio: bool) -> list[str]:
         """Build the ffmpeg segment muxer command."""
@@ -383,17 +444,62 @@ class VideoRingBuffer:
 
         if self.pip_device:
             # Real-time PiP composite — [0:v] primary, [1:v] cabin
-            # Audio input index is 2 (after primary + pip).
-            x, y = _PIP_POSITION_MAP.get(self.pip_position, ("W-w-10", "H-h-10"))
-            filter_complex = (
-                f"[1:v]scale=iw*{self.pip_scale}:-2,"
-                f"pad=iw+4:ih+20:2:18:color=black@0.7,"
-                f"drawtext=text='Cabin':fontsize=13:fontcolor=white@0.9:x=6:y=3[pip];"
-                f"[0:v][pip]overlay={x}:{y},format=yuv420p[out]"
+            # Input indices: 0=front, 1=cabin, then optionally audio,
+            # then optionally logo PNG.
+            from pathlib import Path as P
+
+            from shitbox.capture.overlay import LOGO_PATH
+
+            x, y = _PIP_POSITION_MAP.get(
+                self.pip_position, ("W-w-10", "H-h-10"),
             )
+            audio_idx = 2  # always after primary + pip
+            logo_exists = self.overlay_path and P(LOGO_PATH).exists()
+            if logo_exists:
+                cmd += ["-i", LOGO_PATH]
+                logo_idx = 3 if with_audio else 2
+
+            if self.overlay_path:
+                from shitbox.capture.overlay import build_drawtext_filter
+                hud = build_drawtext_filter()
+                if logo_exists:
+                    # PiP + HUD drawtext + logo overlay
+                    logo_prep = (
+                        f"[{logo_idx}:v]"
+                        "format=rgba,colorchannelmixer=aa=0.4"
+                        "[logo]"
+                    )
+                    composite = (
+                        f"[0:v][pip]overlay={x}:{y},"
+                        f"{hud}[text];"
+                        "[text][logo]overlay=10:10,"
+                        "format=yuv420p[out]"
+                    )
+                else:
+                    logo_prep = ""
+                    composite = (
+                        f"[0:v][pip]overlay={x}:{y},"
+                        f"{hud},format=yuv420p[out]"
+                    )
+            else:
+                logo_prep = ""
+                composite = (
+                    f"[0:v][pip]overlay={x}:{y},"
+                    "format=yuv420p[out]"
+                )
+
+            pip_chain = (
+                f"[1:v]scale=iw*{self.pip_scale}:-2,"
+                "pad=iw+4:ih+20:2:18:color=black@0.7,"
+                "drawtext=text='Cabin':"
+                "fontsize=13:fontcolor=white@0.9:x=6:y=3[pip]"
+            )
+            parts = [p for p in [logo_prep, pip_chain, composite] if p]
+            filter_complex = ";".join(parts)
+
             cmd += ["-filter_complex", filter_complex, "-map", "[out]"]
             if with_audio:
-                cmd += ["-map", "2:a"]
+                cmd += ["-map", f"{audio_idx}:a"]
         elif self.overlay_path:
             # Single-camera drawtext overlay
             from pathlib import Path as P
@@ -447,6 +553,7 @@ class VideoRingBuffer:
         # a previous ffmpeg run remain on disk with old mtimes and corrupt the
         # cross-camera sync offset calculation after a crash+restart.
         self._cleanup_buffer()
+        self._ffmpeg_started_at = time.time()
 
         if not os.path.exists(self.device):
             log.warning("video_device_missing_at_start", device=self.device)
@@ -667,7 +774,20 @@ class VideoRingBuffer:
 
         try:
             # 1. Copy completed buffer segments (pre-event footage)
-            pre_cutoff = time.time()
+            now = time.time()
+            buffer_segments = self._get_buffer_segments()
+            ages = [round(now - s.stat().st_mtime, 1) for s in buffer_segments]
+            started = self._ffmpeg_started_at
+            ffmpeg_uptime = round(now - started, 1) if started else 0.0
+            log.info(
+                "video_save_buffer_state",
+                save_id=save_id,
+                segment_count=len(buffer_segments),
+                segment_ages_seconds=ages,
+                ffmpeg_uptime_seconds=ffmpeg_uptime,
+                buffer_capacity_seconds=self.buffer_segments * self.segment_seconds,
+            )
+            pre_cutoff = now
             pre_segments = self._copy_complete_segments(tmp_dir, "pre")
             # mtime of oldest segment = GPS-clock time when that segment closed;
             # used by the PiP compositor to align two independently-rolling buffers.
@@ -859,6 +979,9 @@ class VideoRingBuffer:
             "-probesize", "20000000",
             "-i", str(concat_list),
             "-c", "copy",
+            "-r", str(self.fps),
+            "-video_track_timescale", str(self.fps * 1000),
+            "-movflags", "+faststart",
             str(tmp_mp4),
         ]
 
