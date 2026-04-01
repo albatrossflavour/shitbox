@@ -210,6 +210,7 @@ class VideoRingBuffer:
         self,
         prefix: str = "event",
         post_seconds: Optional[int] = None,
+        pre_seconds: Optional[int] = None,
         callback: Optional[Callable[[Optional[Path], float], None]] = None,
     ) -> None:
         """Save pre-event buffer + post-event recording to a single MP4.
@@ -220,6 +221,8 @@ class VideoRingBuffer:
             prefix: Filename prefix for the saved video.
             post_seconds: Seconds of post-event footage to capture.
                           Defaults to self.post_event_seconds.
+            pre_seconds: Seconds of pre-event footage to keep.
+                         None means keep entire buffer.
             callback: Called with (output Path or None, clip_start_mtime).
                       clip_start_mtime is the filesystem mtime of the oldest
                       pre-event segment — a GPS-clock wall-clock timestamp usable
@@ -230,7 +233,7 @@ class VideoRingBuffer:
 
         thread = threading.Thread(
             target=self._do_save_event,
-            args=(prefix, post_seconds, callback),
+            args=(prefix, post_seconds, pre_seconds, callback),
             daemon=True,
             name=f"video-save-{prefix}",
         )
@@ -768,6 +771,7 @@ class VideoRingBuffer:
         self,
         prefix: str,
         post_seconds: int,
+        pre_seconds: Optional[int],
         callback: Optional[Callable[[Optional[Path]], None]],
     ) -> None:
         """Worker that copies buffer segments, waits for post-event, then concatenates."""
@@ -794,7 +798,11 @@ class VideoRingBuffer:
                 buffer_capacity_seconds=self.buffer_segments * self.segment_seconds,
             )
             pre_cutoff = now
-            pre_segments = self._copy_complete_segments(tmp_dir, "pre")
+            # Filter to segments within pre_seconds of now if specified
+            pre_min_mtime = (now - pre_seconds) if pre_seconds else None
+            pre_segments = self._copy_complete_segments(
+                tmp_dir, "pre", min_mtime=pre_min_mtime,
+            )
             # mtime of oldest segment = GPS-clock time when that segment closed;
             # used by the PiP compositor to align two independently-rolling buffers.
             clip_start_mtime = pre_segments[0].stat().st_mtime if pre_segments else pre_cutoff

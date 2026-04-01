@@ -741,6 +741,7 @@ class UnifiedEngine:
                 self.video_ring_buffer.save_event(
                     prefix=event.event_type.value,
                     post_seconds=int(self.config.capture_post_seconds),
+                    pre_seconds=int(self.config.capture_pre_seconds),
                     callback=lambda path, _cs, _eid=eid: self._on_video_complete(
                         _eid, path
                     ),
