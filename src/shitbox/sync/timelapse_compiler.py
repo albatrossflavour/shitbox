@@ -98,7 +98,7 @@ class TimelapseCompiler:
     def _compile_day(self, day: str) -> None:
         """Compile all frames for a single day into an MP4."""
         day_dir = self._captures_dir / "timelapse" / day
-        frames = sorted(day_dir.glob("timelapse_*.jpg"))
+        frames = sorted(day_dir.glob("timelapse_*.jpg"), key=lambda p: p.stat().st_mtime)
         if not frames:
             log.info("timelapse_no_frames", date=day)
             return

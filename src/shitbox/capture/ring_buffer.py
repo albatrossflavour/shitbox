@@ -259,8 +259,10 @@ class VideoRingBuffer:
         output_subdir = self.output_dir / "timelapse" / today
         output_subdir.mkdir(parents=True, exist_ok=True)
 
-        timestamp = datetime.now().strftime("%H%M%S")
-        output_path = output_subdir / f"{filename_prefix}_{timestamp}.jpg"
+        # Monotonic sequence number — survives service restarts without reordering
+        existing = sorted(output_subdir.glob(f"{filename_prefix}_*.jpg"))
+        seq = len(existing) + 1
+        output_path = output_subdir / f"{filename_prefix}_{seq:05d}.jpg"
 
         cmd = [
             "ffmpeg", "-y",

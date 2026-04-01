@@ -362,6 +362,7 @@ class UnifiedEngine:
             ring_buffer=self.ring_buffer,
             config=config.detector,
             on_event=self._on_event,
+            get_speed=lambda: self._current_speed_kmh,
         )
 
         self.event_storage = EventStorage(

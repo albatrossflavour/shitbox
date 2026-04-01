@@ -60,9 +60,12 @@ sensors:
     accel_range: 4
     # Gyroscope range: 250, 500, 1000, or 2000 (deg/s)
     gyro_range: 500
-    accel_offset_x: +0.2711 # g — subtracted from raw ax (measured static bias)
-    accel_offset_y: -0.0831 # g — subtracted from raw ay
-    accel_offset_z: +0.0216 # g — residual above 1g on gravity axis
+    accel_offset_x: -0.1902
+    accel_offset_y: -0.0279
+    accel_offset_z: -0.0288
+    # accel_offset_x: +0.2711 # g — subtracted from raw ax (measured static bias)
+    # accel_offset_z: +0.0216 # g — residual above 1g on gravity axis
+    # accel_offset_y: -0.0831 # g — subtracted from raw ay
 
   temperature:
     enabled: false # Enable when MCP9808 is wired
@@ -177,11 +180,11 @@ capture:
     overlay_enabled: true
     intro_video: "/var/lib/shitbox/intro.mp4"
     camera_controls:
-      backlight_compensation: 0
+      brightness: 0 # default 0, range -64..64
+      contrast: 36 # default 28, range 0..64 — slight boost
+      saturation: 80 # default 64, range 0..128 — vivid without clown colours
+      backlight_compensation: 3 # default 3, range 0..6 — helps with bright sky
       exposure_dynamic_framerate: 0
-      brightness: 128          # default 128, range 0-255
-      contrast: 140            # default 128, range 0-255 — slight boost
-      saturation: 150          # default 128, range 0-255 — slight boost
     pip:
       enabled: true
       device: /dev/camera-cabin # Brio 100 (cabin-facing)

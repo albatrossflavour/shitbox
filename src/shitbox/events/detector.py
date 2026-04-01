@@ -94,6 +94,7 @@ class DetectorConfig:
     # High G: sqrt(ax² + ay²) > threshold
     high_g_threshold: float = 0.8
     high_g_min_duration_ms: int = 300
+    high_g_min_speed_kmh: float = 10.0
 
     # Cooldown: minimum time between events of same type
     cooldown_seconds: float = 10.0
@@ -115,6 +116,7 @@ class EventDetector:
         ring_buffer: RingBuffer,
         config: Optional[DetectorConfig] = None,
         on_event: Optional[Callable[[Event], None]] = None,
+        get_speed: Optional[Callable[[], float]] = None,
     ):
         """Initialise event detector.
 
@@ -122,10 +124,12 @@ class EventDetector:
             ring_buffer: Source of IMU samples.
             config: Detection thresholds.
             on_event: Callback when event is detected.
+            get_speed: Callback returning current speed in km/h (from GPS).
         """
         self.ring_buffer = ring_buffer
         self.config = config or DetectorConfig()
         self.on_event = on_event
+        self._get_speed = get_speed or (lambda: 0.0)
 
         # Active event tracking
         self._active_events: Dict[EventType, dict] = {}
@@ -287,6 +291,10 @@ class EventDetector:
         threshold = self.config.high_g_threshold
 
         combined_g = math.sqrt(sample.ax ** 2 + sample.ay ** 2)
+
+        # Ignore high-G when stationary/crawling (e.g. pulling away from stop)
+        if combined_g > threshold and self._get_speed() < self.config.high_g_min_speed_kmh:
+            return self._end_event(event_type, sample)
 
         if combined_g > threshold:
             if event_type not in self._active_events:
