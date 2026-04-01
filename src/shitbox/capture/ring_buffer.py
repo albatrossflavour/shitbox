@@ -62,6 +62,7 @@ class VideoRingBuffer:
         pip_position: str = "bottom_right",
         pip_scale: float = 0.25,
         camera_controls: Optional[dict[str, int]] = None,
+        pip_camera_controls: Optional[dict[str, int]] = None,
     ):
         self.buffer_dir = Path(buffer_dir)
         self.output_dir = Path(output_dir)
@@ -82,6 +83,7 @@ class VideoRingBuffer:
         self.pip_position = pip_position
         self.pip_scale = pip_scale
         self.camera_controls = camera_controls or {}
+        self.pip_camera_controls = pip_camera_controls or {}
 
         self._process: Optional[subprocess.Popen] = None
         self._health_thread: Optional[threading.Thread] = None
@@ -96,12 +98,14 @@ class VideoRingBuffer:
 
     def _configure_cameras(self) -> None:
         """Apply v4l2 controls to cameras before recording starts."""
-        if not self.camera_controls:
-            return
-        for device in [self.device, self.pip_device]:
-            if not device or not os.path.exists(device):
+        device_controls = [
+            (self.device, self.camera_controls),
+            (self.pip_device, self.pip_camera_controls),
+        ]
+        for device, controls in device_controls:
+            if not device or not controls or not os.path.exists(device):
                 continue
-            for ctrl, value in self.camera_controls.items():
+            for ctrl, value in controls.items():
                 try:
                     subprocess.run(
                         [

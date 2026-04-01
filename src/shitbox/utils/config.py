@@ -221,6 +221,7 @@ class PipConfig:
     buffer_dir: str = "/var/lib/shitbox/video_buffer_pip"
     position: str = "bottom_right"  # bottom_right | bottom_left | top_right | top_left
     scale: float = 0.25
+    camera_controls: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass

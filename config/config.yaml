@@ -193,6 +193,7 @@ capture:
       fps: 15
       position: bottom_right
       scale: 0.25
+      camera_controls: {}  # populate after: v4l2-ctl -d /dev/camera-cabin -L
   speaker:
     enabled: true
     model_path: /var/lib/shitbox/tts/en_GB-northern_english_male-medium.onnx

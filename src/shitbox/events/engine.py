@@ -165,6 +165,9 @@ class EngineConfig:
     video_buffer_pip_dir: str = "/var/lib/shitbox/video_buffer_pip"
     video_buffer_pip_position: str = "bottom_right"
     video_buffer_pip_scale: float = 0.25
+    video_buffer_pip_camera_controls: dict[str, int] = field(
+        default_factory=dict,
+    )
 
     # Grafana annotations
     grafana_enabled: bool = False
@@ -289,6 +292,7 @@ class EngineConfig:
             video_buffer_pip_dir=config.capture.video_buffer.pip.buffer_dir,
             video_buffer_pip_position=config.capture.video_buffer.pip.position,
             video_buffer_pip_scale=config.capture.video_buffer.pip.scale,
+            video_buffer_pip_camera_controls=config.capture.video_buffer.pip.camera_controls,
             # Grafana annotations
             grafana_enabled=config.sync.grafana.enabled,
             grafana_url=config.sync.grafana.url,
@@ -539,6 +543,7 @@ class UnifiedEngine:
                     pip_position=config.video_buffer_pip_position,
                     pip_scale=config.video_buffer_pip_scale,
                     camera_controls=config.video_buffer_camera_controls,
+                    pip_camera_controls=config.video_buffer_pip_camera_controls,
                 )
             else:
                 self.video_recorder = VideoRecorder(
