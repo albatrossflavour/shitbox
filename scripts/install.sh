@@ -82,6 +82,9 @@ echo "=== Setting up Python environment ==="
 cd "$INSTALL_DIR"
 sudo -u $ACTUAL_USER python3 -m venv .venv
 sudo -u $ACTUAL_USER .venv/bin/pip install --upgrade pip
+# rpi-lgpio is the Pi 5 compatible drop-in for RPi.GPIO.
+# They conflict, so remove RPi.GPIO first if present.
+sudo -u $ACTUAL_USER .venv/bin/pip uninstall -y RPi.GPIO 2>/dev/null || true
 sudo -u $ACTUAL_USER .venv/bin/pip install -e .
 
 # Download Piper TTS voice model

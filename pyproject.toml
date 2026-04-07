@@ -12,7 +12,7 @@ dependencies = [
     "smbus2>=0.4.0",
     "adafruit-circuitpython-mcp9808>=3.3.0",
     "adafruit-circuitpython-ina219>=3.4.0",
-    "adafruit-circuitpython-bme280>=2.6.0",
+    "adafruit-circuitpython-bme680>=3.4.0",
     "paho-mqtt>=2.0.0",
     "pyyaml>=6.0",
     "structlog>=24.0.0",
@@ -24,6 +24,7 @@ dependencies = [
     "piicodev>=1.0.0",
     "reverse_geocoder>=1.5.1",
     "piper-tts>=1.4.0",
+    "rpi-lgpio>=0.6",
 ]
 
 [project.optional-dependencies]

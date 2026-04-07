@@ -140,7 +140,7 @@ if command -v sqlite3 >/dev/null 2>&1 && [ -f "$DB" ]; then
 fi
 
 # --- Speaker ---
-if [ -f "/var/lib/shitbox/tts/en_US-lessac-medium.onnx" ]; then
+if [ -f "/var/lib/shitbox/tts/en_GB-northern_english_male-medium.onnx" ]; then
   if aplay -l 2>/dev/null | grep -qi "UACDemo"; then
     ok "speaker" "USB speaker detected, TTS model present"
   else
