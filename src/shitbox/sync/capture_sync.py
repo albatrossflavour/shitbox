@@ -1,8 +1,11 @@
 """Capture sync service - rsyncs captures to NAS when connected."""
 
+import json
 import subprocess
 import threading
-from typing import Optional
+import time
+from pathlib import Path
+from typing import Any, Callable, Optional
 
 from shitbox.events.storage import EventStorage
 from shitbox.sync.connection import ConnectionMonitor
@@ -42,6 +45,33 @@ class CaptureSyncService:
         self._thread: Optional[threading.Thread] = None
         self._sync_lock = threading.Lock()
         self._sync_requested = threading.Event()
+        self._json_generators: dict[str, Callable[[], Any]] = {}
+
+    def register_json_generator(self, name: str, fn: Callable[[], Any]) -> None:
+        """Register a pre-rsync JSON generator. fn() must return a JSON-serialisable value.
+
+        Called at engine startup. Generators run before rsync on each sync cycle. A failing
+        generator is logged and skipped; it must not abort other generators or the rsync.
+        """
+        self._json_generators[name] = fn
+        log.info("json_generator_registered", name=name)
+
+    def _run_json_generators(self) -> None:
+        """Write each registered generator's output to {captures_dir}/{name}.json."""
+        captures = Path(self.captures_dir)
+        try:
+            captures.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            log.warning("json_generators_captures_dir_error", error=str(e))
+            return
+        for name, fn in list(self._json_generators.items()):
+            try:
+                data = fn()
+                out = captures / f"{name}.json"
+                out.write_text(json.dumps(data, default=str))
+                log.info("json_generator_complete", name=name)
+            except Exception as e:
+                log.warning("json_generator_failed", name=name, error=str(e))
 
     def start(self) -> None:
         """Start the capture sync service."""
@@ -102,6 +132,9 @@ class CaptureSyncService:
 
     def _do_sync_inner(self) -> None:
         """Inner sync implementation."""
+        # Run registered JSON generators (notes.json, fuel.json, etc.) before rsync
+        self._run_json_generators()
+
         # Refresh events index before syncing
         if self.event_storage:
             try:
@@ -126,11 +159,12 @@ class CaptureSyncService:
             "-e", "ssh -o ConnectTimeout=15",
         ]
 
-        # Pass 1: sync all media first, excluding index files.
+        # Pass 1: sync all media first, excluding all JSON files.
         # This ensures videos are on the NAS before the JSON files that reference them.
+        # *.json covers events.json, timelapse.json, notes.json, fuel.json, and any
+        # future generator outputs registered via register_json_generator().
         media_cmd = base_cmd + [
-            "--exclude=events.json",
-            "--exclude=timelapse.json",
+            "--exclude=*.json",
             source,
             self.config.remote_dest,
         ]
