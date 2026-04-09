@@ -37,7 +37,16 @@ Never lose telemetry data or video — the system must survive thousands of kilo
 
 ### Active — v2.0
 
-(To be defined in new-milestone)
+- DISP-01: Driver display productionised on 7" touchscreen (speed, G-force, map, temps, event ticker, alerts)
+- NOTE-01: Field notes entry from Pi (freeform or pinned to event, auto DTS + GPS, syncs to website)
+- FUEL-01: Refueling log (volume, location per stop, efficiency tracking, location + efficiency on website)
+- DRVR-01: Driver tracking — who's driving interface, time/percentage per driver, event attribution
+- DRVR-02: Website "who's in charge" widget and driver stats page
+- WEB-01: Website revamp — improved Grafana graphs, integrate blog/refuel/driver data streams
+- VID-01: ELP 4K video capture tuning — calibrate settings for actual mounted camera
+- CAL-01: Sensor calibration — validate all sensors stationary + in-motion
+- PWR-01: Undervoltage resolution — confirm hardware fix, software detection + alerting
+- MON-01: Monitoring completeness — close HLTH-01, fix Prometheus scrape label conflict, critical events on UI
 
 ### Out of Scope
 
@@ -83,11 +92,43 @@ Never lose telemetry data or video — the system must survive thousands of kilo
 | LSM6DSOX replacing MPU6050 | V2 hat hardware; better precision and integrated with LIS3MDL heading | ✓ Good |
 | No driver display yet | Display process deferred — not on the car yet | — Pending for v2 |
 
+## Current Milestone: v2.0 Rally Ready
+
+**Goal:** Turn the telemetry system into a full rally companion — driver display, field logging, public engagement features, and confirmed hardware reliability before race day.
+
+**Target features:**
+- Driver display productionised on the 7" touchscreen
+- Field notes / blog with keyboard entry, GPS + DTS, syncs to website
+- Refueling log with efficiency tracking, location on website map
+- Driver tracking — who's driving, percentages, event attribution, website widgets
+- Website revamp — Grafana improvements, new data streams integrated
+- ELP 4K video capture tuning
+- Sensor calibration (stationary + in-motion)
+- Undervoltage resolution and confirmation
+- Monitoring completeness — HLTH-01 closed, critical events on UI
+
 ## Shipped
 
 ### v1.0 — Operational Hardening (2026-04-09)
 
 9 phases, 27 plans. Full details: `.planning/milestones/v1.0-ROADMAP.md`
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd:transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-04-09 — v1.0 Operational Hardening milestone complete. Clean slate for v2 development.*
+*Last updated: 2026-04-09 — v2.0 Rally Ready milestone started.*

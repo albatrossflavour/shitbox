@@ -1,9 +1,9 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.0
-milestone_name: TBD
+milestone_name: Rally Ready
 status: planning
-stopped_at: v1.0 Operational Hardening milestone complete — clean slate for v2
+stopped_at: Defining requirements for v2.0
 last_updated: "2026-04-09"
 last_activity: 2026-04-09
 progress:
@@ -21,13 +21,14 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Planning v2.0 milestone
+**Current focus:** v2.0 Rally Ready — defining requirements
 
 ## Current Position
 
-Phase: None (between milestones)
-Status: Ready to plan v2.0
-Last activity: 2026-04-09
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-09 — Milestone v2.0 started
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
