@@ -76,35 +76,33 @@
 
 ## Traceability
 
-_To be filled by roadmapper._
-
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| DISP-01 | — | Active |
-| DISP-02 | — | Active |
-| DISP-03 | — | Active |
-| DISP-04 | — | Active |
-| NOTE-01 | — | Active |
-| NOTE-02 | — | Active |
-| NOTE-03 | — | Active |
-| FUEL-01 | — | Active |
-| FUEL-02 | — | Active |
-| FUEL-03 | — | Active |
-| DRVR-01 | — | Active |
-| DRVR-02 | — | Active |
-| DRVR-03 | — | Active |
-| DRVR-04 | — | Active |
-| DRVR-05 | — | Active |
-| WEB-01 | — | Active |
-| WEB-02 | — | Active |
-| WEB-03 | — | Active |
-| WEB-04 | — | Active |
-| CAL-01 | — | Active |
-| CAL-02 | — | Active |
-| VID-01 | — | Active |
-| VID-02 | — | Active |
-| PWR-01 | — | Active |
-| PWR-02 | — | Active |
-| MON-01 | — | Active |
-| MON-02 | — | Active |
-| MON-03 | — | Active |
+| DISP-01 | Phase 17 | Pending |
+| DISP-02 | Phase 17 | Pending |
+| DISP-03 | Phase 17 | Pending |
+| DISP-04 | Phase 17 | Pending |
+| NOTE-01 | Phase 12 | Pending |
+| NOTE-02 | Phase 12 | Pending |
+| NOTE-03 | Phase 18 | Pending |
+| FUEL-01 | Phase 12 | Pending |
+| FUEL-02 | Phase 12 | Pending |
+| FUEL-03 | Phase 18 | Pending |
+| DRVR-01 | Phase 13 | Pending |
+| DRVR-02 | Phase 13 | Pending |
+| DRVR-03 | Phase 13 | Pending |
+| DRVR-04 | Phase 18 | Pending |
+| DRVR-05 | Phase 18 | Pending |
+| WEB-01 | Phase 18 | Pending |
+| WEB-02 | Phase 18 | Pending |
+| WEB-03 | Phase 18 | Pending |
+| WEB-04 | Phase 18 | Pending |
+| CAL-01 | Phase 14 | Pending |
+| CAL-02 | Phase 14 | Pending |
+| VID-01 | Phase 16 | Pending |
+| VID-02 | Phase 16 | Pending |
+| PWR-01 | Phase 15 | Pending |
+| PWR-02 | Phase 15 | Pending |
+| MON-01 | Phase 15 | Pending |
+| MON-02 | Phase 15 | Pending |
+| MON-03 | Phase 15 | Pending |
