@@ -74,13 +74,18 @@ class EventStorage:
         return f"{event.event_type.value}_{time_str}_{self._event_counter:03d}"
 
     def save_event(
-        self, event: Event, video_path: Optional[Path] = None
+        self,
+        event: Event,
+        video_path: Optional[Path] = None,
+        *,
+        driver_name: Optional[str] = None,
     ) -> tuple[Path, Path]:
         """Save an event to disk.
 
         Args:
             event: The event to save.
             video_path: Path to the associated video capture, if any.
+            driver_name: Active driver name at time of event, if known.
 
         Returns:
             Tuple of (json_path, csv_path).
@@ -97,6 +102,8 @@ class EventStorage:
         metadata["saved_at"] = datetime.now(timezone.utc).isoformat()
         if video_path:
             metadata["video_path"] = str(video_path)
+        if driver_name is not None:
+            metadata["driver_name"] = driver_name
 
         with open(json_path, "w") as f:
             json.dump(metadata, f, indent=2)

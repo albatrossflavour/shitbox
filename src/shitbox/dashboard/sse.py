@@ -17,12 +17,13 @@ from __future__ import annotations
 import asyncio
 import json
 import queue
-from typing import Any, Callable, Dict, List, Optional
+import threading
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 import structlog
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
-from sse_starlette.sse import EventSourceResponse  # noqa: F401  # kept for API symmetry
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse  # noqa: F401  # kept for API symmetry
+from sse_starlette.sse import EventSourceResponse
 
 from shitbox.dashboard.snapshot import read_snapshot
 
@@ -36,7 +37,7 @@ SLOW_HZ: float = 1.0
 router = APIRouter()
 
 _active_clients: int = 0
-_clients_lock = asyncio.Lock()
+_clients_lock = threading.Lock()
 
 # Bounded thread-safe queue. The engine pushes from a sync thread via
 # push_event(); the /sse/events generator drains from an asyncio thread via
@@ -69,98 +70,91 @@ def push_event(event: Dict[str, Any]) -> None:
         log.warning("dashboard_event_queue_full", dropped=event.get("type"))
 
 
-async def _acquire_slot() -> None:
+def _check_capacity() -> None:
+    """Raise HTTP 503 if already at MAX_CLIENTS, otherwise increment counter."""
     global _active_clients
-    async with _clients_lock:
+    with _clients_lock:
         if _active_clients >= MAX_CLIENTS:
             raise HTTPException(status_code=503, detail="dashboard at capacity")
         _active_clients += 1
 
 
-async def _release_slot() -> None:
+def _release_slot() -> None:
+    """Decrement the active client counter."""
     global _active_clients
-    async with _clients_lock:
+    with _clients_lock:
         _active_clients = max(0, _active_clients - 1)
 
 
-def _format_sse(event_name: str, payload: Dict[str, Any]) -> str:
-    """Format a single SSE frame as per the text/event-stream spec."""
-    return f"event: {event_name}\ndata: {json.dumps(payload, default=str)}\n\n"
-
-
-_SSE_HEADERS = {
-    "Cache-Control": "no-cache, no-transform",
-    "X-Accel-Buffering": "no",
-    "Content-Type": "text/event-stream",
-}
-
-
 @router.get("/sse/fast")
-async def sse_fast(request: Request) -> StreamingResponse:
-    await _acquire_slot()
+async def sse_fast(request: Request) -> Response:
+    _check_capacity()
 
-    async def gen():
+    async def gen() -> AsyncIterator[Dict[str, Any]]:
         try:
             while True:
-                if await request.is_disconnected():
-                    break
                 snap = read_snapshot()
-                yield _format_sse(
-                    "fast",
-                    {
-                        "ts": snap["ts"],
-                        "speed": snap["speed_kmh"],
-                        "gx": snap["g_x"],
-                        "gy": snap["g_y"],
-                        "gz": snap["g_z"],
-                        "heading": snap["heading_deg"],
-                    },
-                )
+                yield {
+                    "event": "fast",
+                    "data": json.dumps(
+                        {
+                            "ts": snap["ts"],
+                            "speed": snap["speed_kmh"],
+                            "gx": snap["g_x"],
+                            "gy": snap["g_y"],
+                            "gz": snap["g_z"],
+                            "heading": snap["heading_deg"],
+                        },
+                        default=str,
+                    ),
+                }
                 await asyncio.sleep(1.0 / FAST_HZ)
         finally:
-            await _release_slot()
+            _release_slot()
 
-    return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
+    return EventSourceResponse(gen())
 
 
 @router.get("/sse/slow")
-async def sse_slow(request: Request) -> StreamingResponse:
-    await _acquire_slot()
+async def sse_slow(request: Request) -> Response:
+    _check_capacity()
 
-    async def gen():
+    async def gen() -> AsyncIterator[Dict[str, Any]]:
         try:
             while True:
-                if await request.is_disconnected():
-                    break
                 snap = read_snapshot()
-                yield _format_sse(
-                    "slow",
-                    {
-                        "ts": snap["ts"],
-                        "lat": snap["lat"],
-                        "lng": snap["lng"],
-                        "fix_mode": snap["gps_fix_mode"],
-                        "sats": snap["gps_sat_count"],
-                        "hdop": snap["gps_hdop"],
-                        "imu_temp": snap["imu_temp_c"],
-                        "soc_temp": snap["soc_temp_c"],
-                        "sync_connected": snap["sync_connected"],
-                        "sync_backlog": snap["sync_backlog"],
-                        "event_count": snap["event_count_today"],
-                    },
-                )
+                yield {
+                    "event": "slow",
+                    "data": json.dumps(
+                        {
+                            "ts": snap["ts"],
+                            "lat": snap["lat"],
+                            "lng": snap["lng"],
+                            "fix_mode": snap["gps_fix_mode"],
+                            "sats": snap["gps_sat_count"],
+                            "hdop": snap["gps_hdop"],
+                            "imu_temp": snap["imu_temp_c"],
+                            "soc_temp": snap["soc_temp_c"],
+                            "sync_connected": snap["sync_connected"],
+                            "sync_backlog": snap["sync_backlog"],
+                            "event_count": snap["event_count_today"],
+                            "active_driver": snap.get("active_driver"),
+                        },
+                        default=str,
+                    ),
+                }
                 await asyncio.sleep(1.0 / SLOW_HZ)
         finally:
-            await _release_slot()
+            _release_slot()
 
-    return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
+    return EventSourceResponse(gen())
 
 
 @router.get("/sse/events")
-async def sse_events(request: Request) -> StreamingResponse:
-    await _acquire_slot()
+async def sse_events(request: Request) -> Response:
+    _check_capacity()
 
-    async def gen():
+    async def gen() -> AsyncIterator[Dict[str, Any]]:
         try:
             # Seed: last 10 events from the provider (wired by the engine)
             if _recent_provider is not None:
@@ -170,17 +164,15 @@ async def sse_events(request: Request) -> StreamingResponse:
                     log.warning("dashboard_recent_provider_failed", error=str(exc))
                     seed = []
                 for ev in seed:
-                    yield _format_sse("event", ev)
+                    yield {"event": "event", "data": json.dumps(ev, default=str)}
             # Live: drain the bounded queue
             while True:
-                if await request.is_disconnected():
-                    break
                 try:
                     ev = await asyncio.to_thread(event_queue.get, True, 1.0)
                 except queue.Empty:
                     continue
-                yield _format_sse("event", ev)
+                yield {"event": "event", "data": json.dumps(ev, default=str)}
         finally:
-            await _release_slot()
+            _release_slot()
 
-    return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
+    return EventSourceResponse(gen())

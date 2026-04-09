@@ -97,25 +97,32 @@ def test_set_driver_unknown_name(client):
 
 
 def test_sse_slow_includes_active_driver(client):
-    """GET /sse/slow payload contains an 'active_driver' key."""
-    from shitbox.dashboard import snapshot
+    """SSE /sse/slow payload generator includes an 'active_driver' key.
+
+    The Starlette TestClient cannot stream infinite SSE generators (it blocks
+    waiting for the response to complete). Instead we drive the async generator
+    directly via asyncio.run(), which proves the payload field is present
+    without going through the HTTP transport.
+    """
+    import asyncio
+    from unittest.mock import MagicMock
+    from shitbox.dashboard import snapshot, sse
 
     snapshot.update_snapshot({**snapshot.read_snapshot(), "active_driver": "Tony"})
 
-    # Stream the SSE endpoint and read the first event payload
-    with client.stream("GET", "/sse/slow") as resp:
-        assert resp.status_code == 200
-        for line in resp.iter_lines():
-            if line.startswith("data:"):
-                payload_str = line[len("data:"):].strip()
-                try:
-                    payload = json.loads(payload_str)
-                except json.JSONDecodeError:
-                    continue
-                assert "active_driver" in payload, (
-                    f"Expected 'active_driver' key in SSE slow payload, got: {list(payload.keys())}"
-                )
-                break
+    async def _get_first_payload() -> dict:
+        request = MagicMock()
+        response = await sse.sse_slow(request)
+        gen = response.body_iterator
+        item = await gen.__anext__()
+        await gen.aclose()
+        # item is {"event": "slow", "data": "<json>"}
+        return json.loads(item["data"] if isinstance(item, dict) else item.split("data: ", 1)[-1])
+
+    payload = asyncio.run(_get_first_payload())
+    assert "active_driver" in payload, (
+        f"Expected 'active_driver' key in SSE slow payload, got: {list(payload.keys())}"
+    )
 
 
 # ---------------------------------------------------------------------------
