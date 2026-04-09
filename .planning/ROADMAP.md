@@ -215,7 +215,7 @@ pipeline, with improved Grafana dashboards; the changes are deployed via the hom
 | 9. Sync Reliability | v1.0 | — | Dropped | 2026-02-28 |
 | 10. Live Dashboard with Offline Map | v1.0 | 7/7 | Complete | 2026-04-09 |
 | 11. V2 Hardware Migration | v1.0 | 5/5 | Complete | 2026-04-09 |
-| 12. Schema Foundation and Logbook API | v2.0 | 4/4 | Complete   | 2026-04-09 |
+| 12. Schema Foundation and Logbook API | v2.0 | 4/4 | Complete    | 2026-04-09 |
 | 13. Driver Tracking | v2.0 | TBD | Not started | — |
 | 14. Sensor Calibration | v2.0 | TBD | Not started | — |
 | 15. Undervoltage and Monitoring | v2.0 | TBD | Not started | — |
