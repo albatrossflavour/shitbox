@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-# 16-key default contract. Any field the UI may read MUST be present here so
+# 17-key default contract. Any field the UI may read MUST be present here so
 # consumers never hit KeyError during boot before the first writer tick.
 _snapshot: Dict[str, Any] = {
     "ts": 0.0,
@@ -39,6 +39,7 @@ _snapshot: Dict[str, Any] = {
     "sync_connected": False,
     "sync_backlog": 0,
     "event_count_today": 0,
+    "active_driver": None,
 }
 
 

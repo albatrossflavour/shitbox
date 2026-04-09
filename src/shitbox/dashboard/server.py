@@ -26,8 +26,8 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from shitbox.dashboard import sse as sse_mod
 from shitbox.dashboard import logbook as logbook_mod
+from shitbox.dashboard import sse as sse_mod
 from shitbox.dashboard.tiles import make_router as make_tiles_router
 
 log = structlog.get_logger(__name__)
@@ -39,6 +39,8 @@ def build_app(
     mbtiles_path: Path,
     recent_events_provider: Optional[Callable[[int], List[dict]]] = None,
     logbook_storage: Optional[object] = None,
+    driver_storage: Optional[object] = None,
+    drivers: Optional[List[str]] = None,
 ) -> FastAPI:
     """Construct the dashboard FastAPI app.
 
@@ -55,6 +57,13 @@ def build_app(
     if logbook_storage is not None:
         logbook_mod.set_storage(logbook_storage)  # type: ignore[arg-type]
         app.include_router(logbook_mod.router)
+
+    if driver_storage is not None:
+        from shitbox.dashboard import driver as driver_mod
+        driver_mod.set_storage(driver_storage)  # type: ignore[arg-type]
+        if drivers:
+            driver_mod.set_drivers_roster(drivers)
+        app.include_router(driver_mod.router)
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -134,11 +143,15 @@ def build_dashboard_server(
     mbtiles_path: Path,
     recent_events_provider: Optional[Callable[[int], List[dict]]] = None,
     logbook_storage: Optional[object] = None,
+    driver_storage: Optional[object] = None,
+    drivers: Optional[List[str]] = None,
 ) -> DashboardServer:
     """Convenience factory used by UnifiedEngine wiring."""
     app = build_app(
         mbtiles_path=mbtiles_path,
         recent_events_provider=recent_events_provider,
         logbook_storage=logbook_storage,
+        driver_storage=driver_storage,
+        drivers=drivers,
     )
     return DashboardServer(host=host, port=port, app=app)
