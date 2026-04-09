@@ -22,6 +22,11 @@ from shitbox.capture import buzzer, overlay, speaker
 from shitbox.capture.button import ButtonHandler
 from shitbox.capture.ring_buffer import VideoRingBuffer
 from shitbox.capture.video import VideoRecorder
+from shitbox.collectors.imu_heading import IMUHeadingCollector
+from shitbox.collectors.light import VEML7700Collector
+from shitbox.collectors.particulate import SEN0460Collector
+from shitbox.collectors.power import INA226Collector
+from shitbox.collectors.temperature import DS18B20Collector
 from shitbox.dashboard.server import DashboardServer, build_dashboard_server
 from shitbox.dashboard.snapshot import update_snapshot
 from shitbox.dashboard.sse import push_event as dashboard_push_event
@@ -45,7 +50,12 @@ from shitbox.utils.config import (
     CaptureSyncConfig,
     Config,
     GrafanaConfig,
+    IMUHeadingConfig,
+    LightConfig,
     OLEDConfig,
+    ParticulateConfig,
+    PowerConfig,
+    TemperatureConfig,
     load_config,
 )
 from shitbox.utils.logging import get_logger, setup_logging
@@ -66,13 +76,9 @@ def _current_aest_date() -> str:
 class EngineConfig:
     """Configuration for the unified engine."""
 
-    # High-rate IMU sampling
-    imu_sample_rate_hz: float = 100.0
+    # High-rate IMU sampling (LSM6DSOX via circuitpython)
+    imu_sample_rate_hz: float = 104.0
     ring_buffer_seconds: float = 30.0
-    i2c_bus: int = 1
-    mpu6050_address: int = 0x68
-    accel_range: int = 4  # ±4g
-    gyro_range: int = 500  # ±500 deg/s
     accel_offset_x: float = 0.0
     accel_offset_y: float = 0.0
     accel_offset_z: float = 0.0
@@ -82,12 +88,15 @@ class EngineConfig:
     gps_enabled: bool = True
     gps_host: str = "localhost"
     gps_port: int = 2947
-    temp_enabled: bool = False
-    temp_i2c_address: int = 0x18
-    power_enabled: bool = False
-    power_i2c_address: int = 0x40
     environment_enabled: bool = False
     environment_i2c_address: int = 0x77
+
+    # v2 sensor configs (phase 11)
+    temperature: TemperatureConfig = field(default_factory=TemperatureConfig)
+    light: LightConfig = field(default_factory=LightConfig)
+    power: PowerConfig = field(default_factory=PowerConfig)
+    particulate: ParticulateConfig = field(default_factory=ParticulateConfig)
+    imu_heading: IMUHeadingConfig = field(default_factory=IMUHeadingConfig)
 
     # Event detection
     detector: DetectorConfig = field(default_factory=DetectorConfig)
@@ -219,25 +228,22 @@ class EngineConfig:
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
         """Create EngineConfig from the existing YAML config structure."""
         return cls(
-            # IMU settings
-            i2c_bus=config.sensors.imu.i2c_bus,
-            mpu6050_address=config.sensors.imu.address,
-            accel_range=config.sensors.imu.accel_range,
-            gyro_range=config.sensors.imu.gyro_range,
-            accel_offset_x=config.sensors.imu.accel_offset_x,
-            accel_offset_y=config.sensors.imu.accel_offset_y,
-            accel_offset_z=config.sensors.imu.accel_offset_z,
+            # IMU settings (LSM6DSOX — no i2c_bus/address params, circuitpython handles discovery)
+            accel_offset_x=config.sensors.lsm6dsox.accel_offset_x,
+            accel_offset_y=config.sensors.lsm6dsox.accel_offset_y,
+            accel_offset_z=config.sensors.lsm6dsox.accel_offset_z,
+            imu_sample_rate_hz=config.sensors.lsm6dsox.sample_rate_hz,
+            # v2 sensor configs
+            temperature=config.sensors.temperature,
+            light=config.sensors.light,
+            power=config.sensors.power,
+            particulate=config.sensors.particulate,
+            imu_heading=config.sensors.imu_heading,
             # GPS settings
             gps_enabled=config.sensors.gps.enabled,
             gps_host=config.sensors.gps.host,
             gps_port=config.sensors.gps.port,
-            # Temp settings
-            temp_enabled=config.sensors.temperature.enabled,
-            temp_i2c_address=config.sensors.temperature.address,
-            # Power settings
-            power_enabled=config.sensors.power.enabled,
-            power_i2c_address=config.sensors.power.address,
-            # Environment settings
+            # Environment settings (BME280 — legacy, kept for reference boards)
             environment_enabled=config.sensors.environment.enabled,
             environment_i2c_address=config.sensors.environment.address,
             # Storage
@@ -365,11 +371,7 @@ class UnifiedEngine:
 
         self.sampler = HighRateSampler(
             ring_buffer=self.ring_buffer,
-            i2c_bus=config.i2c_bus,
-            address=config.mpu6050_address,
             sample_rate_hz=config.imu_sample_rate_hz,
-            accel_range=config.accel_range,
-            gyro_range=config.gyro_range,
             accel_offset_x=config.accel_offset_x,
             accel_offset_y=config.accel_offset_y,
             accel_offset_z=config.accel_offset_z,
@@ -400,23 +402,44 @@ class UnifiedEngine:
         self._gps = None
         self._gps_available = False
 
-        # Power collector (lazy init)
-        self._power_collector = None
-        if config.power_enabled:
-            try:
-                from shitbox.collectors.power import PowerCollector
-                from shitbox.utils.config import PowerConfig
+        # v2 sensor collectors (phase 11) — each uses BaseCollector.start/stop lifecycle
+        self._ds18b20_collector: Optional[DS18B20Collector] = None
+        if config.temperature.enabled:
+            self._ds18b20_collector = DS18B20Collector(
+                config=config.temperature,
+                callback=self._on_reading,
+            )
 
-                power_config = PowerConfig(
-                    enabled=True,
-                    i2c_bus=config.i2c_bus,
-                    address=config.power_i2c_address,
-                )
-                self._power_collector = PowerCollector(power_config)
-            except Exception as e:
-                log.error("power_collector_init_failed", error=str(e))
+        self._light_collector: Optional[VEML7700Collector] = None
+        if config.light.enabled:
+            self._light_collector = VEML7700Collector(
+                config=config.light,
+                callback=self._on_reading,
+            )
 
-        # Environment collector (lazy init)
+        self._particulate_collector: Optional[SEN0460Collector] = None
+        if config.particulate.enabled:
+            self._particulate_collector = SEN0460Collector(
+                config=config.particulate,
+                callback=self._on_reading,
+            )
+
+        self._ina226_collector: Optional[INA226Collector] = None
+        if config.power.enabled:
+            self._ina226_collector = INA226Collector(
+                config=config.power,
+                callback=self._on_reading,
+            )
+
+        self._imu_heading_collector: Optional[IMUHeadingCollector] = None
+        if config.imu_heading.enabled:
+            self._imu_heading_collector = IMUHeadingCollector(
+                config=config.imu_heading,
+                latest_sample_fn=self.sampler.latest_sample,
+                callback=self._on_reading,
+            )
+
+        # Legacy environment collector (BME280 on old boards — kept for graceful transition)
         self._environment_collector = None
         if config.environment_enabled:
             try:
@@ -425,7 +448,6 @@ class UnifiedEngine:
 
                 env_config = EnvironmentConfig(
                     enabled=True,
-                    i2c_bus=config.i2c_bus,
                     address=config.environment_i2c_address,
                 )
                 self._environment_collector = EnvironmentCollector(env_config)
@@ -460,7 +482,11 @@ class UnifiedEngine:
 
         # Prometheus batch sync
         self.batch_sync: Optional[BatchSyncService] = None
-        if config.prometheus_enabled and config.uplink_enabled and config.prometheus_remote_write_url:
+        if (
+            config.prometheus_enabled
+            and config.uplink_enabled
+            and config.prometheus_remote_write_url
+        ):
             from shitbox.utils.config import PrometheusConfig
             prom_config = PrometheusConfig(
                 enabled=True,
@@ -550,7 +576,9 @@ class UnifiedEngine:
                     post_event_seconds=int(config.capture_post_seconds),
                     overlay_path=overlay_path,
                     intro_video=config.video_buffer_intro_video,
-                    pip_device=config.video_buffer_pip_device if config.video_buffer_pip_enabled else "",
+                    pip_device=(
+                        config.video_buffer_pip_device if config.video_buffer_pip_enabled else ""
+                    ),
                     pip_input_format=config.video_buffer_pip_input_format,
                     pip_resolution=config.video_buffer_pip_resolution,
                     pip_fps=config.video_buffer_pip_fps,
@@ -606,6 +634,7 @@ class UnifiedEngine:
         self._current_heading: Optional[float] = None
         self._current_altitude: Optional[float] = None
         self._current_satellites: Optional[int] = None
+        self._cabin_temp_c: Optional[float] = None
         self._gps_has_fix = False
         self._clock_synced_from_gps = False
         self._distance_from_start_km: Optional[float] = None
@@ -704,6 +733,19 @@ class UnifiedEngine:
         log.warning("gps_fix_timeout_at_startup", waited_seconds=max_wait)
         return False
 
+    def _on_reading(self, reading: Reading) -> None:
+        """Callback for v2 sensor collectors — persists readings to SQLite.
+
+        Called from collector background threads; database is thread-safe (WAL + write lock).
+        """
+        try:
+            self.database.insert_reading(reading)
+            self.telemetry_readings += 1
+            if reading.sensor_type == SensorType.ENVIRONMENT and reading.env_temp_celsius is not None:
+                self._cabin_temp_c = reading.env_temp_celsius
+        except Exception as e:
+            log.error("v2_collector_db_write_error", error=str(e))
+
     def _on_imu_sample(self, sample: IMUSample) -> None:
         """Called for each high-rate IMU sample."""
         self.detector.process_sample(sample)
@@ -730,8 +772,8 @@ class UnifiedEngine:
                         "gps_fix_mode": 3 if self._gps_has_fix else 0,
                         "gps_sat_count": self._current_satellites or 0,
                         "gps_hdop": None,
-                        "imu_temp_c": getattr(self.thermal_monitor, "imu_temp_c", None),
-                        "soc_temp_c": getattr(self.thermal_monitor, "soc_temp_c", None),
+                        "imu_temp_c": self._cabin_temp_c,
+                        "soc_temp_c": getattr(self.thermal_monitor, "current_temp_celsius", None),
                         "sync_connected": getattr(self.connection, "is_connected", False),
                         "sync_backlog": backlog,
                         "event_count_today": self.events_captured,
@@ -1034,8 +1076,6 @@ class UnifiedEngine:
             return None
 
         try:
-            import json
-            import socket
             packet = self._gps.get_current()
 
             if packet.mode < 2:
@@ -1063,7 +1103,11 @@ class UnifiedEngine:
                 latitude=packet.lat if hasattr(packet, "lat") else None,
                 longitude=packet.lon if hasattr(packet, "lon") else None,
                 altitude_m=packet.alt if packet.mode >= 3 and hasattr(packet, "alt") else None,
-                speed_kmh=(packet.hspeed * 3.6) if hasattr(packet, "hspeed") and packet.hspeed else None,
+                speed_kmh=(
+                    (packet.hspeed * 3.6)
+                    if hasattr(packet, "hspeed") and packet.hspeed
+                    else None
+                ),
                 heading_deg=packet.track if hasattr(packet, "track") else None,
                 satellites=satellites,
                 fix_quality=packet.mode if hasattr(packet, "mode") else 0,
@@ -1294,7 +1338,7 @@ class UnifiedEngine:
             "peak_g": peak_g,
             "imu_ok": self.sampler._running,
             "env_ok": self._environment_collector is not None,
-            "pwr_ok": self._power_collector is not None,
+            "pwr_ok": getattr(self, "_ina226_collector", None) is not None,
             "events_captured": self.events_captured,
             "recording": (
                 self.video_ring_buffer is not None
@@ -1450,21 +1494,18 @@ class UnifiedEngine:
         if imu_reading:
             readings.append(imu_reading)
 
-        # Power reading
-        if self._power_collector:
-            try:
-                power_data = self._power_collector.read()
-                if power_data:
-                    readings.append(self._power_collector.to_reading(power_data))
-            except Exception as e:
-                log.error("power_read_error", error=str(e))
+        # Power reading — v2 INA226 runs in its own collector thread (callback-driven);
+        # no polling needed here.
 
         # Environment reading
         if self._environment_collector:
             try:
                 env_data = self._environment_collector.read()
                 if env_data:
-                    readings.append(self._environment_collector.to_reading(env_data))
+                    env_reading = self._environment_collector.to_reading(env_data)
+                    readings.append(env_reading)
+                    if env_reading.env_temp_celsius is not None:
+                        self._cabin_temp_c = env_reading.env_temp_celsius
             except Exception as e:
                 log.error("environment_read_error", error=str(e))
 
@@ -1727,15 +1768,6 @@ class UnifiedEngine:
             if self._gps_available:
                 self._wait_for_gps_fix()
 
-        # Initialise power sensor
-        if self._power_collector:
-            try:
-                self._power_collector.setup()
-                log.info("power_sensor_ready")
-            except Exception as e:
-                log.error("power_sensor_setup_failed", error=str(e))
-                self._power_collector = None
-
         # Initialise environment sensor
         if self._environment_collector:
             try:
@@ -1798,6 +1830,20 @@ class UnifiedEngine:
 
         # Start high-rate sampler
         self.sampler.start()
+
+        # Start v2 sensor collectors (phase 11)
+        for collector in (
+            self._ds18b20_collector,
+            self._light_collector,
+            self._particulate_collector,
+            self._ina226_collector,
+            self._imu_heading_collector,
+        ):
+            if collector is not None:
+                try:
+                    collector.start()
+                except Exception as e:
+                    log.error("v2_collector_start_failed", collector=collector.name, error=str(e))
 
         # Start telemetry loop
         self._telemetry_thread = threading.Thread(
@@ -1901,6 +1947,20 @@ class UnifiedEngine:
         # Stop components
         self.sampler.stop()
 
+        # Stop v2 sensor collectors (phase 11)
+        for collector in (
+            self._ds18b20_collector,
+            self._light_collector,
+            self._particulate_collector,
+            self._ina226_collector,
+            self._imu_heading_collector,
+        ):
+            if collector is not None:
+                try:
+                    collector.stop()
+                except Exception as e:
+                    log.error("v2_collector_stop_failed", collector=collector.name, error=str(e))
+
         if self.batch_sync:
             self.batch_sync.stop()
 
@@ -1914,9 +1974,6 @@ class UnifiedEngine:
 
         if self.mqtt:
             self.mqtt.disconnect()
-
-        if self._power_collector:
-            self._power_collector.cleanup()
 
         if self._environment_collector:
             self._environment_collector.cleanup()
@@ -2055,7 +2112,9 @@ class UnifiedEngine:
                 issues.append("speaker_worker_dead")
                 try:
                     speaker.cleanup()
-                    if speaker.init(self.config.speaker_model_path, volume=self.config.speaker_volume):
+                    if speaker.init(
+                        self.config.speaker_model_path, volume=self.config.speaker_volume
+                    ):
                         recovered.append("speaker")
                         log.info("speaker_reinitialised")
                     else:

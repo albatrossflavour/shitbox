@@ -1,10 +1,9 @@
 """Thread-safe ring buffer for high-rate IMU samples."""
 
 import threading
-import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Iterator, List, Optional
+from typing import List
 
 
 @dataclass(slots=True)

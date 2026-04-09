@@ -303,7 +303,10 @@ class Database:
                     pressure_hpa, humidity_pct, env_temp_celsius,
                     gas_resistance_ohms,
                     cpu_temp_celsius, cpu_percent, disk_percent, sync_backlog, throttle_flags
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (
                     reading.timestamp_utc.isoformat(),

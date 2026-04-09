@@ -11,6 +11,7 @@ class SensorType(str, Enum):
 
     GPS = "gps"
     IMU = "imu"
+    IMU_HEADING = "imu_heading"
     TEMPERATURE = "temp"
     SYSTEM = "system"
     POWER = "power"

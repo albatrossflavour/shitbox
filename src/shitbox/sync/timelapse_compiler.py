@@ -121,7 +121,13 @@ class TimelapseCompiler:
             # Duration scales with frame count at OUTPUT_FPS; cap at MAX_SECONDS
             duration_s = min(len(frames) / self.OUTPUT_FPS, self.MAX_SECONDS)
             per_frame = duration_s / len(frames)
-            log.info("timelapse_compiling", date=day, frame_count=len(frames), fps=self.OUTPUT_FPS, duration_s=round(duration_s, 1))
+            log.info(
+                "timelapse_compiling",
+                date=day,
+                frame_count=len(frames),
+                fps=self.OUTPUT_FPS,
+                duration_s=round(duration_s, 1),
+            )
 
             # Write concat demuxer list — explicit per-frame duration avoids fps rounding issues
             frames_txt = output_dir / "timelapse.frames.txt"
@@ -142,7 +148,9 @@ class TimelapseCompiler:
                 str(tmp_frames),
             ]
             try:
-                result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300)
+                result = subprocess.run(
+                    cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300
+                )
                 frames_txt.unlink(missing_ok=True)
                 if result.returncode != 0 or not tmp_frames.exists():
                     stderr = result.stderr.decode()[-500:] if result.stderr else ""
@@ -175,8 +183,12 @@ class TimelapseCompiler:
                 ]
                 intro_ok = False
                 try:
-                    r = subprocess.run(intro_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
-                    intro_ok = r.returncode == 0 and tmp_intro.exists() and tmp_intro.stat().st_size > 0
+                    r = subprocess.run(
+                        intro_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120
+                    )
+                    intro_ok = (
+                        r.returncode == 0 and tmp_intro.exists() and tmp_intro.stat().st_size > 0
+                    )
                     if not intro_ok:
                         stderr = r.stderr.decode()[-300:] if r.stderr else ""
                         log.warning("timelapse_intro_transcode_failed", date=day, stderr=stderr)
@@ -196,7 +208,9 @@ class TimelapseCompiler:
                         str(tmp_path),
                     ]
                     try:
-                        result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300)
+                        result = subprocess.run(
+                            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300
+                        )
                         tmp_intro.unlink(missing_ok=True)
                         if result.returncode != 0 or not tmp_path.exists():
                             stderr = result.stderr.decode()[-500:] if result.stderr else ""
@@ -217,7 +231,14 @@ class TimelapseCompiler:
                 tmp_frames.rename(tmp_path)
 
             os.replace(str(tmp_path), str(output_path))
-            log.info("timelapse_compiled", date=day, frame_count=len(frames), fps=self.OUTPUT_FPS, duration_s=round(duration_s, 1), output=str(output_path))
+            log.info(
+                "timelapse_compiled",
+                date=day,
+                frame_count=len(frames),
+                fps=self.OUTPUT_FPS,
+                duration_s=round(duration_s, 1),
+                output=str(output_path),
+            )
         finally:
             lock_path.unlink(missing_ok=True)
 

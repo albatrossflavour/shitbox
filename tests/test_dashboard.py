@@ -8,6 +8,8 @@ hard failures so each implementation task can flip its test from red to green.
 
 from __future__ import annotations
 
+import pytest
+
 
 def test_snapshot_atomicity():
     from shitbox.dashboard.snapshot import read_snapshot, update_snapshot
@@ -297,3 +299,58 @@ def test_uvicorn_signal_handlers_disabled():
     assert (
         "install_signal_handlers" in src
     ), "server.py must override install_signal_handlers"
+
+
+def test_sse_events_payload_has_lat_lng(mbtiles_fixture):
+    """D-21: event payloads pushed via push_event must carry lat and lng fields.
+
+    The frontend openEvents() uses ev.lat and ev.lng to place map markers.
+    If the engine drops these fields the markers silently never appear.
+    """
+    import json as _json
+    import queue as _queue
+
+    from shitbox.dashboard.server import build_app
+    from shitbox.dashboard.sse import event_queue, push_event
+
+    # Drain any stale events left in the module-level queue by previous tests.
+    while True:
+        try:
+            event_queue.get_nowait()
+        except _queue.Empty:
+            break
+
+    # Use an empty seed provider so no stale events from previous tests interfere.
+    app = build_app(mbtiles_path=mbtiles_fixture, recent_events_provider=lambda n: [])
+    srv, base = _start_live_server(app)
+    try:
+        # Push a synthetic event with GPS coordinates before reading.
+        push_event({
+            "type": "HIGH_G",
+            "timestamp": "2026-04-09T12:00:00+00:00",
+            "peak_g": 2.5,
+            "duration_ms": 300,
+            "speed_kmh": 80.0,
+            "lat": -33.8688,
+            "lng": 151.2093,
+        })
+        lines = _read_sse_lines(base + "/sse/events", max_lines=2, timeout=4.0)
+    finally:
+        _stop_live_server(srv)
+
+    data_lines = [l for l in lines if l.startswith("data:")]
+    assert data_lines, "no data lines received from /sse/events"
+
+    # Find the HIGH_G event we pushed (seed events may appear first).
+    found = False
+    for line in data_lines:
+        payload = _json.loads(line[len("data:"):].strip())
+        if payload.get("type") == "HIGH_G" and payload.get("lat") is not None:
+            assert "lat" in payload, "lat missing from event payload"
+            assert "lng" in payload, "lng missing from event payload"
+            assert payload["lat"] == pytest.approx(-33.8688)
+            assert payload["lng"] == pytest.approx(151.2093)
+            found = True
+            break
+
+    assert found, "pushed HIGH_G event with lat/lng not found in /sse/events stream"

@@ -2,7 +2,7 @@
 
 ## What This Is
 
-An offline-first rally car telemetry system for a 2001 Ford Laser competing in the Shitbox Rally (Port Douglas to Melbourne). It captures high-rate IMU data, GPS position, temperature, and video on a Raspberry Pi, stores everything locally in SQLite, and batch-syncs to Prometheus and a public website when mobile connectivity is available. The rally is a fundraising event, so reliable data capture and public engagement matter.
+An offline-first rally car telemetry system for a 2001 Ford Laser competing in the Shitbox Rally (Port Douglas to Melbourne). It captures high-rate IMU data (LSM6DSOX, 100 Hz), GPS position, environment sensors (DS18B20 temps, VEML7700 lux, INA226 power), and video on a Raspberry Pi 5, stores everything locally in SQLite, and batch-syncs to Prometheus and a public website when mobile connectivity is available. A live in-process dashboard (FastAPI + SSE + MBTiles) serves telemetry to the Pi's Chromium kiosk and phones on rally wifi. The rally is a fundraising event (Cancer Council), so reliable data capture and public engagement both matter.
 
 ## Core Value
 
@@ -10,60 +10,63 @@ Never lose telemetry data or video — the system must survive thousands of kilo
 
 ## Requirements
 
-### Validated
+### Validated — v1.0
 
-- ✓ High-rate IMU sampling at 100 Hz with event detection (hard brake, big corner, high G, rough road) — existing
-- ✓ GPS position, speed, and heading tracking at 1 Hz — existing
-- ✓ Temperature and environment monitoring (BME680, MCP9808) — existing
-- ✓ Power monitoring (INA219) — existing
-- ✓ Offline-first SQLite storage with WAL mode — existing
+- ✓ Bulletproof boot recovery — WAL crash detection, orphan event closure, `synchronous=FULL` — v1.0
+- ✓ Hardware watchdog active, all services auto-restart, ffmpeg stall detection — v1.0
+- ✓ Thermal monitor (70/80°C alerts, throttle decode, WAL TRUNCATE checkpoint) — v1.0
+- ✓ Stage tracking (GPS odometer, daily distance, waypoint detection) — v1.0
+- ✓ USB speaker with Piper TTS replacing buzzer tones — contextual spoken alerts — v1.0
+- ✓ Escalating I2C crash-loop prevention (3-attempt backoff before reboot) — v1.0
+- ✓ Speaker worker watchdog with auto-reinit — v1.0
+- ✓ Capture integrity: post-save MP4 verification, timelapse gap watchdog, boot save guard — v1.0
+- ✓ Live dashboard: FastAPI + three SSE streams + MBTiles offline map + Alpine/Tailwind/Leaflet — v1.0
+- ✓ V2 sensor stack: LSM6DSOX+LIS3MDL IMU, DS18B20 dual-probe, VEML7700, INA226 — v1.0
+- ✓ High-rate IMU at 100 Hz with event detection (hard brake, big corner, high G, rough road) — existing
+- ✓ GPS position, speed, and heading at 1 Hz — existing
+- ✓ Offline-first SQLite with WAL mode — existing
 - ✓ Cursor-based batch sync to Prometheus over WireGuard — existing
-- ✓ Event-triggered video capture with pre-event ring buffer — existing
-- ✓ Manual video capture via GPIO button — existing
+- ✓ Event-triggered and manual video capture with pre-event ring buffer — existing
 - ✓ Capture sync to NAS via rsync — existing
-- ✓ GPS-based clock synchronisation — existing
-- ✓ Structured logging via structlog — existing
-- ✓ Graceful hardware degradation (runs with whatever sensors are available) — existing
-- ✓ Public website at shit-of-theseus.com showing events, map, video, and Grafana dashboard — existing
-- ✓ OLED display service (SSD1306) — existing
+- ✓ Public website (shit-of-theseus.com) with events, map, video, Grafana dashboard — existing
 
-### Active
+### Known Gaps from v1.0
 
-- [ ] Bulletproof boot recovery — clean startup after ignition cycles and unexpected power loss
-- [ ] Watchdog and self-healing — detect stuck services and restart them automatically
-- [ ] Remote health monitoring — visibility into system health when connectivity is available
-- [ ] Driver display on 7" Pi screen — speed, heading, trip stats, system health at a glance
-- [ ] Rally stage tracking — distance covered, progress along the route
-- [ ] Thermal resilience — handle high cabin temperatures without data loss
-- [ ] Storage management — prevent SD card filling up over multi-day rally
-- [ ] Website engagement — reliable delivery of videos and metrics to followers during the rally
+- HLTH-01: System publishes CPU temp, disk %, sync backlog to Prometheus — implemented in HealthCollector but not confirmed working end-to-end in production
+- SYNC-01/02/03: Prometheus sync reliability (dropped from v1.0; field test confirmed sync is working, cursor-safe rejection was already implemented)
+
+### Active — v2.0
+
+(To be defined in new-milestone)
 
 ### Out of Scope
 
-- OBD / ECU data — 2001 Ford Laser is OBD-I only, no easy interface
-- Mobile app — web UI on Pi display and website are sufficient
-- Real-time streaming — connectivity too sparse; batch sync is the right model
-- G-force display on driver screen — driver doesn't need live accelerometer data
+- OBD / ECU data — 2001 Ford Laser is OBD-I only, no practical interface
+- Mobile app — web UI on Pi dashboard and website are sufficient
+- Real-time video streaming — connectivity too sparse; batch sync is the right model
+- Read-only OS filesystem (overlayfs) — incompatible with SQLite WAL data writes
+- AI/ML event classification — unnecessary complexity for rally use case
+- Automatic OTA updates — too risky for a multi-day rally in remote areas
+- MQTT — Prometheus path is sufficient; MQTT adds duplicate metrics
 
 ## Context
 
 - The rally runs from Port Douglas (Far North Queensland) to Melbourne — roughly 4,000+ km through remote and regional Australia
 - Mobile connectivity will be intermittent at best; long stretches with no signal
 - The car is a 2001 Ford Laser — no modern electronics, OBD-I only
-- This is a fundraising event (Shitbox Rally / Cancer Council) so public engagement through the website drives donations
-- The Pi hardware setup (mounting, wiring, power) is still a work in progress
-- Core telemetry stack (IMU, GPS, video, Prometheus sync) has been partially tested on the car and confirmed working
+- This is a fundraising event (Shitbox Rally / Cancer Council) — public engagement drives donations
+- **Hardware**: Pi 5 with v2 sensor hat (LSM6DSOX+LIS3MDL, DS18B20 x2, VEML7700, INA226, ELP 4K camera). Pi 5 IP: 10.10.20.107
+- Core telemetry stack tested on the car and confirmed working
 - Website is a separate repo (`~/dev/home-ops/kubernetes/apps/default/shit-of-theseus/app/`) deployed via Flux
-- The existing codebase already has a health watchdog loop (30-second interval), systemd notify support, and disk space checks
 
 ## Constraints
 
-- **Platform**: Raspberry Pi with Raspbian, Python 3.9+
+- **Platform**: Raspberry Pi 5, Raspbian, Python 3.9+
 - **Power**: 12V car power with ignition-linked supply — must handle unclean shutdowns
 - **Connectivity**: WireGuard VPN over mobile data — intermittent, sometimes days without signal
 - **Storage**: SD card (limited capacity) plus potential USB storage
 - **Heat**: Australian summer, no air conditioning in a 2001 Ford Laser — cabin temps could exceed 50°C
-- **Timeline**: Rally is a few months away — must prioritise ruthlessly
+- **Timeline**: Rally date approaching — must prioritise ruthlessly
 - **Display**: 7" Raspberry Pi touchscreen attached to Pi
 
 ## Key Decisions
@@ -73,22 +76,18 @@ Never lose telemetry data or video — the system must survive thousands of kilo
 | Offline-first architecture | Connectivity too unreliable for real-time | ✓ Good |
 | SQLite with WAL mode | Crash-resistant, no external dependencies | ✓ Good |
 | Batch sync over WireGuard | Simple, secure, works with intermittent connectivity | ✓ Good |
-| Priority: bulletproof capture over features | Data loss is unrecoverable; features can be added later | — Pending |
-| 7" Pi screen for driver display | Already have the hardware, directly attached to Pi | — Pending |
-| No OBD integration | OBD-I too complex for the value it adds | ✓ Good |
+| Priority: bulletproof capture over features | Data loss is unrecoverable | ✓ Good — v1.0 vindicated this |
+| Escalating recovery (backoff before reboot) | Crash-loops destroy in-progress captures | ✓ Good — eliminated field-test crash loop |
+| Piper TTS over buzzer tones | Spoken alerts are more informative in a car | ✓ Good |
+| In-process FastAPI dashboard | Avoids separate process coordination; SSE keeps capture path clean | ✓ Good |
+| LSM6DSOX replacing MPU6050 | V2 hat hardware; better precision and integrated with LIS3MDL heading | ✓ Good |
+| No driver display yet | Display process deferred — not on the car yet | — Pending for v2 |
 
-## Current Milestone: v1.1 Field-Test Hardening
+## Shipped
 
-**Goal:** Fix all issues discovered during the first test drive — sync reliability, capture integrity, and self-healing recovery across subsystems.
+### v1.0 — Operational Hardening (2026-04-09)
 
-**Target fixes:**
-
-- Prometheus sync "too old" rejections — data lost on every drive
-- Missing video captures and timelapse gaps
-- IMU I2C bus alarms recurring
-- TTS speaker intermittently silent
-- No way to manually trigger data upload
-- Cursor advances past unsynced data
+9 phases, 27 plans. Full details: `.planning/milestones/v1.0-ROADMAP.md`
 
 ---
-*Last updated: 2026-02-28 after v1.1 milestone start*
+*Last updated: 2026-04-09 — v1.0 Operational Hardening milestone complete. Clean slate for v2 development.*

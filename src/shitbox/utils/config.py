@@ -41,38 +41,87 @@ class GPSConfig:
 
 
 @dataclass
-class IMUConfig:
-    """IMU sensor configuration."""
+class LSM6DSOXConfig:
+    """LSM6DSOX accel+gyro (replaces MPU6050)."""
 
     enabled: bool = True
     i2c_bus: int = 1
-    address: int = 0x68
+    address: int = 0x6A
+    sample_rate_hz: float = 104.0  # LSM6DSOX Rate.RATE_104_HZ default
+    accel_offset_x: float = 0.0   # g, subtracted after unit conversion
+    accel_offset_y: float = 0.0
+    accel_offset_z: float = 0.0
+
+
+@dataclass
+class LIS3MDLConfig:
+    """LIS3MDL magnetometer configuration."""
+
+    enabled: bool = True
+    i2c_bus: int = 1
+    address: int = 0x1C
+
+
+@dataclass
+class IMUHeadingConfig:
+    """IMU heading (complementary filter) collector configuration."""
+
+    enabled: bool = True
     sample_rate_hz: float = 10.0
-    accel_range: int = 4  # +/- g
-    gyro_range: int = 500  # +/- deg/s
-    accel_offset_x: float = 0.0  # g — subtracted from raw ax
-    accel_offset_y: float = 0.0  # g — subtracted from raw ay
-    accel_offset_z: float = 0.0  # g — subtracted from raw az (after gravity)
+    complementary_alpha: float = 0.98
+
+
+@dataclass
+class DS18B20ProbeConfig:
+    """Single DS18B20 probe config (role + 1-Wire sensor ID)."""
+
+    role: str = ""
+    sensor_id: str = ""
 
 
 @dataclass
 class TemperatureConfig:
-    """Temperature sensor configuration."""
+    """DS18B20 1-Wire config (replaces MCP9808)."""
 
-    enabled: bool = False
+    enabled: bool = True
+    sample_rate_hz: float = 1.0
+    probes: List[DS18B20ProbeConfig] = field(default_factory=list)
+
+    @property
+    def sensor_ids(self) -> dict:
+        """Return {role: sensor_id} dict for DS18B20Collector."""
+        return {p.role: p.sensor_id for p in self.probes if p.role and p.sensor_id}
+
+
+@dataclass
+class LightConfig:
+    """VEML7700 ambient light sensor configuration."""
+
+    enabled: bool = True
+    sample_rate_hz: float = 1.0
     i2c_bus: int = 1
-    address: int = 0x18
-    sample_rate_hz: float = 0.1
+    address: int = 0x10
 
 
 @dataclass
 class PowerConfig:
-    """INA219 power sensor configuration."""
+    """INA226 power monitor (D-06, ships disabled)."""
 
     enabled: bool = False
     i2c_bus: int = 1
     address: int = 0x40
+    shunt_ohms: float = 0.1
     sample_rate_hz: float = 1.0
+
+
+@dataclass
+class ParticulateConfig:
+    """SEN0460 PM2.5 (D-05, ships disabled)."""
+
+    enabled: bool = False
+    i2c_bus: int = 1
+    address: int = 0x19
+    sample_rate_hz: float = 0.2
 
 
 @dataclass
@@ -90,9 +139,13 @@ class SensorsConfig:
     """All sensors configuration."""
 
     gps: GPSConfig = field(default_factory=GPSConfig)
-    imu: IMUConfig = field(default_factory=IMUConfig)
+    lsm6dsox: LSM6DSOXConfig = field(default_factory=LSM6DSOXConfig)
+    lis3mdl: LIS3MDLConfig = field(default_factory=LIS3MDLConfig)
+    imu_heading: IMUHeadingConfig = field(default_factory=IMUHeadingConfig)
     temperature: TemperatureConfig = field(default_factory=TemperatureConfig)
+    light: LightConfig = field(default_factory=LightConfig)
     power: PowerConfig = field(default_factory=PowerConfig)
+    particulate: ParticulateConfig = field(default_factory=ParticulateConfig)
     environment: EnvironmentConfig = field(default_factory=EnvironmentConfig)
 
 
@@ -403,16 +456,36 @@ def load_config(config_path: str | Path | None = None) -> Config:
     ]
     gps_config.route = RouteConfig(waypoints=waypoints)
 
+    # Explicitly convert DS18B20 probes list — same reason as waypoints above.
+    temp_dict = data.get("sensors", {}).get("temperature", {})
+    temp_config = _dict_to_dataclass(TemperatureConfig, temp_dict)
+    probes_data = temp_dict.get("probes", []) if isinstance(temp_dict, dict) else []
+    temp_config.probes = [
+        DS18B20ProbeConfig(**p) for p in (probes_data if isinstance(probes_data, list) else [])
+    ]
+
     return Config(
         app=_dict_to_dataclass(AppConfig, data.get("app", {})),
         sensors=SensorsConfig(
             gps=gps_config,
-            imu=_dict_to_dataclass(IMUConfig, data.get("sensors", {}).get("imu", {})),
-            temperature=_dict_to_dataclass(
-                TemperatureConfig, data.get("sensors", {}).get("temperature", {})
+            lsm6dsox=_dict_to_dataclass(
+                LSM6DSOXConfig, data.get("sensors", {}).get("lsm6dsox", {})
             ),
+            lis3mdl=_dict_to_dataclass(
+                LIS3MDLConfig, data.get("sensors", {}).get("lis3mdl", {})
+            ),
+            imu_heading=_dict_to_dataclass(
+                IMUHeadingConfig, data.get("sensors", {}).get("imu_heading", {})
+            ),
+            temperature=temp_config,
             power=_dict_to_dataclass(
                 PowerConfig, data.get("sensors", {}).get("power", {})
+            ),
+            particulate=_dict_to_dataclass(
+                ParticulateConfig, data.get("sensors", {}).get("particulate", {})
+            ),
+            light=_dict_to_dataclass(
+                LightConfig, data.get("sensors", {}).get("light", {})
             ),
             environment=_dict_to_dataclass(
                 EnvironmentConfig, data.get("sensors", {}).get("environment", {})

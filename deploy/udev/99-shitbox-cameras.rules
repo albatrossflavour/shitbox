@@ -1,0 +1,13 @@
+# Shitbox camera udev rules
+#
+# Canonical hardware reference: ~/Brain/projects/shitbox-rally-2026.md
+# Install: sudo cp 99-shitbox-cameras.rules /etc/udev/rules.d/
+# Reload:  sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# Shitbox front camera: ELP 4K IMX317 (D-13)
+# USB ID: 32e4:0298 (reported as "16MP USB Camera")
+SUBSYSTEM=="video4linux", ATTRS{idVendor}=="32e4", ATTRS{idProduct}=="0298", ATTR{index}=="0", SYMLINK+="camera-front"
+
+# Shitbox cabin camera: Logitech Brio 100 (D-14, unchanged from v1)
+# USB ID: 046d:085c — confirm on Pi with: lsusb | grep -i brio
+SUBSYSTEM=="video4linux", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="085c", ATTR{index}=="0", SYMLINK+="camera-cabin"

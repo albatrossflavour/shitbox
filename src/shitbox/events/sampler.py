@@ -1,10 +1,20 @@
-"""High-rate MPU6050 sampler for event detection."""
+"""High-rate LSM6DSOX sampler for event detection."""
 
-import struct
+import math
 import subprocess
 import threading
 import time
 from typing import Callable, Optional
+
+try:
+    import board
+    import busio
+    from adafruit_lsm6ds import Rate
+    from adafruit_lsm6ds.lsm6dsox import LSM6DSOX
+
+    _HAS_LSM6DS = True
+except ImportError:
+    _HAS_LSM6DS = False
 
 from shitbox.capture import buzzer, speaker
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
@@ -12,27 +22,13 @@ from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-# MPU6050 registers
-MPU6050_ADDR = 0x68
-PWR_MGMT_1 = 0x6B
-SMPLRT_DIV = 0x19
-CONFIG = 0x1A
-GYRO_CONFIG = 0x1B
-ACCEL_CONFIG = 0x1C
-FIFO_EN = 0x23
-INT_ENABLE = 0x38
-FIFO_COUNT_H = 0x72
-FIFO_R_W = 0x74
-USER_CTRL = 0x6A
-ACCEL_XOUT_H = 0x3B
-
-# Scale factors
-ACCEL_SCALE_4G = 8192.0  # LSB/g for ±4g range
-GYRO_SCALE_500 = 65.5    # LSB/(deg/s) for ±500 deg/s range
+# Unit conversion constants
+MS2_PER_G = 9.80665             # convert m/s² -> g  (LSM6DSOX returns m/s²)
+DEG_PER_RAD = 180.0 / math.pi  # convert rad/s -> deg/s (LSM6DSOX returns rad/s)
 
 # I2C bus lockup recovery constants
 I2C_CONSECUTIVE_FAILURE_THRESHOLD = 5  # Triggers recovery after 5 failures (~50ms at 100 Hz)
-I2C_RECOVERY_DELAY_SECONDS = 0.1       # 100ms delay after GPIO cleanup before smbus2 reopen
+I2C_RECOVERY_DELAY_SECONDS = 0.1       # 100ms delay after GPIO cleanup before reinit
 SCL_PIN = 3                            # GPIO3 = physical pin 5
 SDA_PIN = 2                            # GPIO2 = physical pin 3
 I2C_MAX_RESETS = 3                     # Maximum recovery attempts before forced reboot
@@ -40,20 +36,16 @@ I2C_RESET_BACKOFF_SECONDS = [0, 2, 5]  # Seconds to wait before each attempt (in
 
 
 class HighRateSampler:
-    """High-rate IMU sampler using MPU6050.
+    """High-rate IMU sampler using LSM6DSOX.
 
-    Samples at ~100 Hz and feeds data into a ring buffer.
-    Designed to run in its own thread with minimal latency.
+    Samples at ~104 Hz (LSM6DSOX Rate.RATE_104_HZ) and feeds data into a ring
+    buffer. Designed to run in its own thread with minimal latency.
     """
 
     def __init__(
         self,
         ring_buffer: RingBuffer,
-        i2c_bus: int = 1,
-        address: int = MPU6050_ADDR,
-        sample_rate_hz: float = 100.0,
-        accel_range: int = 4,
-        gyro_range: int = 500,
+        sample_rate_hz: float = 104.0,
         accel_offset_x: float = 0.0,
         accel_offset_y: float = 0.0,
         accel_offset_z: float = 0.0,
@@ -63,33 +55,22 @@ class HighRateSampler:
 
         Args:
             ring_buffer: Buffer to store samples.
-            i2c_bus: I2C bus number.
-            address: MPU6050 I2C address.
-            sample_rate_hz: Target sample rate.
-            accel_range: Accelerometer range (2, 4, 8, 16 g).
-            gyro_range: Gyroscope range (250, 500, 1000, 2000 deg/s).
-            accel_offset_x: Bias correction for ax (g), added to raw reading.
-            accel_offset_y: Bias correction for ay (g), added to raw reading.
-            accel_offset_z: Bias correction for az (g), added after removing gravity.
+            sample_rate_hz: Target sample rate (104.0 matches Rate.RATE_104_HZ).
+            accel_offset_x: Bias correction for ax (g), subtracted after unit conversion.
+            accel_offset_y: Bias correction for ay (g), subtracted after unit conversion.
+            accel_offset_z: Bias correction for az (g), subtracted after unit conversion.
             on_sample: Optional callback for each sample.
         """
         self.ring_buffer = ring_buffer
-        self.i2c_bus = i2c_bus
-        self.address = address
         self.sample_rate_hz = sample_rate_hz
         self.sample_interval = 1.0 / sample_rate_hz
         self.on_sample = on_sample
-        self.accel_offset_x = accel_offset_x
-        self.accel_offset_y = accel_offset_y
-        self.accel_offset_z = accel_offset_z
+        self._accel_offset_x = accel_offset_x
+        self._accel_offset_y = accel_offset_y
+        self._accel_offset_z = accel_offset_z
 
-        # Scale factors based on range
-        self.accel_scale = {2: 16384.0, 4: 8192.0, 8: 4096.0, 16: 2048.0}[accel_range]
-        self.gyro_scale = {250: 131.0, 500: 65.5, 1000: 32.8, 2000: 16.4}[gyro_range]
-        self.accel_range = accel_range
-        self.gyro_range = gyro_range
-
-        self._bus = None
+        self._lsm6dsox: Optional[object] = None
+        self._i2c: Optional[object] = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
@@ -103,67 +84,51 @@ class HighRateSampler:
         self._reset_count: int = 0
 
     def setup(self) -> None:
-        """Initialise MPU6050 for high-rate sampling."""
+        """Initialise LSM6DSOX for high-rate sampling.
+
+        On failure (hardware absent, I2C error), logs sensor_init_failed and
+        sets _lsm6dsox = None. Does NOT raise -- graceful degradation (D-24).
+        """
         try:
-            import smbus2
-            self._bus = smbus2.SMBus(self.i2c_bus)
-        except ImportError:
-            raise RuntimeError("smbus2 not installed. Run: pip install smbus2")
-
-        # Wake up MPU6050
-        self._bus.write_byte_data(self.address, PWR_MGMT_1, 0x00)
-        time.sleep(0.1)
-
-        # Set sample rate divider for ~100 Hz
-        # Sample Rate = Gyro Output Rate / (1 + SMPLRT_DIV)
-        # Gyro output rate is 1kHz when DLPF is enabled
-        # For 100 Hz: SMPLRT_DIV = 9 (1000 / (1 + 9) = 100)
-        divider = int(1000 / self.sample_rate_hz) - 1
-        self._bus.write_byte_data(self.address, SMPLRT_DIV, divider)
-
-        # Set DLPF (Digital Low Pass Filter) - ~44 Hz bandwidth
-        self._bus.write_byte_data(self.address, CONFIG, 0x03)
-
-        # Set accelerometer range
-        accel_config = {2: 0x00, 4: 0x08, 8: 0x10, 16: 0x18}[self.accel_range]
-        self._bus.write_byte_data(self.address, ACCEL_CONFIG, accel_config)
-
-        # Set gyroscope range
-        gyro_config = {250: 0x00, 500: 0x08, 1000: 0x10, 2000: 0x18}[self.gyro_range]
-        self._bus.write_byte_data(self.address, GYRO_CONFIG, gyro_config)
-
-        log.info(
-            "mpu6050_initialised",
-            sample_rate_hz=self.sample_rate_hz,
-            accel_range=self.accel_range,
-            gyro_range=self.gyro_range,
-        )
+            if not _HAS_LSM6DS:
+                raise ImportError("adafruit-circuitpython-lsm6ds not installed")
+            self._i2c = busio.I2C(board.SCL, board.SDA)  # type: ignore[name-defined]
+            sensor = LSM6DSOX(self._i2c)  # type: ignore[name-defined]
+            sensor.accelerometer_data_rate = Rate.RATE_104_HZ  # type: ignore[name-defined]
+            sensor.gyro_data_rate = Rate.RATE_104_HZ  # type: ignore[name-defined]
+            self._lsm6dsox = sensor
+            log.info("lsm6dsox_initialised", sample_rate_hz=self.sample_rate_hz)
+        except (OSError, ValueError, ImportError, RuntimeError, Exception) as e:
+            log.error("sensor_init_failed", sensor="LSM6DSOX", error=str(e))
+            self._lsm6dsox = None
 
     def start(self) -> None:
         """Start sampling in background thread."""
         if self._running:
             return
 
-        if self._bus is None:
+        if self._lsm6dsox is None:
             for attempt in range(I2C_MAX_RESETS + 1):
                 try:
                     self.setup()
-                    break  # Success — continue to thread start
                 except Exception as e:
-                    log.error("sampler_setup_failed", error=str(e), attempt=attempt + 1)
-                    if attempt < I2C_MAX_RESETS:
-                        buzzer.beep_i2c_lockup()
-                        speaker.speak_i2c_lockup()
-                        backoff = I2C_RESET_BACKOFF_SECONDS[attempt]
-                        if backoff > 0:
-                            time.sleep(backoff)
-                        recovered = self._i2c_bus_reset()
-                        if recovered:
-                            break  # _i2c_bus_reset() already called setup() internally
-                    else:
-                        log.critical("sampler_setup_unrecoverable")
-                        self._force_reboot()
-                        return
+                    log.error("sampler_setup_exception", attempt=attempt + 1, error=str(e))
+                if self._lsm6dsox is not None:
+                    break
+                if attempt < I2C_MAX_RESETS:
+                    log.error("sampler_setup_failed", attempt=attempt + 1)
+                    buzzer.beep_i2c_lockup()
+                    speaker.speak_i2c_lockup()
+                    backoff = I2C_RESET_BACKOFF_SECONDS[attempt]
+                    if backoff > 0:
+                        time.sleep(backoff)
+                    recovered = self._i2c_bus_reset()
+                    if recovered:
+                        break
+                else:
+                    log.critical("sampler_setup_unrecoverable")
+                    self._force_reboot()
+                    return
 
         self._running = True
         self._thread = threading.Thread(target=self._sample_loop, daemon=True)
@@ -184,6 +149,10 @@ class HighRateSampler:
 
     def _sample_loop(self) -> None:
         """Main sampling loop - runs at target rate."""
+        if self._lsm6dsox is None:
+            log.warning("high_rate_sampler_no_sensor_exiting")
+            return
+
         next_sample_time = time.perf_counter()
 
         while self._running:
@@ -191,7 +160,6 @@ class HighRateSampler:
 
             # Check if we're behind schedule
             if now > next_sample_time + self.sample_interval:
-                # We're more than one sample behind - log and catch up
                 self.samples_dropped += 1
                 next_sample_time = now
 
@@ -210,7 +178,7 @@ class HighRateSampler:
                 if self.on_sample:
                     self.on_sample(sample)
 
-            except Exception as e:
+            except OSError as e:
                 log.error("sample_read_error", error=str(e))
                 self._consecutive_failures += 1
 
@@ -234,31 +202,28 @@ class HighRateSampler:
                     recovered = self._i2c_bus_reset()
 
                     if recovered:
-                        log.info(
-                            "i2c_bus_recovery_successful",
-                            attempt=self._reset_count,
-                        )
+                        log.info("i2c_bus_recovery_successful", attempt=self._reset_count)
                         buzzer.beep_service_recovered("i2c")
                         speaker.speak_service_recovered()
                         self._consecutive_failures = 0
                         self._reset_count = 0
                     elif self._reset_count >= I2C_MAX_RESETS:
-                        log.critical(
-                            "i2c_max_resets_exceeded",
-                            reset_count=self._reset_count,
-                        )
+                        log.critical("i2c_max_resets_exceeded", reset_count=self._reset_count)
                         self._force_reboot()
-                    # else: loop continues, next lockup detection fires another attempt
+
+            except Exception as e:
+                log.error("sample_read_error", error=str(e))
+                self._consecutive_failures += 1
 
             next_sample_time += self.sample_interval
 
     def _i2c_bus_reset(self) -> bool:
         """Attempt 9-clock bit-bang recovery to release a stuck I2C slave.
 
-        Pulses SCL 9 times to allow a slave device holding SDA low to
-        complete its transaction and release the bus. Then generates a STOP
-        condition, performs selective GPIO cleanup, waits for the I2C driver
-        to reclaim the pins, reopens smbus2, and reinitialises the MPU6050.
+        Pulses SCL 9 times to allow a slave device holding SDA low to complete
+        its transaction and release the bus. Then generates a STOP condition,
+        performs selective GPIO cleanup, waits for the I2C driver to reclaim
+        the pins, and reinitialises the LSM6DSOX.
 
         Returns:
             True if the bus was successfully recovered and the sensor
@@ -270,10 +235,10 @@ class HighRateSampler:
             log.error("rpi_gpio_not_available", hint="Cannot perform I2C bit-bang recovery")
             return False
 
-        # Close the existing bus connection
+        # Close the existing I2C connection
         try:
-            if self._bus is not None:
-                self._bus.close()
+            if self._i2c is not None:
+                self._i2c.deinit()  # type: ignore[attr-defined]
         except Exception:
             pass
 
@@ -304,14 +269,8 @@ class HighRateSampler:
         # Wait for the I2C driver to reclaim the pins
         time.sleep(I2C_RECOVERY_DELAY_SECONDS)
 
-        try:
-            import smbus2  # type: ignore[import]
-            self._bus = smbus2.SMBus(self.i2c_bus)
-            self.setup()
-            return True
-        except Exception as e:
-            log.error("i2c_bus_reopen_failed", error=str(e))
-            return False
+        self.setup()
+        return self._lsm6dsox is not None
 
     def _force_reboot(self) -> None:
         """Force a system reboot after unrecoverable I2C failure."""
@@ -319,41 +278,34 @@ class HighRateSampler:
         subprocess.run(["sudo", "systemctl", "reboot"], check=False)
 
     def _read_sample(self) -> IMUSample:
-        """Read accelerometer and gyroscope data from MPU6050."""
-        # Read 14 bytes starting from ACCEL_XOUT_H
-        # Format: AccelX, AccelY, AccelZ, Temp, GyroX, GyroY, GyroZ (2 bytes each)
-        data = self._bus.read_i2c_block_data(self.address, ACCEL_XOUT_H, 14)
+        """Read accelerometer and gyroscope data from LSM6DSOX."""
+        ax_ms2, ay_ms2, az_ms2 = self._lsm6dsox.acceleration  # type: ignore[union-attr]
+        gx_rads, gy_rads, gz_rads = self._lsm6dsox.gyro  # type: ignore[union-attr]
 
-        # Parse raw values (big-endian signed 16-bit)
-        raw_ax = struct.unpack(">h", bytes(data[0:2]))[0]
-        raw_ay = struct.unpack(">h", bytes(data[2:4]))[0]
-        raw_az = struct.unpack(">h", bytes(data[4:6]))[0]
-        # Skip temperature (bytes 6-7)
-        raw_gx = struct.unpack(">h", bytes(data[8:10]))[0]
-        raw_gy = struct.unpack(">h", bytes(data[10:12]))[0]
-        raw_gz = struct.unpack(">h", bytes(data[12:14]))[0]
+        # UNIT CONVERSION -- m/s² -> g, rad/s -> deg/s.
+        # The event detector thresholds are in g and deg/s; getting this wrong
+        # silently breaks HARD_BRAKE / HIGH_G / BIG_CORNER / ROUGH_ROAD.
+        ax = ax_ms2 / MS2_PER_G - self._accel_offset_x
+        ay = ay_ms2 / MS2_PER_G - self._accel_offset_y
+        az = az_ms2 / MS2_PER_G - self._accel_offset_z
+        gx = gx_rads * DEG_PER_RAD
+        gy = gy_rads * DEG_PER_RAD
+        gz = gz_rads * DEG_PER_RAD
 
-        # Convert to physical units and apply calibration offsets
-        ax = raw_ax / self.accel_scale + self.accel_offset_x
-        ay = raw_ay / self.accel_scale + self.accel_offset_y
-        az = raw_az / self.accel_scale + self.accel_offset_z
-        gx = raw_gx / self.gyro_scale
-        gy = raw_gy / self.gyro_scale
-        gz = raw_gz / self.gyro_scale
+        return IMUSample(timestamp=time.time(), ax=ax, ay=ay, az=az, gx=gx, gy=gy, gz=gz)
 
-        return IMUSample(
-            timestamp=time.time(),
-            ax=ax,
-            ay=ay,
-            az=az,
-            gx=gx,
-            gy=gy,
-            gz=gz,
-        )
+    def latest_sample(self) -> Optional[IMUSample]:
+        """Return the most recent IMUSample from the ring buffer, or None if empty.
+
+        Thread-safe: delegates to RingBuffer.get_latest() which holds its own lock.
+        Used by IMUHeadingCollector at 10 Hz to fuse mag + accel/gyro.
+        """
+        samples = self.ring_buffer.get_latest(1)
+        return samples[0] if samples else None
 
     def read_once(self) -> IMUSample:
         """Read a single sample (for testing/calibration)."""
-        if self._bus is None:
+        if self._lsm6dsox is None:
             self.setup()
         return self._read_sample()
 

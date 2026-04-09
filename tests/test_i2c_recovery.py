@@ -36,15 +36,18 @@ from shitbox.events.sampler import (
 
 @pytest.fixture
 def sampler() -> HighRateSampler:
-    """Build a HighRateSampler with a mock bus and ring buffer.
+    """Build a HighRateSampler with a mock LSM6DSOX and ring buffer.
 
     Does NOT call setup() or start() — hardware is bypassed.
+    The v2 sampler uses circuitpython (no i2c_bus param); mock _lsm6dsox directly.
     """
     ring_buf = RingBuffer(max_seconds=1.0, sample_rate_hz=100.0)
-    s = HighRateSampler(ring_buffer=ring_buf, i2c_bus=1)
-    # Wire a mock bus so _read_sample can be called without real hardware
-    mock_bus = MagicMock()
-    s._bus = mock_bus
+    s = HighRateSampler(ring_buffer=ring_buf)
+    # Wire a mock sensor so _read_sample can be called without real hardware
+    mock_sensor = MagicMock()
+    s._lsm6dsox = mock_sensor
+    # i2c_bus attribute kept for compatibility with tests that reference it
+    s.i2c_bus = 1
     return s
 
 
@@ -163,8 +166,6 @@ def _make_gpio_mock() -> MagicMock:
 def test_i2c_bus_reset_gpio_sequence(sampler: HighRateSampler) -> None:
     """9-clock bit-bang reset issues correct GPIO sequence with selective cleanup."""
     mock_gpio = _make_gpio_mock()
-    mock_smbus2 = MagicMock()
-    mock_smbus2.SMBus.return_value = MagicMock()
 
     # RPi package mock must expose .GPIO so `import RPi.GPIO as GPIO` binds
     # mock_gpio.  Python resolves `import RPi.GPIO as GPIO` by fetching the
@@ -172,11 +173,18 @@ def test_i2c_bus_reset_gpio_sequence(sampler: HighRateSampler) -> None:
     rpi_pkg_mock = MagicMock()
     rpi_pkg_mock.GPIO = mock_gpio
 
+    # The v2 sampler uses circuitpython busio (not smbus2); setup() is called
+    # to reinitialise LSM6DSOX after the GPIO sequence.
+    mock_lsm6dsox = MagicMock()
     with (
         patch.dict(sys.modules, {"RPi": rpi_pkg_mock, "RPi.GPIO": mock_gpio}),
-        patch.dict(sys.modules, {"smbus2": mock_smbus2}),
         patch.object(sampler, "setup") as mock_setup,
     ):
+        # Make setup() succeed by setting _lsm6dsox after call
+        def _setup_side_effect() -> None:
+            sampler._lsm6dsox = mock_lsm6dsox
+
+        mock_setup.side_effect = _setup_side_effect
         result = sampler._i2c_bus_reset()
 
     assert result is True
@@ -194,25 +202,24 @@ def test_i2c_bus_reset_gpio_sequence(sampler: HighRateSampler) -> None:
     # Selective cleanup — NOT global cleanup()
     mock_gpio.cleanup.assert_called_once_with([SCL_PIN, SDA_PIN])
 
-    # smbus2.SMBus opened with correct bus number
-    mock_smbus2.SMBus.assert_called_once_with(sampler.i2c_bus)
-
-    # MPU6050 reinitialised
+    # LSM6DSOX reinitialised via setup()
     mock_setup.assert_called_once()
 
 
-def test_i2c_bus_reset_returns_false_on_smbus_failure(sampler: HighRateSampler) -> None:
-    """_i2c_bus_reset returns False when smbus2.SMBus constructor raises OSError."""
+def test_i2c_bus_reset_returns_false_on_setup_failure(sampler: HighRateSampler) -> None:
+    """_i2c_bus_reset returns False when setup() fails to initialise the sensor."""
     mock_gpio = _make_gpio_mock()
-    mock_smbus2 = MagicMock()
-    mock_smbus2.SMBus.side_effect = OSError("I2C device not found")
 
     rpi_pkg_mock = MagicMock()
     rpi_pkg_mock.GPIO = mock_gpio
 
+    # setup() completes but leaves _lsm6dsox as None (sensor init failed)
+    def _failing_setup() -> None:
+        sampler._lsm6dsox = None
+
     with (
         patch.dict(sys.modules, {"RPi": rpi_pkg_mock, "RPi.GPIO": mock_gpio}),
-        patch.dict(sys.modules, {"smbus2": mock_smbus2}),
+        patch.object(sampler, "setup", side_effect=_failing_setup),
     ):
         result = sampler._i2c_bus_reset()
 
@@ -374,7 +381,7 @@ def test_reset_count_resets_on_success(sampler: HighRateSampler) -> None:
 
 def test_startup_setup_escalation(sampler: HighRateSampler) -> None:
     """start() retries setup() via _i2c_bus_reset() when setup raises on first call."""
-    sampler._bus = None  # Force the setup() path in start()
+    sampler._lsm6dsox = None  # Force the setup() path in start()
     setup_calls = [0]
 
     def failing_setup() -> None:
@@ -407,7 +414,7 @@ def test_startup_setup_escalation(sampler: HighRateSampler) -> None:
 
 def test_startup_all_attempts_fail_reboots(sampler: HighRateSampler) -> None:
     """start() calls _force_reboot() when all setup attempts fail."""
-    sampler._bus = None  # Force the setup() path in start()
+    sampler._lsm6dsox = None  # Force the setup() path in start()
 
     with (
         patch.object(sampler, "setup", side_effect=OSError("I2C bus permanently locked")),

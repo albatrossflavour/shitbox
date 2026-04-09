@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+from shitbox.capture import buzzer
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -40,6 +41,7 @@ class VideoRingBuffer:
     RESTART_BACKOFF_SECONDS = 2.0
     AUDIO_RETRY_SECONDS = 30.0
     DEVICE_MISSING_BACKOFF_SECONDS = 30.0
+    STALL_TIMEOUT_SECONDS = 30.0  # Declare stall if newest segment unchanged for this long
 
     def __init__(
         self,
@@ -95,6 +97,11 @@ class VideoRingBuffer:
         self._intro_ts: Optional[Path] = None
         self._last_timelapse_segment: Optional[Path] = None
         self._ffmpeg_started_at: float = 0.0
+
+        # Stall detection state (used by _check_stall / _reset_stall_state)
+        self._stall_check_armed: bool = False
+        self._last_segment_mtime: float = 0.0
+        self._last_segment_size: int = 0
 
     def _configure_cameras(self) -> None:
         """Apply v4l2 controls to cameras before recording starts."""
@@ -436,7 +443,9 @@ class VideoRingBuffer:
             "-i", self.device,
         ]
 
-        if self.pip_device:
+        if self.pip_device and not os.path.exists(self.pip_device):
+            log.warning("pip_camera_absent_single_camera_mode", device=self.pip_device)
+        if self.pip_device and os.path.exists(self.pip_device):
             # Secondary (cabin) camera
             cmd += [
                 "-thread_queue_size", "512",
@@ -451,7 +460,7 @@ class VideoRingBuffer:
         if with_audio:
             cmd += ["-f", "alsa", "-i", self.audio_device]
 
-        if self.pip_device:
+        if self.pip_device and os.path.exists(self.pip_device):
             # Real-time PiP composite — [0:v] primary, [1:v] cabin
             # Input indices: 0=front, 1=cabin, then optionally audio,
             # then optionally logo PNG.
@@ -675,6 +684,57 @@ class VideoRingBuffer:
         age = time.time() - newest_mtime
         return age > 2 * self.segment_seconds
 
+    def _check_stall(self) -> bool:
+        """Stateful stall detector: arms on first segment, returns True after timeout.
+
+        On the first call that observes a segment, arms the detector and records
+        the segment's mtime and size. On subsequent calls:
+          - If mtime or size changed: reset baseline, return False (active).
+          - If neither changed and STALL_TIMEOUT_SECONDS elapsed: return True (stalled).
+          - Otherwise: return False (still within timeout window).
+
+        Returns:
+            True if a stall is confirmed; False otherwise.
+        """
+        segments = self._get_buffer_segments()
+        if not segments:
+            return False  # buffer empty — starting up or no input
+
+        newest = segments[-1]
+        try:
+            stat = newest.stat()
+            mtime = stat.st_mtime
+            size = stat.st_size
+        except OSError:
+            return False
+
+        if not self._stall_check_armed:
+            # First observation — arm the detector
+            self._stall_check_armed = True
+            self._last_segment_mtime = mtime
+            self._last_segment_size = size
+            return False
+
+        if mtime != self._last_segment_mtime or size != self._last_segment_size:
+            # Segment is growing or a new one appeared — reset baseline
+            self._last_segment_mtime = mtime
+            self._last_segment_size = size
+            return False
+
+        # Segment is frozen — check how long it has been unchanged
+        age = time.time() - self._last_segment_mtime
+        return age > self.STALL_TIMEOUT_SECONDS
+
+    def _reset_stall_state(self) -> None:
+        """Reset all stall detection fields to their initial state.
+
+        Called after ffmpeg is restarted to avoid triggering a false stall
+        on the next health monitor cycle.
+        """
+        self._stall_check_armed = False
+        self._last_segment_mtime = 0.0
+        self._last_segment_size = 0
+
     def _health_monitor(self) -> None:
         """Background thread that restarts ffmpeg on crash or stall.
 
@@ -688,62 +748,68 @@ class VideoRingBuffer:
             if not self._running:
                 break
 
-            # Drain ffmpeg's stderr pipe every cycle to prevent the 64KB pipe
-            # buffer from filling up. A full pipe causes ffmpeg to block on its
-            # next stats write, stalling the entire process (~150s at 1Hz output).
-            if self._process is not None and self._process.poll() is None:
-                self._read_stderr()
+            try:
+                # Drain ffmpeg's stderr pipe every cycle to prevent the 64KB pipe
+                # buffer from filling up. A full pipe causes ffmpeg to block on its
+                # next stats write, stalling the entire process (~150s at 1Hz output).
+                if self._process is not None and self._process.poll() is None:
+                    self._read_stderr()
 
-            # Restart if ffmpeg crashed
-            if self._process is not None and self._process.poll() is not None:
-                rc = self._process.returncode
-                stderr = self._read_stderr()
-                log.warning(
-                    "video_ring_buffer_ffmpeg_crashed",
-                    returncode=rc,
-                    stderr=stderr,
-                )
-                # If the device node is missing, back off instead of tight-looping
-                if not os.path.exists(self.device):
-                    log.warning(
-                        "video_device_missing",
-                        device=self.device,
-                        backoff_seconds=self.DEVICE_MISSING_BACKOFF_SECONDS,
-                    )
-                    backoff_end = time.time() + self.DEVICE_MISSING_BACKOFF_SECONDS
-                    while time.time() < backoff_end and self._running:
-                        time.sleep(1.0)
-                    continue
-                self._start_ffmpeg()
-                last_audio_retry = time.time()
-                continue
-
-            # Restart if ffmpeg is alive but has stopped writing segments
-            if self._process is not None and self._process.poll() is None:
-                if self._is_stalled():
+                # Restart if ffmpeg crashed
+                if self._process is not None and self._process.poll() is not None:
+                    rc = self._process.returncode
                     stderr = self._read_stderr()
                     log.warning(
-                        "video_ring_buffer_ffmpeg_stalled",
-                        device=self.device,
-                        stale_after_seconds=2 * self.segment_seconds,
+                        "video_ring_buffer_ffmpeg_crashed",
+                        returncode=rc,
                         stderr=stderr,
                     )
-                    # Kill before replacing _process reference to avoid zombies
-                    self._kill_current()
+                    # If the device node is missing, back off instead of tight-looping
+                    if not os.path.exists(self.device):
+                        log.warning(
+                            "video_device_missing",
+                            device=self.device,
+                            backoff_seconds=self.DEVICE_MISSING_BACKOFF_SECONDS,
+                        )
+                        backoff_end = time.time() + self.DEVICE_MISSING_BACKOFF_SECONDS
+                        while time.time() < backoff_end and self._running:
+                            time.sleep(1.0)
+                        continue
                     self._start_ffmpeg()
                     last_audio_retry = time.time()
                     continue
 
-            # If running without audio, periodically restart to retry
-            # (only when an audio device is configured but wasn't available at last start)
-            if self.audio_device and not self._audio_available:
-                now = time.time()
-                if (now - last_audio_retry) >= self.AUDIO_RETRY_SECONDS:
-                    log.info("video_ring_buffer_retrying_audio")
-                    self._audio_available = True
-                    self._kill_current()
-                    self._start_ffmpeg()
-                    last_audio_retry = time.time()
+                # Restart if ffmpeg is alive but has stopped writing segments
+                if self._process is not None and self._process.poll() is None:
+                    if self._check_stall():
+                        stderr = self._read_stderr()
+                        log.warning(
+                            "video_ring_buffer_ffmpeg_stalled",
+                            device=self.device,
+                            stall_timeout_seconds=self.STALL_TIMEOUT_SECONDS,
+                            stderr=stderr,
+                        )
+                        buzzer.beep_ffmpeg_stall()
+                        # Kill before replacing _process reference to avoid zombies
+                        self._kill_current()
+                        self._reset_stall_state()
+                        self._start_ffmpeg()
+                        last_audio_retry = time.time()
+                        continue
+
+                # If running without audio, periodically restart to retry
+                # (only when an audio device is configured but wasn't available at last start)
+                if self.audio_device and not self._audio_available:
+                    now = time.time()
+                    if (now - last_audio_retry) >= self.AUDIO_RETRY_SECONDS:
+                        log.info("video_ring_buffer_retrying_audio")
+                        self._audio_available = True
+                        self._kill_current()
+                        self._start_ffmpeg()
+                        last_audio_retry = time.time()
+
+            except Exception as e:
+                log.error("health_monitor_cycle_error", error=str(e))
 
     def _get_buffer_segments(self) -> list[Path]:
         """Return buffer segment files sorted by modification time (oldest first)."""

@@ -1,101 +1,97 @@
-"""Power data collector for INA219 sensor."""
+"""INA226 power monitor collector.
 
-from typing import Callable, Optional
+Replaces the v1 power collector. Ships with enabled=false by default —
+INA226 shunt wiring is deferred per D-06. See phase 11 CONTEXT.md.
+"""
+
+from typing import Optional
 
 from shitbox.collectors.base import BaseCollector
-from shitbox.storage.models import PowerReading, Reading
-from shitbox.utils.config import PowerConfig
+from shitbox.storage.models import Reading
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
 
+# Module-level imports — patched in tests via:
+#   patch("shitbox.collectors.power.smbus2")
+try:
+    import smbus2
 
-class PowerCollector(BaseCollector[PowerReading]):
-    """Collector for INA219 I2C power sensor.
+    from shitbox.collectors._vendor.ina226 import INA226
+    _HAS_INA226 = True
+except ImportError:
+    smbus2 = None  # type: ignore[assignment]
+    INA226 = None  # type: ignore[assignment]
+    _HAS_INA226 = False
 
-    Reads battery voltage (V), current (mA), and power (mW).
-    """
+
+class INA226Reading:
+    """Power reading from INA226: bus voltage and current."""
+
+    def __init__(self, voltage_v: float, current_a: float) -> None:
+        self.voltage_v: float = voltage_v
+        self.current_a: float = current_a
+        self.value: float = voltage_v
+
+
+class INA226Collector(BaseCollector["INA226Reading"]):
+    """INA226 power monitor. Ships disabled by default (D-06)."""
 
     def __init__(
         self,
-        config: PowerConfig,
-        callback: Optional[Callable[[Reading], None]] = None,
-    ):
+        config: object,
+        callback: Optional[object] = None,
+    ) -> None:
         super().__init__(
-            name="power",
-            sample_rate_hz=config.sample_rate_hz,
+            name="ina226",
+            sample_rate_hz=getattr(config, "sample_rate_hz", 1.0),
             callback=callback,
         )
-        self.config = config
-        self._sensor = None
-        self._i2c = None
+        self._enabled: bool = bool(getattr(config, "enabled", False))
+        self._i2c_bus: int = int(getattr(config, "i2c_bus", 1))
+        self._address: int = int(getattr(config, "address", 0x40))
+        self._shunt_ohms: float = float(getattr(config, "shunt_ohms", 0.1))
+        self._sensor: Optional[object] = None
 
     def setup(self) -> None:
-        """Initialise INA219 hardware."""
+        """Initialise INA226 over smbus2.
+
+        When disabled, smbus2 is never opened (D-06 requirement).
+        Logs ina226_sensor_init_failed and leaves _sensor=None on any error.
+        """
+        if not self._enabled:
+            log.info("ina226_disabled")
+            return
+        if smbus2 is None or INA226 is None:
+            log.warning("ina226_lib_missing")
+            return
         try:
-            import board
-            import busio
-            from adafruit_ina219 import INA219
+            bus = smbus2.SMBus(self._i2c_bus)
+            self._sensor = INA226(bus, address=self._address, shunt_ohms=self._shunt_ohms)
+            log.info("ina226_sensor_init")
+        except (OSError, Exception) as e:
+            log.warning("ina226_sensor_init_failed", error=str(e))
+            self._sensor = None
 
-            log.info(
-                "initialising_power_sensor",
-                bus=self.config.i2c_bus,
-                address=hex(self.config.address),
-            )
-
-            self._i2c = busio.I2C(board.SCL, board.SDA)
-            self._sensor = INA219(self._i2c, addr=self.config.address)
-
-            log.info("power_sensor_initialised")
-
-        except ImportError as e:
-            log.error("power_import_error", error=str(e))
-            raise RuntimeError(
-                "INA219 library not installed. "
-                "Run: pip install adafruit-circuitpython-ina219"
-            ) from e
-        except Exception as e:
-            log.error("power_setup_error", error=str(e))
-            raise
-
-    def read(self) -> Optional[PowerReading]:
-        """Read current power metrics."""
-        if not self._sensor:
+    def collect(self) -> Optional["INA226Reading"]:
+        """Read bus voltage and current from the INA226."""
+        if not self._enabled or self._sensor is None:
+            return None
+        try:
+            voltage_v, current_a = self._sensor.read()
+            return INA226Reading(voltage_v=voltage_v, current_a=current_a)
+        except (OSError, Exception) as e:
+            log.warning("ina226_read_error", error=str(e))
             return None
 
-        try:
-            bus_voltage = self._sensor.bus_voltage
-            current = self._sensor.current
-            power = self._sensor.power
+    def read(self) -> Optional["INA226Reading"]:
+        """Alias for collect — satisfies BaseCollector ABC."""
+        return self.collect()
 
-            reading = PowerReading(
-                timestamp=self.now_utc(),
-                bus_voltage_v=bus_voltage,
-                current_ma=current,
-                power_mw=power,
-            )
-
-            log.debug(
-                "power_reading",
-                voltage_v=f"{bus_voltage:.2f}",
-                current_ma=f"{current:.1f}",
-                power_mw=f"{power:.1f}",
-            )
-
-            return reading
-
-        except Exception as e:
-            log.error("power_read_error", error=str(e))
-            raise
-
-    def to_reading(self, data: PowerReading) -> Reading:
-        """Convert PowerReading to generic Reading."""
-        return Reading.from_power(data)
-
-    def cleanup(self) -> None:
-        """Release I2C resources."""
-        if self._i2c:
-            self._i2c.deinit()
-            self._i2c = None
-            self._sensor = None
-            log.info("power_cleanup_complete")
+    def to_reading(self, data: "INA226Reading") -> Reading:
+        """Convert INA226Reading to a generic Reading for storage."""
+        return Reading(
+            sensor_type="power",  # type: ignore[arg-type]
+            bus_voltage_v=data.voltage_v,
+            current_ma=data.current_a * 1000.0,
+        )

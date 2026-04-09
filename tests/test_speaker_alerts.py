@@ -478,7 +478,9 @@ def test_health_check_detects_dead_speaker_worker() -> None:
         engine._health_check()
 
     mock_speaker.cleanup.assert_called_once()
-    mock_speaker.init.assert_called_once_with(engine.config.speaker_model_path)
+    mock_speaker.init.assert_called_once_with(
+        engine.config.speaker_model_path, volume=engine.config.speaker_volume
+    )
 
 
 def test_health_check_speaker_reinit_success_adds_recovered() -> None:

@@ -1,6 +1,5 @@
 {
   "mode": "interactive",
-  "depth": "comprehensive",
   "parallelization": true,
   "commit_docs": true,
   "model_profile": "balanced",
@@ -13,10 +12,12 @@
     "plan_check": true,
     "verifier": true,
     "auto_advance": false,
-    "nyquist_validation": true
+    "nyquist_validation": true,
+    "_auto_chain_active": false
   },
   "git": {
     "branching_strategy": "phase"
   },
-  "brave_search": false
+  "brave_search": false,
+  "granularity": "fine"
 }

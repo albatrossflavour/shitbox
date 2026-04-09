@@ -45,7 +45,7 @@
         <canvas id="ggauge" width="400" height="400"></canvas>
       </div>
       <div class="grid grid-cols-2 gap-4">
-        <div class="card p-4"><div class="text-sm text-gray-400">IMU TEMP</div><div class="num text-4xl"><span x-text="imuTemp"></span> &deg;C</div></div>
+        <div class="card p-4"><div class="text-sm text-gray-400">CABIN TEMP</div><div class="num text-4xl"><span x-text="imuTemp"></span> &deg;C</div></div>
         <div class="card p-4"><div class="text-sm text-gray-400">SoC TEMP</div><div class="num text-4xl"><span x-text="socTemp"></span> &deg;C</div></div>
       </div>
     </section>
@@ -111,8 +111,8 @@
           const es = new EventSource('/sse/slow');
           es.addEventListener('slow', (e) => {
             const d = JSON.parse(e.data);
-            this.imuTemp = d.imu_temp != null ? d.imu_temp.toFixed(1) : '—';
-            this.socTemp = d.soc_temp != null ? d.soc_temp.toFixed(1) : '—';
+            this.imuTemp = d.imu_temp != null ? Math.round(d.imu_temp) : '—';
+            this.socTemp = d.soc_temp != null ? Math.round(d.soc_temp) : '—';
             if (d.fix_mode === 0) {
               this.gpsBadge = 'NO FIX'; this.gpsBadgeClass = 'bg-red-700';
             } else if (d.fix_mode === 2) {
@@ -143,11 +143,23 @@
           });
         },
         openEvents() {
+          const EVENT_COLOURS = {
+            HIGH_G: '#da3633', HARD_BRAKE: '#f85149', BIG_CORNER: '#d29922',
+            ROUGH_ROAD: '#8957e5', MANUAL: '#238636', BUTTON: '#238636',
+            BOOT: '#1f6feb',
+          };
           const es = new EventSource('/sse/events');
           es.addEventListener('event', (e) => {
             const ev = JSON.parse(e.data);
             this.events.unshift(ev);
             if (this.events.length > 10) this.events.pop();
+            if (ev.lat != null && ev.lng != null) {
+              const col = EVENT_COLOURS[ev.type] || '#8b949e';
+              const label = ev.peak_g ? `${ev.type} · ${ev.peak_g.toFixed(1)}g` : ev.type;
+              L.circleMarker([ev.lat, ev.lng], { radius: 6, color: col, fillColor: col, fillOpacity: 0.85 })
+                .bindPopup(label)
+                .addTo(this.map);
+            }
           });
         },
         drawGauge() {

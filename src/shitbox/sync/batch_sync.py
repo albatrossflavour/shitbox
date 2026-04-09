@@ -322,6 +322,20 @@ class BatchSyncService:
                         ("shitbox_fix", labels, float(reading.fix_quality), timestamp_ms)
                     )
 
+            elif reading.sensor_type.value == "imu_heading":
+                if reading.heading_deg is not None:
+                    metrics.append(
+                        ("shitbox_heading", labels, reading.heading_deg, timestamp_ms)
+                    )
+                if reading.accel_x is not None:
+                    metrics.append(
+                        ("shitbox_pitch", labels, reading.accel_x, timestamp_ms)
+                    )
+                if reading.accel_y is not None:
+                    metrics.append(
+                        ("shitbox_roll", labels, reading.accel_y, timestamp_ms)
+                    )
+
             elif reading.sensor_type.value == "imu":
                 if reading.accel_x is not None:
                     metrics.append(

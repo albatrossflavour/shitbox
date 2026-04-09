@@ -68,6 +68,7 @@ def _make_vrb(tmp_path: Path) -> VideoRingBuffer:
     vrb._last_segment_mtime = 0.0
     vrb._last_segment_size = 0
     vrb._stall_check_armed = False
+    vrb._ffmpeg_started_at = 0.0
 
     return vrb
 
@@ -130,7 +131,7 @@ def test_save_verification_missing_file(tmp_path: Path) -> None:
 
     callback_result: list[Optional[Path]] = []
 
-    def _callback(path: Optional[Path]) -> None:
+    def _callback(path: Optional[Path], _clip_start: float = 0.0) -> None:
         callback_result.append(path)
 
     with (
@@ -140,7 +141,7 @@ def test_save_verification_missing_file(tmp_path: Path) -> None:
         patch("shitbox.capture.buzzer.beep_capture_failed") as mock_beep,
         patch("shitbox.capture.speaker.speak_capture_failed"),
     ):
-        vrb._do_save_event("test", 5, _callback)
+        vrb._do_save_event("test", 5, None, _callback)
 
     assert callback_result == [None], (
         "Callback should receive None when output file does not exist"
@@ -169,7 +170,7 @@ def test_save_verification_zero_byte(tmp_path: Path) -> None:
 
     callback_result: list[Optional[Path]] = []
 
-    def _callback(path: Optional[Path]) -> None:
+    def _callback(path: Optional[Path], _clip_start: float = 0.0) -> None:
         callback_result.append(path)
 
     with (
@@ -179,7 +180,7 @@ def test_save_verification_zero_byte(tmp_path: Path) -> None:
         patch("shitbox.capture.buzzer.beep_capture_failed"),
         patch("shitbox.capture.speaker.speak_capture_failed"),
     ):
-        vrb._do_save_event("test", 5, _callback)
+        vrb._do_save_event("test", 5, None, _callback)
 
     assert callback_result == [None], (
         "Callback should receive None when output file is 0 bytes"
@@ -207,7 +208,7 @@ def test_save_verification_success(tmp_path: Path) -> None:
 
     callback_result: list[Optional[Path]] = []
 
-    def _callback(path: Optional[Path]) -> None:
+    def _callback(path: Optional[Path], _clip_start: float = 0.0) -> None:
         callback_result.append(path)
 
     with (
@@ -215,7 +216,7 @@ def test_save_verification_success(tmp_path: Path) -> None:
         patch.object(vrb, "_concatenate_segments", return_value=valid_path),
         patch("time.sleep"),
     ):
-        vrb._do_save_event("test", 5, _callback)
+        vrb._do_save_event("test", 5, None, _callback)
 
     assert callback_result == [valid_path], (
         "Callback should receive the valid path on success"
@@ -239,7 +240,7 @@ def test_save_verification_failure_alerts(tmp_path: Path) -> None:
 
     callback_result: list[Optional[Path]] = []
 
-    def _callback(path: Optional[Path]) -> None:
+    def _callback(path: Optional[Path], _clip_start: float = 0.0) -> None:
         callback_result.append(path)
 
     with (
@@ -249,7 +250,7 @@ def test_save_verification_failure_alerts(tmp_path: Path) -> None:
         patch("shitbox.capture.buzzer.beep_capture_failed") as mock_beep,
         patch("shitbox.capture.speaker.speak_capture_failed") as mock_speak,
     ):
-        vrb._do_save_event("test", 5, _callback)
+        vrb._do_save_event("test", 5, None, _callback)
 
     mock_beep.assert_called_once()
     mock_speak.assert_called_once()
@@ -335,11 +336,11 @@ def test_timelapse_gap_no_false_positive_at_boot(tmp_path: Path) -> None:
 
 
 def test_timelapse_gap_recovery(tmp_path: Path) -> None:
-    """_check_timelapse calls _kill_current() and _start_ffmpeg() on gap detection.
+    """_check_timelapse logs timelapse_gap_detected and resets timer on gap detection.
 
-    Same setup as test_timelapse_gap_detected but asserts recovery actions.
-
-    FAILS until Plan 02 adds recovery calls to the gap watchdog.
+    Recovery (kill/restart ffmpeg) is intentionally delegated to the VideoRingBuffer
+    health monitor's _check_stall() / _reset_stall_state() mechanism, not the engine.
+    The gap watchdog only logs and resets _last_timelapse_time to avoid repeat alerts.
     """
     from shitbox.events.engine import UnifiedEngine
 
@@ -359,11 +360,14 @@ def test_timelapse_gap_recovery(tmp_path: Path) -> None:
 
     import structlog.testing
 
-    with structlog.testing.capture_logs() as _:
+    with structlog.testing.capture_logs() as captured:
         UnifiedEngine._check_timelapse(engine, now)
 
-    mock_vrb._kill_current.assert_called_once()
-    mock_vrb._start_ffmpeg.assert_called_once()
+    log_events = [e["event"] for e in captured]
+    # Gap detected and logged; ffmpeg restart is owned by the health monitor
+    assert "timelapse_gap_detected" in log_events
+    mock_vrb._kill_current.assert_not_called()
+    mock_vrb._start_ffmpeg.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -461,7 +465,7 @@ def test_post_event_empty_segments_logged(tmp_path: Path) -> None:
         patch("time.sleep"),
         structlog.testing.capture_logs() as captured,
     ):
-        vrb._do_save_event("test", 5, None)
+        vrb._do_save_event("test", 5, None, None)
 
     log_events = [e["event"] for e in captured]
     assert "video_save_post_event_empty" in log_events, (
@@ -498,7 +502,7 @@ def test_partial_save_pre_only(tmp_path: Path) -> None:
 
     callback_result: list[Optional[Path]] = []
 
-    def _callback(path: Optional[Path]) -> None:
+    def _callback(path: Optional[Path], _clip_start: float = 0.0) -> None:
         callback_result.append(path)
 
     with (
@@ -508,7 +512,7 @@ def test_partial_save_pre_only(tmp_path: Path) -> None:
         patch("shitbox.capture.buzzer.beep_capture_failed", return_value=None),
         patch("shitbox.capture.speaker.speak_capture_failed", return_value=None),
     ):
-        vrb._do_save_event("test", 5, _callback)
+        vrb._do_save_event("test", 5, None, _callback)
 
     assert callback_result == [valid_path], (
         "Partial save (pre-event segments only) should still deliver valid path to callback"
