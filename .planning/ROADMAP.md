@@ -221,7 +221,7 @@ pipeline, with improved Grafana dashboards; the changes are deployed via the hom
 | 10. Live Dashboard with Offline Map | v1.0 | 7/7 | Complete | 2026-04-09 |
 | 11. V2 Hardware Migration | v1.0 | 5/5 | Complete | 2026-04-09 |
 | 12. Schema Foundation and Logbook API | v2.0 | 4/4 | Complete    | 2026-04-09 |
-| 13. Driver Tracking | v2.0 | 4/4 | Complete   | 2026-04-09 |
+| 13. Driver Tracking | v2.0 | 4/4 | Complete    | 2026-04-09 |
 | 14. Sensor Calibration | v2.0 | TBD | Not started | — |
 | 15. Undervoltage and Monitoring | v2.0 | TBD | Not started | — |
 | 16. Video Capture Tuning | v2.0 | TBD | Not started | — |
