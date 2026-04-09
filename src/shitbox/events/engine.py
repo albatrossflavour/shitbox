@@ -27,11 +27,10 @@ from shitbox.collectors.light import VEML7700Collector
 from shitbox.collectors.particulate import SEN0460Collector
 from shitbox.collectors.power import INA226Collector
 from shitbox.collectors.temperature import DS18B20Collector
-from shitbox.dashboard import gps_state
+from shitbox.dashboard import driver_state, gps_state
 from shitbox.dashboard.server import DashboardServer, build_dashboard_server
 from shitbox.dashboard.snapshot import update_snapshot
 from shitbox.dashboard.sse import push_event as dashboard_push_event
-from shitbox.storage.logbook import LogbookStorage
 from shitbox.display.oled import OLEDDisplayService
 from shitbox.events.detector import DetectorConfig, Event, EventDetector, EventType
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
@@ -40,6 +39,8 @@ from shitbox.events.storage import EventStorage
 from shitbox.health.health_collector import HealthCollector
 from shitbox.health.thermal_monitor import ThermalMonitorService
 from shitbox.storage.database import Database
+from shitbox.storage.driver import DriverStorage
+from shitbox.storage.logbook import LogbookStorage
 from shitbox.storage.models import Reading, SensorType
 from shitbox.sync.batch_sync import BatchSyncService
 from shitbox.sync.boot_recovery import BootRecoveryService, detect_unclean_shutdown
@@ -226,6 +227,9 @@ class EngineConfig:
     dashboard_port: int = 8080
     dashboard_mbtiles_path: str = "/var/lib/shitbox/tiles/rally.mbtiles"
 
+    # Driver roster (from config.drivers)
+    drivers: list = field(default_factory=list)
+
     @classmethod
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
         """Create EngineConfig from the existing YAML config structure."""
@@ -347,6 +351,8 @@ class EngineConfig:
             dashboard_host=config.dashboard.host,
             dashboard_port=config.dashboard.port,
             dashboard_mbtiles_path=config.dashboard.mbtiles_path,
+            # Driver roster
+            drivers=config.drivers,
         )
 
 
@@ -546,6 +552,14 @@ class UnifiedEngine:
             self.capture_sync.register_json_generator("notes", self.logbook_storage.generate_notes_json)
             self.capture_sync.register_json_generator("fuel", self.logbook_storage.generate_fuel_json)
 
+        # Driver storage — REST-only, idempotent (same pattern as LogbookStorage)
+        self.driver_storage = DriverStorage(self.database)
+        if self.capture_sync is not None:
+            self.capture_sync.register_json_generator(
+                "driver-stats",
+                self.driver_storage.get_driver_stats_payload,
+            )
+
         # Thermal monitor
         self.thermal_monitor = ThermalMonitorService()
 
@@ -622,6 +636,8 @@ class UnifiedEngine:
                     mbtiles_path=Path(config.dashboard_mbtiles_path),
                     recent_events_provider=lambda n: self.event_storage.recent(n),
                     logbook_storage=self.logbook_storage,
+                    driver_storage=self.driver_storage,
+                    drivers=config.drivers or [],
                 )
             except Exception as exc:
                 log.error("dashboard_init_failed", error=str(exc))
@@ -786,6 +802,7 @@ class UnifiedEngine:
                         "sync_connected": getattr(self.connection, "is_connected", False),
                         "sync_backlog": backlog,
                         "event_count_today": self.events_captured,
+                        "active_driver": driver_state.get_active_driver(),
                     })
                 except Exception as exc:
                     log.warning("dashboard_snapshot_update_failed", error=str(exc))
@@ -1010,7 +1027,9 @@ class UnifiedEngine:
                 # Save to disk
                 try:
                     json_path, _ = self.event_storage.save_event(
-                        event, video_path=video_path
+                        event,
+                        video_path=video_path,
+                        driver_name=driver_state.get_active_driver(),
                     )
                     self.events_captured += 1
                     # Store json_path so late video callbacks can
@@ -1996,7 +2015,10 @@ class UnifiedEngine:
         # Save any pending events
         for pending in self._pending_post_capture.values():
             try:
-                self.event_storage.save_event(pending["event"])
+                self.event_storage.save_event(
+                    pending["event"],
+                    driver_name=driver_state.get_active_driver(),
+                )
             except Exception as e:
                 log.error("event_save_error_on_shutdown", error=str(e))
 
