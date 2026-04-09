@@ -97,7 +97,7 @@ import sqlite3
 
 
 def test_v6_fresh_schema(tmp_path):
-    """Phase 12: Fresh database contains notes and fuel_stops tables at schema v6."""
+    """Phase 12: Fresh database contains notes and fuel_stops tables (added in v6)."""
     db = Database(tmp_path / "t.db")
     db.connect()
     try:
@@ -110,7 +110,7 @@ def test_v6_fresh_schema(tmp_path):
 
         cursor = conn.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
         row = cursor.fetchone()
-        assert row[0] == 6, f"Expected schema_version 6, got {row[0]}"
+        assert row[0] >= 6, f"Expected schema_version >= 6, got {row[0]}"
     finally:
         db.close()
 
@@ -141,6 +141,83 @@ def test_v6_migration(tmp_path):
 
         cursor = conn.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
         row = cursor.fetchone()
-        assert row[0] == 6, f"Expected schema_version 6 after migration, got {row[0]}"
+        assert row[0] >= 6, f"Expected schema_version >= 6 after migration, got {row[0]}"
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 — Schema v7 migration tests
+# ---------------------------------------------------------------------------
+
+
+def test_migration_v7_creates_driver_stints(tmp_path):
+    """Phase 13: Fresh database contains driver_stints table at schema v7."""
+    db = Database(tmp_path / "test.db")
+    db.connect()
+    try:
+        with db.transaction() as conn:
+            cols = conn.execute("PRAGMA table_info(driver_stints)").fetchall()
+            col_names = {c["name"] for c in cols}
+        assert {"id", "driver_name", "started_at", "ended_at", "created_at"} <= col_names, (
+            f"Missing columns in driver_stints. Got: {col_names}"
+        )
+        # schema version recorded
+        with db.transaction() as conn:
+            version = conn.execute(
+                "SELECT MAX(version) AS v FROM schema_version"
+            ).fetchone()["v"]
+        assert version == 7, f"Expected schema_version 7, got {version}"
+    finally:
+        db.close()
+
+
+def test_migration_v7_from_v6(tmp_path):
+    """Phase 13: Existing v6 database migrates to v7 gaining driver_stints table."""
+    db_path = tmp_path / "v6.db"
+
+    # Build a minimal v6 database by hand
+    raw = sqlite3.connect(str(db_path))
+    raw.execute(
+        "CREATE TABLE schema_version "
+        "(version INTEGER PRIMARY KEY, applied_at TEXT DEFAULT (datetime('now')))"
+    )
+    raw.execute("INSERT INTO schema_version (version) VALUES (6)")
+    raw.execute(
+        """
+        CREATE TABLE notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp_utc TEXT NOT NULL,
+            body TEXT NOT NULL
+        )
+        """
+    )
+    raw.commit()
+    raw.close()
+
+    db = Database(db_path)
+    db.connect()
+    try:
+        with db.transaction() as conn:
+            # driver_stints must exist
+            cols = conn.execute("PRAGMA table_info(driver_stints)").fetchall()
+            col_names = {c["name"] for c in cols}
+        assert {"id", "driver_name", "started_at", "ended_at", "created_at"} <= col_names
+
+        # notes table still present (no data loss)
+        with db.transaction() as conn:
+            tables = {
+                r["name"]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+        assert "notes" in tables
+
+        with db.transaction() as conn:
+            version = conn.execute(
+                "SELECT MAX(version) AS v FROM schema_version"
+            ).fetchone()["v"]
+        assert version == 7
     finally:
         db.close()

@@ -13,7 +13,7 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 # Database schema version for migrations
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -194,6 +194,9 @@ class Database:
         if current_version < 6:
             self._migrate_to_v6(conn)
 
+        if current_version < 7:
+            self._migrate_to_v7(conn)
+
         if current_version < SCHEMA_VERSION:
             conn.execute(
                 "INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
@@ -310,6 +313,29 @@ class Database:
         )
         conn.commit()
         log.info("migrated_to_v6", tables=["notes", "fuel_stops"])
+
+    def _migrate_to_v7(self, conn: sqlite3.Connection) -> None:
+        """Add driver_stints table for Phase 13 driver tracking.
+
+        Note: there is no SQL events table in this project — events are stored
+        as JSON files by EventStorage.save_event(). Driver attribution for
+        events is handled via a driver_name kwarg on save_event() (see plan 03),
+        not a column on any SQL table. Per D-04 interpretation confirmed in
+        13-RESEARCH.md "Critical Note: Events Table Interpretation".
+        """
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS driver_stints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                driver_name TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.commit()
+        log.info("migrated_to_v7", tables=["driver_stints"])
 
     def close(self) -> None:
         """Close database connection for current thread."""
