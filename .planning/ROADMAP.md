@@ -31,7 +31,7 @@ Full archive: `.planning/milestones/v1.0-ROADMAP.md`
 **Milestone Goal:** Turn the telemetry system into a full rally companion — driver display,
 field logging, public engagement features, and confirmed hardware reliability before race day.
 
-- [ ] **Phase 12: Schema Foundation and Logbook API** - New DB tables, notes and fuel endpoints, sync pipeline extension
+- [x] **Phase 12: Schema Foundation and Logbook API** - New DB tables, notes and fuel endpoints, sync pipeline extension (completed 2026-04-09)
 - [ ] **Phase 13: Driver Tracking** - Active driver interface, stint tracking, event attribution
 - [ ] **Phase 14: Sensor Calibration** - All sensors validated and calibrated; event thresholds re-confirmed
 - [ ] **Phase 15: Undervoltage and Monitoring** - Undervoltage fix confirmed, monitoring gaps closed, critical events visible
@@ -62,9 +62,9 @@ cost fields) alongside events.
 **Plans**: 4 plans
 
 - [x] 12-01-PLAN.md — Schema v6 migration + Wave 0 test scaffolds
-- [ ] 12-02-PLAN.md — LogbookStorage, gps_state helper, FastAPI logbook router
-- [ ] 12-03-PLAN.md — CaptureSyncService JSON generator registry
-- [ ] 12-04-PLAN.md — Engine wiring + dashboard modals (UI)
+- [x] 12-02-PLAN.md — LogbookStorage, gps_state helper, FastAPI logbook router
+- [x] 12-03-PLAN.md — CaptureSyncService JSON generator registry
+- [x] 12-04-PLAN.md — Engine wiring + dashboard modals (UI)
 
 **UI hint**: yes
 
@@ -215,7 +215,7 @@ pipeline, with improved Grafana dashboards; the changes are deployed via the hom
 | 9. Sync Reliability | v1.0 | — | Dropped | 2026-02-28 |
 | 10. Live Dashboard with Offline Map | v1.0 | 7/7 | Complete | 2026-04-09 |
 | 11. V2 Hardware Migration | v1.0 | 5/5 | Complete | 2026-04-09 |
-| 12. Schema Foundation and Logbook API | v2.0 | 1/4 | In Progress|  |
+| 12. Schema Foundation and Logbook API | v2.0 | 4/4 | Complete   | 2026-04-09 |
 | 13. Driver Tracking | v2.0 | TBD | Not started | — |
 | 14. Sensor Calibration | v2.0 | TBD | Not started | — |
 | 15. Undervoltage and Monitoring | v2.0 | TBD | Not started | — |

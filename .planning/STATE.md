@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: executing
-stopped_at: Phase 12 UI-SPEC approved
-last_updated: "2026-04-09T12:19:24.899Z"
+stopped_at: Completed 12-04-PLAN.md — engine wiring and dashboard modals
+last_updated: "2026-04-09T12:38:33.707Z"
 last_activity: 2026-04-09
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 1
-  percent: 0
+  completed_plans: 4
+  percent: 50
 ---
 
 # Project State
@@ -26,12 +26,12 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 
 ## Current Position
 
-Phase: 12 (schema-foundation-and-logbook-api) — EXECUTING
-Plan: 2 of 4
-Status: Ready to execute
+Phase: 12 (schema-foundation-and-logbook-api) — COMPLETE
+Plan: 4 of 4
+Status: Complete
 Last activity: 2026-04-09
 
-Progress: [███░░░░░░░] 25% (v2.0, 1/4 plans in phase 12)
+Progress: [██████████] 100% (v2.0, 4/4 plans in phase 12)
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
@@ -53,6 +53,10 @@ v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 - Cost data hard exclusion: fuel cost must never appear in sync payloads or on the website
 - Plan 12-01: cost_aud stored in fuel_stops (nullable) but excluded from sync payloads at API layer (plan 12-02)
 - Plan 12-01: no indexes added on notes/fuel_stops — low-write tables, add later if query patterns demand
+- Plan 12-02: snapshot_fn injected into LogbookStorage for testability without hardware dependency
+- Plan 12-02: generate_fuel_json enforces cost_aud exclusion at SQL SELECT level, not post-processing (D-10)
+- Plan 12-04: LogbookStorage registered unconditionally in UnifiedEngine.__init__ — cheap, REST-only, idempotent; generators guarded on capture_sync not None
+- Plan 12-04: gps_state.update_last_known_position co-located with existing lat/lng not-None guard in _record_telemetry
 
 ### Known Constraints for v2.0
 
@@ -68,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T12:18:41Z
-Stopped at: Completed 12-01-PLAN.md — schema v6, Wave 0 stubs committed
-Resume file: .planning/phases/12-schema-foundation-and-logbook-api/12-02-PLAN.md
+Last session: 2026-04-09T12:38:33.705Z
+Stopped at: Completed 12-04-PLAN.md — engine wiring and dashboard modals
+Resume file: None
