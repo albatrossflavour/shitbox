@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: completed
-stopped_at: Completed 12-04-PLAN.md — engine wiring and dashboard modals
-last_updated: "2026-04-09T12:46:03.297Z"
+status: executing
+stopped_at: Completed 13-01-PLAN.md — Wave 0 test stubs and schema v7 migration
+last_updated: "2026-04-09T13:20:14.369Z"
 last_activity: 2026-04-09
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 8
+  completed_plans: 5
   percent: 100
 ---
 
@@ -22,13 +22,13 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 12 — schema-foundation-and-logbook-api
+**Current focus:** Phase 13 — driver-tracking
 
 ## Current Position
 
-Phase: 13
-Plan: Not started
-Status: Complete
+Phase: 13 (driver-tracking) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
 Last activity: 2026-04-09
 
 Progress: [██████████] 100% (v2.0, 4/4 plans in phase 12)
@@ -57,6 +57,8 @@ v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 - Plan 12-02: generate_fuel_json enforces cost_aud exclusion at SQL SELECT level, not post-processing (D-10)
 - Plan 12-04: LogbookStorage registered unconditionally in UnifiedEngine.__init__ — cheap, REST-only, idempotent; generators guarded on capture_sync not None
 - Plan 12-04: gps_state.update_last_known_position co-located with existing lat/lng not-None guard in _record_telemetry
+- Plan 13-01: Wave 0 test stubs use pytest.skip inside fixtures (not pytest.mark.xfail) — explicit skip reasons, clean collection
+- Plan 13-01: v6 migration test assertions relaxed from == 6 to >= 6 after SCHEMA_VERSION bumped to 7
 
 ### Known Constraints for v2.0
 
@@ -72,6 +74,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T12:38:33.705Z
-Stopped at: Completed 12-04-PLAN.md — engine wiring and dashboard modals
+Last session: 2026-04-09T13:20:14.367Z
+Stopped at: Completed 13-01-PLAN.md — Wave 0 test stubs and schema v7 migration
 Resume file: None
