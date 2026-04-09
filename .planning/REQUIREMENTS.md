@@ -23,9 +23,9 @@
 
 ### Driver Tracking (DRVR)
 
-- [ ] **DRVR-01**: User can set and change the active driver from the Pi UI
-- [ ] **DRVR-02**: System tracks driving time and calculates percentage per driver across the rally
-- [ ] **DRVR-03**: Driver is attributed to events — who was driving when an event occurred
+- [x] **DRVR-01**: User can set and change the active driver from the Pi UI
+- [x] **DRVR-02**: System tracks driving time and calculates percentage per driver across the rally
+- [x] **DRVR-03**: Driver is attributed to events — who was driving when an event occurred
 - [ ] **DRVR-04**: Website shows a "who's in charge" widget on the homepage with current driver and running percentages
 - [ ] **DRVR-05**: Website shows per-driver stats including driving time, percentage, and event attribution
 
@@ -88,9 +88,9 @@
 | FUEL-01 | Phase 12 | Complete |
 | FUEL-02 | Phase 12 | Complete |
 | FUEL-03 | Phase 18 | Pending |
-| DRVR-01 | Phase 13 | Pending |
-| DRVR-02 | Phase 13 | Pending |
-| DRVR-03 | Phase 13 | Pending |
+| DRVR-01 | Phase 13 | Complete |
+| DRVR-02 | Phase 13 | Complete |
+| DRVR-03 | Phase 13 | Complete |
 | DRVR-04 | Phase 18 | Pending |
 | DRVR-05 | Phase 18 | Pending |
 | WEB-01 | Phase 18 | Pending |

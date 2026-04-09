@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: executing
-stopped_at: Completed 13-03-PLAN.md — Driver tracking wiring
-last_updated: "2026-04-09T14:15:00.000Z"
+status: verifying
+stopped_at: "13-04-PLAN.md — checkpoint:human-verify after Task 1 (driver UI). Awaiting human sign-off."
+last_updated: "2026-04-09T14:25:00.000Z"
 last_activity: 2026-04-09
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
   percent: 100
 ---
 
@@ -28,7 +28,7 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 
 Phase: 13 (driver-tracking) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-09
 
 Progress: [██████████] 100% (v2.0, 4/4 plans in phase 12)
@@ -62,6 +62,8 @@ v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 - Plan 13-03: SSE test drives async generator directly via asyncio.run() — Starlette TestClient portal.call() blocks on infinite generators, making HTTP-transport testing impossible
 - Plan 13-03: sse.py migrated to EventSourceResponse + threading.Lock — required for correct slot management in mixed sync/async context
 - Plan 13-03: register_json_generator uses 2-arg form (name, fn) — capture_sync derives filename as {name}.json automatically
+- Plan 13-04: switchDriver() refreshes /api/driver/stats inline after POST — avoids stale modal table without requiring modal re-open
+- Plan 13-04: activeDriver SSE field is nullable — null maps to '---' in top bar via Alpine x-text || fallback
 
 ### Known Constraints for v2.0
 
@@ -77,6 +79,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T14:15:00Z
-Stopped at: Completed 13-03-PLAN.md — Driver tracking wiring
+Last session: 2026-04-09T14:25:00Z
+Stopped at: 13-04-PLAN.md — checkpoint:human-verify after Task 1 (driver UI)
 Resume file: None
