@@ -27,9 +27,11 @@ from shitbox.collectors.light import VEML7700Collector
 from shitbox.collectors.particulate import SEN0460Collector
 from shitbox.collectors.power import INA226Collector
 from shitbox.collectors.temperature import DS18B20Collector
+from shitbox.dashboard import gps_state
 from shitbox.dashboard.server import DashboardServer, build_dashboard_server
 from shitbox.dashboard.snapshot import update_snapshot
 from shitbox.dashboard.sse import push_event as dashboard_push_event
+from shitbox.storage.logbook import LogbookStorage
 from shitbox.display.oled import OLEDDisplayService
 from shitbox.events.detector import DetectorConfig, Event, EventDetector, EventType
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
@@ -538,6 +540,12 @@ class UnifiedEngine:
                 self.timelapse_compiler,
             )
 
+        # Logbook storage (notes + fuel stops) — REST-only, no thread
+        self.logbook_storage = LogbookStorage(self.database)
+        if self.capture_sync is not None:
+            self.capture_sync.register_json_generator("notes", self.logbook_storage.generate_notes_json)
+            self.capture_sync.register_json_generator("fuel", self.logbook_storage.generate_fuel_json)
+
         # Thermal monitor
         self.thermal_monitor = ThermalMonitorService()
 
@@ -613,6 +621,7 @@ class UnifiedEngine:
                     port=config.dashboard_port,
                     mbtiles_path=Path(config.dashboard_mbtiles_path),
                     recent_events_provider=lambda n: self.event_storage.recent(n),
+                    logbook_storage=self.logbook_storage,
                 )
             except Exception as exc:
                 log.error("dashboard_init_failed", error=str(exc))
@@ -1438,6 +1447,7 @@ class UnifiedEngine:
                 self._current_satellites = gps_reading.satellites
                 # Resolve location name from coordinates
                 if gps_reading.latitude is not None and gps_reading.longitude is not None:
+                    gps_state.update_last_known_position(gps_reading.latitude, gps_reading.longitude)
                     self._resolve_location(gps_reading.latitude, gps_reading.longitude)
                     self._distance_from_start_km = self._haversine_km(
                         self.config.rally_start_lat, self.config.rally_start_lon,
