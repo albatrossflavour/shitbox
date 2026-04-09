@@ -149,6 +149,13 @@ display:
     address: 0x3C
     update_interval_seconds: 1.0
 
+dashboard:
+  enabled: true  # in-process FastAPI on the Pi (http://localhost:8080)
+  host: 0.0.0.0
+  port: 8080
+  mbtiles_path: /var/lib/shitbox/tiles/rally.mbtiles
+  max_sse_clients: 8
+
 capture:
   enabled: true
   buzzer_enabled: true

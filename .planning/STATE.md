@@ -1,3 +1,18 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: — Operational Hardening
+status: executing
+stopped_at: Completed 10-04-PLAN.md
+last_updated: "2026-04-08T23:46:28.907Z"
+last_activity: 2026-04-08
+progress:
+  total_phases: 8
+  completed_phases: 7
+  total_plans: 21
+  completed_plans: 20
+---
+
 # Project State
 
 ## Project Reference
@@ -6,14 +21,14 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Milestone v1.1 — Phase 8: Capture Integrity (complete), Phase 9: Prometheus Label Conflict
+**Current focus:** Phase 10 — live-dashboard-with-offline-map
 
 ## Current Position
 
-Phase: 8 of 9 (Capture Integrity) — COMPLETE
-Plan: 2 of 2 completed in current phase (08-02 done)
-Status: Phase 8 complete, ready for Phase 9
-Last activity: 2026-02-28 — 08-02 post-save verification, timelapse gap watchdog, boot save guard
+Phase: 10 (live-dashboard-with-offline-map) — EXECUTING
+Plan: 4 of 6
+Status: Ready to execute
+Last activity: 2026-04-08
 
 Progress: [###############░░░░░] v1.0 complete, v1.1 Phase 7 complete, Phase 8 complete
 
@@ -31,6 +46,10 @@ Progress: [###############░░░░░] v1.0 complete, v1.1 Phase 7 complete,
 | ----- | ---- | -------- | ----- | ----- |
 | 08    | 01   | ~3 min   | 2     | 3     |
 | 08    | 02   | ~3 min   | 3     | 3     |
+| Phase 10 P01 | ~2 min | 3 tasks | 5 files |
+| Phase 10 P00 | 8min | 3 tasks | 3 files |
+| Phase 10-live-dashboard-with-offline-map P03 | 25min | 3 tasks | 5 files |
+| Phase 10-live-dashboard-with-offline-map P04 | ~12 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -46,8 +65,10 @@ Progress: [###############░░░░░] v1.0 complete, v1.1 Phase 7 complete,
 - [07-01]: start() escalation calls _i2c_bus_reset() (not setup()) — _i2c_bus_reset already calls setup() internally; double-call avoided
 - [07-02]: Speaker reinit guarded by _voice is not None AND _worker is not None — avoids spurious
   reinit when speaker was never initialised, and AttributeError after cleanup() zeroed worker ref
+
 - [07-02]: Recovery confirmation (TTS + buzzer) fires at shared if recovered: block — DRY and covers
   all subsystems (IMU, telemetry, video, GPS, speaker)
+
 - [08-01]: beep_capture_failed uses 440→330 Hz descending pair to distinguish from beep_ffmpeg_stall (330 Hz only)
 - [08-01]: speak_capture_failed guards _voice is None first then _should_alert() — consistent with speak_* pattern
 - [08-01]: RED-phase tests written for _do_save_event, _check_timelapse, and _on_event; all 10 will fail until Plan 02
@@ -70,6 +91,10 @@ Progress: [###############░░░░░] v1.0 complete, v1.1 Phase 7 complete,
 - **Prometheus**: samples 49 min old rejected despite outOfOrderTimeWindow=168h
 - **TTS**: Intermittent silence — USB power, queue overflow, or worker thread crash
 
+### Roadmap Evolution
+
+- Phase 10 added: Live Dashboard with offline map (in-process FastAPI in UnifiedEngine, SSE telemetry stream, single-file Alpine+Tailwind+Leaflet frontend, offline CartoDB MBTiles for the rally route corridor, no auth, listens on localhost + Pi LAN IPs, served to Chromium kiosk on the Pi)
+
 ### Blockers/Concerns
 
 - **Prometheus**: Scrape job label conflict may cause "too old" rejection (Phase 9)
@@ -77,6 +102,6 @@ Progress: [###############░░░░░] v1.0 complete, v1.1 Phase 7 complete,
 
 ## Session Continuity
 
-Last session: 2026-02-28
-Stopped at: Completed 08-02-PLAN.md — capture integrity implementation (all 10 tests pass)
+Last session: 2026-04-08T23:46:28.904Z
+Stopped at: Completed 10-04-PLAN.md
 Resume file: None

@@ -220,3 +220,19 @@ Phases execute in numeric order: 1 through 5 (complete), then 7, 8, 9. Phase 6 d
 | 7. Self-Healing and Crash-Loop Prevention | 2/2 | Complete   | 2026-02-28 | - |
 | 8. Capture Integrity | 2/2 | Complete   | 2026-02-28 | - |
 | 9. Sync Reliability | v1.1 | N/A | Dropped | 2026-02-28 |
+
+### Phase 10: Live Dashboard with offline map
+
+**Goal:** In-process FastAPI dashboard inside UnifiedEngine serving live telemetry (SSE), an offline MBTiles map of the rally route, and the last 10 events to the Pi's Chromium kiosk and any phone on rally wifi — without ever blocking the 100 Hz capture path.
+**Requirements**: D-01..D-22 (CONTEXT-derived; no formal REQ- IDs — phase inserted post v1.1)
+**Depends on:** Phase 9
+**Plans:** 5/6 plans executed
+
+Plans:
+
+- [x] 10-00-PLAN.md — Wave 0: failing test scaffolds + MBTiles fixture (RED phase)
+- [x] 10-01-PLAN.md — Deps + DashboardConfig + snapshot module
+- [x] 10-02-PLAN.md — Tile downloader tool + vendor SHA256 manifest scaffold
+- [x] 10-03-PLAN.md — Backend: tiles, sse, server, EventStorage.recent()
+- [x] 10-04-PLAN.md — Vendor binaries + index.html + UnifiedEngine wiring
+- [ ] 10-05-PLAN.md — Pi kiosk smoke test (manual checkpoint)

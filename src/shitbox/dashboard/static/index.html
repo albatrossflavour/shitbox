@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>shitbox</title>
+  <link rel="stylesheet" href="/static/vendor/tailwind.min.css">
+  <link rel="stylesheet" href="/static/vendor/leaflet.css">
+  <style>
+    body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; }
+    .num { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .card { background: #161b22; border: 1px solid #21262d; }
+    .badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-block; }
+    .ev-HIGH_G { background: #da3633; color: #fff; }
+    .ev-HARD_BRAKE { background: #f85149; color: #fff; }
+    .ev-BIG_CORNER { background: #d29922; color: #000; }
+    .ev-ROUGH_ROAD { background: #8957e5; color: #fff; }
+    .ev-MANUAL, .ev-BUTTON { background: #238636; color: #fff; }
+    .ev-BOOT { background: #1f6feb; color: #fff; }
+    #map { background: #0d1117; }
+    .stale { color: #da3633; }
+    .bg-red-700 { background: #b91c1c; color: #fff; }
+    .bg-yellow-600 { background: #ca8a04; color: #000; }
+    .bg-green-700 { background: #15803d; color: #fff; }
+  </style>
+</head>
+<body x-data="dashboard()" x-init="init()">
+
+  <!-- TOP BAR (h: 80px) -->
+  <header class="card flex items-center justify-between px-6" style="height: 80px">
+    <div>
+      <span class="badge" :class="gpsBadgeClass" x-text="gpsBadge"></span>
+    </div>
+    <div class="num text-5xl"><span x-text="speed"></span> <span class="text-base text-gray-400">km/h</span></div>
+    <div class="text-sm text-gray-400">Driver: &mdash;</div>
+    <div>
+      <span class="badge" :class="syncBadgeClass" x-text="syncBadge"></span>
+    </div>
+  </header>
+
+  <!-- MAIN: G-gauge + temps + map -->
+  <main class="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
+    <section class="space-y-4">
+      <div class="card p-4 flex items-center justify-center" style="height: min(40vh,40vw)">
+        <canvas id="ggauge" width="400" height="400"></canvas>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="card p-4"><div class="text-sm text-gray-400">IMU TEMP</div><div class="num text-4xl"><span x-text="imuTemp"></span> &deg;C</div></div>
+        <div class="card p-4"><div class="text-sm text-gray-400">SoC TEMP</div><div class="num text-4xl"><span x-text="socTemp"></span> &deg;C</div></div>
+      </div>
+    </section>
+    <section class="card overflow-hidden" style="height: 60vh">
+      <div id="map" style="height:100%; width:100%"></div>
+    </section>
+  </main>
+
+  <!-- BOTTOM EVENT STRIP (h: 88px) -->
+  <footer class="card flex items-center gap-3 px-4 overflow-x-auto" style="height: 88px">
+    <template x-for="ev in events" :key="ev.timestamp + ev.type">
+      <div class="badge" :class="'ev-' + ev.type">
+        <span x-text="ev.type"></span> &middot; <span x-text="ev.peak_g ? ev.peak_g.toFixed(1) + 'g' : ''"></span>
+      </div>
+    </template>
+    <div x-show="events.length === 0" class="text-sm text-gray-400">No events yet</div>
+  </footer>
+
+  <script src="/static/vendor/leaflet.js"></script>
+  <script src="/static/vendor/alpine.min.js" defer></script>
+  <script>
+    function dashboard() {
+      return {
+        speed: 0, imuTemp: '—', socTemp: '—',
+        gpsBadge: 'NO FIX', gpsBadgeClass: 'bg-red-700',
+        syncBadge: 'SYNC OFFLINE', syncBadgeClass: 'bg-red-700',
+        events: [],
+        gx: 0, gy: 0, peakG: 1.0, peakGAt: 0,
+        map: null, marker: null, breadcrumb: null, lastInteract: 0,
+        init() {
+          this.initMap();
+          this.openFast();
+          this.openSlow();
+          this.openEvents();
+          requestAnimationFrame(() => this.drawGauge());
+        },
+        initMap() {
+          this.map = L.map('map', { zoomControl: true, attributionControl: false }).setView([-25, 135], 5);
+          L.tileLayer('/tiles/{z}/{x}/{y}.png', { minZoom: 5, maxZoom: 15, errorTileUrl: '' }).addTo(this.map);
+          this.breadcrumb = L.polyline([], { color: '#1f6feb', weight: 3 }).addTo(this.map);
+          this.map.on('dragstart zoomstart', () => { this.lastInteract = Date.now(); });
+          // Auto-recentre after 10s of no interaction (D-20)
+          setInterval(() => {
+            if (this.marker && Date.now() - this.lastInteract > 10000) {
+              this.map.panTo(this.marker.getLatLng());
+            }
+          }, 1000);
+        },
+        openFast() {
+          const es = new EventSource('/sse/fast');
+          es.addEventListener('fast', (e) => {
+            const d = JSON.parse(e.data);
+            this.speed = Math.round(d.speed || 0);
+            this.gx = d.gx; this.gy = d.gy;
+            const mag = Math.hypot(d.gx, d.gy);
+            if (mag > this.peakG) { this.peakG = mag; this.peakGAt = Date.now(); }
+            // Decay the auto-range over ~45s back toward 1.0g (D-14)
+            const age = (Date.now() - this.peakGAt) / 1000;
+            if (age > 5) this.peakG = Math.max(1.0, this.peakG * 0.995);
+          });
+        },
+        openSlow() {
+          const es = new EventSource('/sse/slow');
+          es.addEventListener('slow', (e) => {
+            const d = JSON.parse(e.data);
+            this.imuTemp = d.imu_temp != null ? d.imu_temp.toFixed(1) : '—';
+            this.socTemp = d.soc_temp != null ? d.soc_temp.toFixed(1) : '—';
+            if (d.fix_mode === 0) {
+              this.gpsBadge = 'NO FIX'; this.gpsBadgeClass = 'bg-red-700';
+            } else if (d.fix_mode === 2) {
+              this.gpsBadge = `2D · ${d.sats} sats`; this.gpsBadgeClass = 'bg-yellow-600';
+            } else {
+              this.gpsBadge = `3D · ${d.sats} sats · HDOP ${(d.hdop||0).toFixed(1)}`;
+              this.gpsBadgeClass = 'bg-green-700';
+            }
+            if (d.sync_connected) {
+              this.syncBadge = d.sync_backlog > 0 ? `SYNC ${d.sync_backlog} pending` : 'SYNC OK';
+              this.syncBadgeClass = d.sync_backlog > 0 ? 'bg-yellow-600' : 'bg-green-700';
+            } else {
+              this.syncBadge = 'SYNC OFFLINE'; this.syncBadgeClass = 'bg-red-700';
+            }
+            if (d.lat != null && d.lng != null) {
+              const ll = [d.lat, d.lng];
+              if (!this.marker) {
+                this.marker = L.circleMarker(ll, { radius: 6, color: '#1f6feb', fillColor: '#1f6feb', fillOpacity: 1 }).addTo(this.map);
+                this.map.setView(ll, 13);
+              } else {
+                this.marker.setLatLng(ll);
+              }
+              const pts = this.breadcrumb.getLatLngs();
+              pts.push(ll);
+              if (pts.length > 300) pts.shift();
+              this.breadcrumb.setLatLngs(pts);
+            }
+          });
+        },
+        openEvents() {
+          const es = new EventSource('/sse/events');
+          es.addEventListener('event', (e) => {
+            const ev = JSON.parse(e.data);
+            this.events.unshift(ev);
+            if (this.events.length > 10) this.events.pop();
+          });
+        },
+        drawGauge() {
+          const c = document.getElementById('ggauge');
+          if (!c) return;
+          const ctx = c.getContext('2d');
+          const w = c.width, h = c.height, cx = w/2, cy = h/2, r = Math.min(w,h)/2 - 10;
+          ctx.clearRect(0,0,w,h);
+          ctx.strokeStyle = '#21262d'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx-r,cy); ctx.lineTo(cx+r,cy); ctx.moveTo(cx,cy-r); ctx.lineTo(cx,cy+r); ctx.stroke();
+          // dot position scaled by auto-range peak
+          const px = cx + (this.gx / this.peakG) * r;
+          const py = cy - (this.gy / this.peakG) * r;
+          ctx.fillStyle = '#1f6feb';
+          ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = '#8b949e'; ctx.font = '14px system-ui';
+          ctx.fillText(`±${this.peakG.toFixed(1)}g`, 10, 20);
+          requestAnimationFrame(() => this.drawGauge());
+        },
+      };
+    }
+  </script>
+</body>
+</html>

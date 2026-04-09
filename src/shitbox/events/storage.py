@@ -313,6 +313,43 @@ class EventStorage:
         events.sort(key=lambda e: e.get("start_time", 0), reverse=True)
         return events
 
+    def recent(self, n: int = 10) -> List[dict]:
+        """Return the last ``n`` events as dicts, newest first.
+
+        Used by the dashboard ``/sse/events`` stream to seed freshly-connected
+        clients with recent history. Mirrors the shape produced by
+        :meth:`generate_events_json` so the frontend can treat initial and live
+        events identically.
+        """
+        entries: List[tuple] = []
+        for json_file in self.base_dir.rglob("*.json"):
+            if json_file.name == "events.json":
+                continue
+            try:
+                with open(json_file) as f:
+                    meta = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                continue
+            start_time = meta.get("start_time")
+            if not start_time:
+                continue
+            dt = datetime.fromtimestamp(start_time, tz=timezone.utc)
+            entry: dict = {
+                "type": str(meta.get("type", "unknown")).upper(),
+                "timestamp": dt.isoformat(),
+                "peak_g": meta.get("peak_value"),
+                "duration_ms": meta.get("duration_ms"),
+            }
+            if meta.get("speed_kmh") is not None:
+                entry["speed_kmh"] = meta["speed_kmh"]
+            if meta.get("lat") is not None:
+                entry["lat"] = meta["lat"]
+            if meta.get("lng") is not None:
+                entry["lng"] = meta["lng"]
+            entries.append((start_time, entry))
+        entries.sort(key=lambda pair: pair[0], reverse=True)
+        return [e for _, e in entries[:n]]
+
     def generate_events_json(self, video_base_url: str = "/captures") -> Optional[Path]:
         """Generate events.json index in captures_dir for the website.
 

@@ -22,6 +22,9 @@ from shitbox.capture import buzzer, overlay, speaker
 from shitbox.capture.button import ButtonHandler
 from shitbox.capture.ring_buffer import VideoRingBuffer
 from shitbox.capture.video import VideoRecorder
+from shitbox.dashboard.server import DashboardServer, build_dashboard_server
+from shitbox.dashboard.snapshot import update_snapshot
+from shitbox.dashboard.sse import push_event as dashboard_push_event
 from shitbox.display.oled import OLEDDisplayService
 from shitbox.events.detector import DetectorConfig, Event, EventDetector, EventType
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
@@ -34,10 +37,10 @@ from shitbox.storage.models import Reading, SensorType
 from shitbox.sync.batch_sync import BatchSyncService
 from shitbox.sync.boot_recovery import BootRecoveryService, detect_unclean_shutdown
 from shitbox.sync.capture_sync import CaptureSyncService
-from shitbox.sync.timelapse_compiler import TimelapseCompiler
 from shitbox.sync.connection import ConnectionMonitor
 from shitbox.sync.grafana import GrafanaAnnotator
 from shitbox.sync.mqtt_publisher import MQTTPublisher
+from shitbox.sync.timelapse_compiler import TimelapseCompiler
 from shitbox.utils.config import (
     CaptureSyncConfig,
     Config,
@@ -206,6 +209,12 @@ class EngineConfig:
     # Route waypoints (WaypointConfig objects loaded from YAML)
     route_waypoints: list = field(default_factory=list)
 
+    # Live dashboard (in-process FastAPI)
+    dashboard_enabled: bool = False
+    dashboard_host: str = "0.0.0.0"
+    dashboard_port: int = 8080
+    dashboard_mbtiles_path: str = "/var/lib/shitbox/tiles/rally.mbtiles"
+
     @classmethod
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
         """Create EngineConfig from the existing YAML config structure."""
@@ -325,6 +334,11 @@ class EngineConfig:
             speaker_volume=config.capture.speaker.volume,
             # Route waypoints
             route_waypoints=config.sensors.gps.route.waypoints,
+            # Dashboard
+            dashboard_enabled=config.dashboard.enabled,
+            dashboard_host=config.dashboard.host,
+            dashboard_port=config.dashboard.port,
+            dashboard_mbtiles_path=config.dashboard.mbtiles_path,
         )
 
 
@@ -559,6 +573,23 @@ class UnifiedEngine:
                 debounce_ms=config.capture_debounce_ms,
             )
 
+        # Live dashboard (in-process FastAPI on daemon thread)
+        # Snapshot counter decimates the 100 Hz IMU callback down to ~10 Hz
+        # dashboard updates (RESEARCH Pitfall 3 — 100 dicts/sec is wasteful).
+        self._snapshot_counter: int = 0
+        self._dashboard: Optional[DashboardServer] = None
+        if config.dashboard_enabled:
+            try:
+                self._dashboard = build_dashboard_server(
+                    host=config.dashboard_host,
+                    port=config.dashboard_port,
+                    mbtiles_path=Path(config.dashboard_mbtiles_path),
+                    recent_events_provider=lambda n: self.event_storage.recent(n),
+                )
+            except Exception as exc:
+                log.error("dashboard_init_failed", error=str(exc))
+                self._dashboard = None
+
         # State
         self._running = False
         self._telemetry_thread: Optional[threading.Thread] = None
@@ -676,6 +707,37 @@ class UnifiedEngine:
     def _on_imu_sample(self, sample: IMUSample) -> None:
         """Called for each high-rate IMU sample."""
         self.detector.process_sample(sample)
+
+        # Dashboard snapshot — update at 10 Hz, NOT 100 Hz (RESEARCH Pitfall 3).
+        # Atomic dict rebind under the GIL (RESEARCH Pattern 2). Wrapped in
+        # try/except so dashboard failures NEVER affect the sampler/detector.
+        if self._dashboard is not None:
+            self._snapshot_counter += 1
+            if self._snapshot_counter % 10 == 0:
+                try:
+                    backlog = 0
+                    if self.batch_sync is not None:
+                        backlog = getattr(self.batch_sync, "pending_count", 0) or 0
+                    update_snapshot({
+                        "ts": sample.timestamp,
+                        "speed_kmh": self._current_speed_kmh or 0.0,
+                        "g_x": float(sample.ax),
+                        "g_y": float(sample.ay),
+                        "g_z": float(sample.az),
+                        "heading_deg": self._current_heading or 0.0,
+                        "lat": self._current_lat,
+                        "lng": self._current_lon,
+                        "gps_fix_mode": 3 if self._gps_has_fix else 0,
+                        "gps_sat_count": self._current_satellites or 0,
+                        "gps_hdop": None,
+                        "imu_temp_c": getattr(self.thermal_monitor, "imu_temp_c", None),
+                        "soc_temp_c": getattr(self.thermal_monitor, "soc_temp_c", None),
+                        "sync_connected": getattr(self.connection, "is_connected", False),
+                        "sync_backlog": backlog,
+                        "event_count_today": self.events_captured,
+                    })
+                except Exception as exc:
+                    log.warning("dashboard_snapshot_update_failed", error=str(exc))
 
     # Event types that should trigger video recording
     VIDEO_CAPTURE_EVENTS = {
@@ -911,6 +973,25 @@ class UnifiedEngine:
                         json_path=str(json_path),
                         has_video=video_path is not None,
                     )
+                    # Push into the dashboard SSE queue. Non-blocking; drops
+                    # on full so the capture path never waits on the dashboard.
+                    if self._dashboard is not None:
+                        try:
+                            dashboard_push_event({
+                                "type": event.event_type.value,
+                                "timestamp": datetime.fromtimestamp(
+                                    event.start_time, tz=timezone.utc
+                                ).isoformat(),
+                                "peak_g": float(event.peak_value),
+                                "duration_ms": int(
+                                    (event.end_time - event.start_time) * 1000
+                                ),
+                                "speed_kmh": event.speed_kmh,
+                                "lat": event.lat,
+                                "lng": event.lng,
+                            })
+                        except Exception as exc:
+                            log.warning("dashboard_event_push_failed", error=str(exc))
                     # Trigger immediate connectivity check and sync
                     if self.config.uplink_enabled:
                         connected = self.connection.check_connectivity()
@@ -1687,6 +1768,14 @@ class UnifiedEngine:
         # Start thermal monitor
         self.thermal_monitor.start()
 
+        # Start live dashboard (after thermal monitor; before sampler so
+        # the snapshot starts getting populated as soon as IMU comes up).
+        if self._dashboard is not None:
+            try:
+                self._dashboard.start()
+            except Exception as exc:
+                log.error("dashboard_start_failed", error=str(exc))
+
         # Instantiate health collector (thermal_monitor and batch_sync now ready)
         data_dir = str(Path(self.config.database_path).parent)
         self._health_collector = HealthCollector(
@@ -1778,6 +1867,14 @@ class UnifiedEngine:
         log.info("unified_engine_stopping")
 
         self._running = False
+
+        # Stop dashboard FIRST so it releases its port before anything else.
+        # Dashboard failures here must never prevent the rest of the shutdown.
+        if self._dashboard is not None:
+            try:
+                self._dashboard.stop()
+            except Exception as exc:
+                log.error("dashboard_stop_failed", error=str(exc))
 
         # Stop OLED display early so it can show final state
         if self.oled_display:

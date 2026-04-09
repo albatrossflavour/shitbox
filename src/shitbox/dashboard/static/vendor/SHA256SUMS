@@ -1,0 +1,7 @@
+# Phase 10 — vendored frontend asset SHA256 manifest.
+# Verify with: cd src/shitbox/dashboard/static/vendor && sha256sum -c SHA256SUMS
+#
+358d9afbb1ab5befa2f48061a30776e5bcd7707f410a606ba985f98bc3b1c034  alpine.min.js
+db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a  leaflet.js
+a7837102824184820dfa198d1ebcd109ff6d0ff9a2672a074b9a1b4d147d04c6  leaflet.css
+b6ad97402eddb903e7a5d7a73ee47a679204efbdda4521a391cbad9df509b932  tailwind.min.css

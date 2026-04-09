@@ -288,6 +288,17 @@ class DisplayConfig:
 
 
 @dataclass
+class DashboardConfig:
+    """In-process FastAPI dashboard configuration."""
+
+    enabled: bool = False
+    host: str = "0.0.0.0"
+    port: int = 8080
+    mbtiles_path: str = "/var/lib/shitbox/tiles/rally.mbtiles"
+    max_sse_clients: int = 8
+
+
+@dataclass
 class AppConfig:
     """Application configuration."""
 
@@ -307,6 +318,7 @@ class Config:
     health: HealthConfig = field(default_factory=HealthConfig)
     capture: CaptureConfig = field(default_factory=CaptureConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
+    dashboard: DashboardConfig = field(default_factory=DashboardConfig)
 
 
 def _dict_to_dataclass(cls: type, data: dict[str, Any]) -> Any:
@@ -430,4 +442,5 @@ def load_config(config_path: str | Path | None = None) -> Config:
                 OLEDConfig, data.get("display", {}).get("oled", {})
             ),
         ),
+        dashboard=_dict_to_dataclass(DashboardConfig, data.get("dashboard", {})),
     )
