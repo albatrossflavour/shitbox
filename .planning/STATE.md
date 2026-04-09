@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: executing
-stopped_at: Completed 13-02-PLAN.md — Driver storage + REST layer
-last_updated: "2026-04-09T13:30:06.862Z"
+stopped_at: Completed 13-03-PLAN.md — Driver tracking wiring
+last_updated: "2026-04-09T14:15:00.000Z"
 last_activity: 2026-04-09
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
   percent: 100
 ---
 
@@ -27,7 +27,7 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 ## Current Position
 
 Phase: 13 (driver-tracking) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-04-09
 
@@ -59,6 +59,9 @@ v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 - Plan 12-04: gps_state.update_last_known_position co-located with existing lat/lng not-None guard in _record_telemetry
 - Plan 13-01: Wave 0 test stubs use pytest.skip inside fixtures (not pytest.mark.xfail) — explicit skip reasons, clean collection
 - Plan 13-01: v6 migration test assertions relaxed from == 6 to >= 6 after SCHEMA_VERSION bumped to 7
+- Plan 13-03: SSE test drives async generator directly via asyncio.run() — Starlette TestClient portal.call() blocks on infinite generators, making HTTP-transport testing impossible
+- Plan 13-03: sse.py migrated to EventSourceResponse + threading.Lock — required for correct slot management in mixed sync/async context
+- Plan 13-03: register_json_generator uses 2-arg form (name, fn) — capture_sync derives filename as {name}.json automatically
 
 ### Known Constraints for v2.0
 
@@ -74,6 +77,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09T13:30:06.859Z
-Stopped at: Completed 13-02-PLAN.md — Driver storage + REST layer
+Last session: 2026-04-09T14:15:00Z
+Stopped at: Completed 13-03-PLAN.md — Driver tracking wiring
 Resume file: None

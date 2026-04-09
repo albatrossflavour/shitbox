@@ -92,7 +92,7 @@ on the SSE stream for other consumers (display, dashboard).
 
 - [x] 13-01-PLAN.md — Wave 0 test scaffolds + schema v7 migration (driver_stints)
 - [x] 13-02-PLAN.md — DriverStorage, driver_state, FastAPI router, config roster
-- [ ] 13-03-PLAN.md — Engine wiring: event attribution, SSE broadcast, sync generator
+- [x] 13-03-PLAN.md — Engine wiring: event attribution, SSE broadcast, sync generator
 - [ ] 13-04-PLAN.md — Dashboard UI: top-bar dropdown and stats modal
 
 **UI hint**: yes
@@ -221,7 +221,7 @@ pipeline, with improved Grafana dashboards; the changes are deployed via the hom
 | 10. Live Dashboard with Offline Map | v1.0 | 7/7 | Complete | 2026-04-09 |
 | 11. V2 Hardware Migration | v1.0 | 5/5 | Complete | 2026-04-09 |
 | 12. Schema Foundation and Logbook API | v2.0 | 4/4 | Complete    | 2026-04-09 |
-| 13. Driver Tracking | v2.0 | 2/4 | In Progress|  |
+| 13. Driver Tracking | v2.0 | 3/4 | In Progress|  |
 | 14. Sensor Calibration | v2.0 | TBD | Not started | — |
 | 15. Undervoltage and Monitoring | v2.0 | TBD | Not started | — |
 | 16. Video Capture Tuning | v2.0 | TBD | Not started | — |
