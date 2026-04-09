@@ -59,7 +59,12 @@ cost fields) alongside events.
   4. System calculates and returns fuel efficiency (km/L) per stop and a running cumulative average in the fuel API response
   5. The events.json sync payload includes notes and fuel stop data; the fuel cost field is absent from the payload
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+- [ ] 12-01-PLAN.md — Schema v6 migration + Wave 0 test scaffolds
+- [ ] 12-02-PLAN.md — LogbookStorage, gps_state helper, FastAPI logbook router
+- [ ] 12-03-PLAN.md — CaptureSyncService JSON generator registry
+- [ ] 12-04-PLAN.md — Engine wiring + dashboard modals (UI)
 
 **UI hint**: yes
 
