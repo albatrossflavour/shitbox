@@ -66,7 +66,7 @@ Exceptions:
 Notes:
 
 - The `.num` class applies `font-variant-numeric: tabular-nums; font-weight: 600` — carry this into any numeric readouts inside modals (e.g. displaying GPS coordinates or fuel volume).
-- `text-sm text-gray-400` (14px, regular, muted) is the established pattern for field labels above data values. Use this for form field labels inside the modal.
+- Form field labels inside modals use the 12px/label role (`text-sm text-gray-400`, muted colour `#8b949e`). No additional size is introduced.
 - Two weights only: regular (400) for body text and semibold (600) for labels, headings, numbers, and CTAs.
 
 **Source:** Detected from `index.html` class patterns and `.num` / `.badge` CSS rules.
@@ -94,7 +94,7 @@ Accent reserved for:
 
 The warning colour (`#ca8a04`) is reserved for the GPS staleness warning only: "Location from X minutes ago" message displayed inside the modal before submission when `gps_stale` would be true.
 
-No destructive actions exist in this phase. The cancel/close button uses a neutral ghost style (no background, `#8b949e` text, hover: `#21262d` background).
+No destructive actions exist in this phase. The close button uses a neutral ghost style (no background, `#8b949e` text, hover: `#21262d` background).
 
 **Source:** All hex values detected directly from `index.html` inline styles and Tailwind overrides.
 
@@ -125,20 +125,24 @@ Both buttons use the existing `.badge` class as a base, with cursor: pointer add
 
 ### Field Note Modal
 
+Primary visual anchor: modal heading text "Field Note" in 20px/semibold at the top of the panel.
+
 Fields (in order):
 
 1. **Note body** (required): `<textarea>`, 4 rows, full width, placeholder `"What happened?"`, font 16px/400, background `#0d1117`, border `#21262d`, focus border `#1f6feb`, border-radius 4px, padding 12px
 2. **Pin to event** (optional): `<select>` populated from the last 10 events in the SSE events array. Default option: `"No event pin"`. Font 16px/400, same styling as textarea. If no events exist, field is disabled with placeholder `"No recent events"`.
 3. **GPS location line** (read-only display, not a form field): Shows current GPS status below the fields. Two states:
-   - Current fix: `"Location captured (3D fix)"` — muted text `#8b949e`, font 14px
-   - Stale position: `"Location from X minutes ago"` — warning colour `#ca8a04`, font 14px, weight 600. This appears as a warning, not an error — the user can still submit.
+   - Current fix: `"Location captured (3D fix)"` — muted text `#8b949e`, 12px/label role
+   - Stale position: `"Location from X minutes ago"` — warning colour `#ca8a04`, 12px/label role, weight 600. This appears as a warning, not an error — the user can still submit.
 
 Actions (bottom row, right-aligned):
 
-- Cancel: ghost button, label `"Cancel"`, text `#8b949e`, no background, hover background `#21262d`, padding 8px 16px, border-radius 4px
+- Close: ghost button, label `"Close"`, text `#8b949e`, no background, hover background `#21262d`, padding 8px 16px, border-radius 4px
 - Submit: filled button, label `"Save Note"`, background `#1f6feb`, text `#fff`, padding 8px 16px, border-radius 4px, hover background `#388bfd` (lighter blue), disabled state: background `#21262d`, text `#8b949e`, cursor not-allowed
 
 ### Fuel Stop Modal
+
+Primary visual anchor: modal heading text "Fuel Stop" in 20px/semibold at the top of the panel.
 
 Fields (in order):
 
@@ -147,13 +151,13 @@ Fields (in order):
 3. **Odometer (optional)**: `<input type="number" step="1" min="0">`, full width, placeholder `"Odometer (km) — optional"`, same styling.
 4. **GPS location line** (same read-only display as Note modal, same two states and styling).
 
-Actions: identical pattern to Note modal. Submit label: `"Log Fuel Stop"`.
+Actions: identical pattern to Note modal. Submit label: `"Log Fuel Stop"`. Close button label: `"Close"`.
 
 ### Loading / Saving State
 
 - While the POST is in flight: disable both action buttons, change submit button text to `"Saving..."`, cursor `wait` on button.
 - On success: close modal, show a transient confirmation badge in the top bar for 3 seconds: `"Note saved"` or `"Fuel stop logged"`, background `#238636` (green), text `#fff`, same `.badge` class. Alpine `setTimeout` dismiss.
-- On API error: keep modal open, show error message below the form fields (above the action buttons): `"Could not save — try again"`, text `#da3633`, font 14px.
+- On API error: keep modal open, show error message below the form fields (above the action buttons): `"Could not save — try again"`, text `#da3633`, 12px/label role.
 
 ---
 
@@ -175,7 +179,7 @@ Actions: identical pattern to Note modal. Submit label: `"Log Fuel Stop"`.
 | GPS stale warning | `Location from X minutes ago` (X = integer minutes) |
 | Primary CTA (notes) | `Save Note` |
 | Primary CTA (fuel) | `Log Fuel Stop` |
-| Cancel CTA | `Cancel` |
+| Close CTA | `Close` |
 | Saving state | `Saving...` |
 | Success confirmation (notes) | `Note saved` |
 | Success confirmation (fuel) | `Fuel stop logged` |
@@ -204,7 +208,7 @@ No third-party component registries. All UI is hand-authored Alpine.js + Tailwin
 |-------------|-----------|--------|
 | Open Note modal | Click `+ Note` in header | Alpine `x-on:click`, sets `showNoteModal = true` |
 | Open Fuel modal | Click `+ Fuel` in header | Alpine `x-on:click`, sets `showFuelModal = true` |
-| Close modal | Click Cancel or press ESC | `@keydown.escape.window`, `x-on:click` on Cancel |
+| Close modal | Click Close or press ESC | `@keydown.escape.window`, `x-on:click` on Close |
 | Submit note | Click `Save Note` | `x-on:click.prevent` → `fetch('/api/notes', {method:'POST'})` |
 | Submit fuel stop | Click `Log Fuel Stop` | `x-on:click.prevent` → `fetch('/api/fuel', {method:'POST'})` |
 | GPS stale warning | Reactive display | Alpine reactive property `gpsStaleMinutes`, shown `x-show="gpsStaleMinutes > 0"` |
