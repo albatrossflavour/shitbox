@@ -85,3 +85,22 @@ def test_checkpoint_wal_silent_when_clean(tmp_path) -> None:
         )
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase 12 — Schema v6 migration tests
+# ---------------------------------------------------------------------------
+
+
+import pytest
+import sqlite3
+
+
+def test_v6_fresh_schema(tmp_path):
+    """Phase 12: Fresh database contains notes and fuel_stops tables at schema v6."""
+    pytest.skip("pending Task 2 — schema v6 not yet implemented")
+
+
+def test_v6_migration(tmp_path):
+    """Phase 12: Existing v5 database migrates to v6 gaining notes and fuel_stops tables."""
+    pytest.skip("pending Task 2 — schema v6 not yet implemented")
