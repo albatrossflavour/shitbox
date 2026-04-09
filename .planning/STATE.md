@@ -82,3 +82,31 @@ None.
 Last session: 2026-04-09T15:00:00Z
 Stopped at: Completed 13-04-PLAN.md — Phase 13 driver tracking fully complete
 Resume file: None
+
+## Out-of-Band Hardware Work (2026-04-10)
+
+Post-phase-13 session — hardware issues discovered and partially resolved during UAT.
+
+### Hardware changes made
+- **PSU replaced**: Official Raspberry Pi 5 PSU installed after full power brownout
+- **I2C driver replaced**: Switched from i2c_designware (Pi 5 RP1 chip, buggy clock-stretch handling) to i2c-gpio bit-bang driver. config.txt change: `#dtparam=i2c_arm=on` disabled, `dtoverlay=i2c-gpio,bus=1,i2c_gpio_sda=2,i2c_gpio_scl=3` added. All sensors confirmed present on bit-bang bus 1 via i2cdetect.
+- **Display boot race**: Still intermittent. DSI-1 entry removed from cmdline.txt previously but race returned. Suspect `display_auto_detect=1` in config.txt probing absent DSI-1. Next step: set `display_auto_detect=0`.
+
+### Sensors confirmed on bit-bang i2c-1 (i2cdetect -y 1)
+- 0x10 — VEML7700
+- 0x1c — LIS3MDL
+- 0x3c — OLED
+- 0x40 — INA226
+- 0x6a — LSM6DSOX
+- 0x77 — BME680 (present on bus but failing to init at daemon startup — timing issue, needs retry on setup or delayed init)
+
+### Code fixes committed (ae7676f, branch gsd/phase-13-driver-tracking)
+1. **sampler.py**: Added `if self._lsm6dsox is None: raise OSError(...)` guard before read — routes None sensor into existing OSError recovery path instead of flooding log at 100Hz with AttributeError
+2. **temperature.py**: Added `SensorNotReadyError` retry (150ms sleep, one retry) — DS18B20 needs up to 750ms to convert at 12-bit, 1Hz polling was occasionally catching it mid-conversion
+3. **light.py**: Fixed VEML7700 using hardcoded `busio.I2C(1, 2)` — changed to `board.SCL/board.SDA` to work with bit-bang bus. Added `board` import alongside `busio`.
+
+### Outstanding issues
+- **BME680 (0x77) not initialising**: Physically present (confirmed i2cdetect), but daemon logs `No I2C device at address: 0x77` at startup. Likely a boot timing issue — sensor not ready when daemon starts. Fix options: add retry loop in EnvironmentCollector.setup(), or add a startup delay. Dashboard shows `--` for CABIN TEMP as a result.
+- **CPU temp 70.5°C at idle**: Hitting warning threshold. May need airflow improvement.
+- **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
+- **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
