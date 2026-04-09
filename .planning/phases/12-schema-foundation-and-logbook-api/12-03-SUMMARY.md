@@ -96,3 +96,11 @@ None — plan 03 replaces all three Wave 0 stubs with real assertions.
 ---
 *Phase: 12-schema-foundation-and-logbook-api*
 *Completed: 2026-04-09*
+
+## Self-Check: PASSED
+
+- src/shitbox/sync/capture_sync.py: FOUND
+- tests/test_capture_sync_generators.py: FOUND
+- .planning/phases/12-schema-foundation-and-logbook-api/12-03-SUMMARY.md: FOUND
+- Commit a8fa7dd (RED — failing tests): FOUND
+- Commit 5ef3bec (GREEN — implementation): FOUND
