@@ -32,7 +32,12 @@
       <span class="badge" :class="gpsBadgeClass" x-text="gpsBadge"></span>
     </div>
     <div class="num text-5xl"><span x-text="speed"></span> <span class="text-base text-gray-400">km/h</span></div>
-    <div class="text-sm text-gray-400">Driver: &mdash;</div>
+    <div class="text-sm text-gray-400">
+      Driver:
+      <span class="cursor-pointer text-gray-100 hover:text-white underline-offset-2 hover:underline"
+            @click="openDriverModal()"
+            x-text="activeDriver || '---'"></span>
+    </div>
     <div style="display: flex; align-items: center; gap: 8px;">
       <button class="badge" style="cursor: pointer;" @click="openNoteModal()">+ Note</button>
       <button class="badge" style="cursor: pointer;" @click="openFuelModal()">+ Fuel</button>
@@ -165,6 +170,57 @@
     </div>
   </div>
 
+  <!-- Driver stats modal -->
+  <div x-show="showDriverModal"
+       x-cloak
+       @keydown.escape.window="showDriverModal = false"
+       class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+       @click.self="showDriverModal = false">
+    <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 w-full max-w-md">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-semibold text-gray-100">Driver</h2>
+        <button @click="showDriverModal = false"
+                class="text-gray-400 hover:text-white">&times;</button>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm text-gray-400 mb-1">Switch to</label>
+        <select x-model="driverSelection"
+                @change="switchDriver(driverSelection)"
+                class="w-full bg-gray-800 border border-gray-700 text-gray-100 rounded px-3 py-2">
+          <option value="">-- No driver --</option>
+          <template x-for="name in driverRoster" :key="name">
+            <option :value="name" x-text="name"></option>
+          </template>
+        </select>
+      </div>
+
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-gray-400 border-b border-gray-700">
+            <th class="text-left py-1">Driver</th>
+            <th class="text-right py-1">Time</th>
+            <th class="text-right py-1">%</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="row in driverStats" :key="row.driver_name">
+            <tr class="border-b border-gray-800">
+              <td class="py-1 text-gray-100" x-text="row.driver_name"></td>
+              <td class="py-1 text-right text-gray-300"
+                  x-text="formatDuration(row.total_seconds)"></td>
+              <td class="py-1 text-right text-gray-300"
+                  x-text="row.pct + '%'"></td>
+            </tr>
+          </template>
+          <tr x-show="driverStats.length === 0">
+            <td colspan="3" class="py-2 text-center text-gray-500">No stints recorded yet</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <script src="/static/vendor/leaflet.js"></script>
   <script src="/static/vendor/alpine.min.js" defer></script>
   <script>
@@ -176,6 +232,11 @@
         events: [],
         gx: 0, gy: 0, peakG: 1.0, peakGAt: 0,
         map: null, marker: null, breadcrumb: null, lastInteract: 0,
+        activeDriver: null,
+        showDriverModal: false,
+        driverStats: [],
+        driverRoster: [],
+        driverSelection: '',
         showNoteModal: false,
         showFuelModal: false,
         noteBody: '',
@@ -241,6 +302,7 @@
             } else {
               this.syncBadge = 'SYNC OFFLINE'; this.syncBadgeClass = 'bg-red-700';
             }
+            this.activeDriver = d.active_driver;
             if (d.lat != null && d.lng != null) {
               const ll = [d.lat, d.lng];
               if (!this.marker) {
@@ -357,6 +419,45 @@
           } catch {
             this.errorMsg = 'Could not save — try again';
           } finally { this.savingFuel = false; }
+        },
+        async openDriverModal() {
+          try {
+            const r = await fetch('/api/driver/stats');
+            if (r.ok) {
+              const data = await r.json();
+              this.driverStats = data.drivers || [];
+              this.driverRoster = data.roster || [];
+              this.driverSelection = data.active_driver || '';
+            }
+          } catch (e) { console.error('driver stats fetch failed', e); }
+          this.showDriverModal = true;
+        },
+        async switchDriver(name) {
+          try {
+            const r = await fetch('/api/driver', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({name: name}),
+            });
+            if (r.ok) {
+              const data = await r.json();
+              this.activeDriver = data.driver_name;
+              // Refresh stats so the modal reflects the new stint
+              const s = await fetch('/api/driver/stats');
+              if (s.ok) {
+                const sd = await s.json();
+                this.driverStats = sd.drivers || [];
+              }
+            } else {
+              console.warn('driver switch rejected', r.status);
+            }
+          } catch (e) { console.error('driver switch failed', e); }
+        },
+        formatDuration(seconds) {
+          if (!seconds || seconds <= 0) return '0m';
+          const h = Math.floor(seconds / 3600);
+          const m = Math.floor((seconds % 3600) / 60);
+          return h > 0 ? `${h}h ${m}m` : `${m}m`;
         },
         flashSuccess(msg) {
           this.successMsg = msg;
