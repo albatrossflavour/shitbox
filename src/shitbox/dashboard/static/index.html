@@ -33,7 +33,11 @@
     </div>
     <div class="num text-5xl"><span x-text="speed"></span> <span class="text-base text-gray-400">km/h</span></div>
     <div class="text-sm text-gray-400">Driver: &mdash;</div>
-    <div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <button class="badge" style="cursor: pointer;" @click="openNoteModal()">+ Note</button>
+      <button class="badge" style="cursor: pointer;" @click="openFuelModal()">+ Fuel</button>
+      <span class="badge" x-show="successMsg" x-text="successMsg"
+            style="background: #238636; color: #fff;"></span>
       <span class="badge" :class="syncBadgeClass" x-text="syncBadge"></span>
     </div>
   </header>
@@ -64,6 +68,103 @@
     <div x-show="events.length === 0" class="text-sm text-gray-400">No events yet</div>
   </footer>
 
+  <!-- Field Note modal -->
+  <div x-show="showNoteModal" x-cloak
+       @keydown.escape.window="showNoteModal = false"
+       style="position: fixed; inset: 0; background: rgba(13,17,23,0.85);
+              display: flex; align-items: center; justify-content: center; z-index: 1000;">
+    <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+                padding: 24px; max-width: 480px; width: 90%; min-height: 320px;">
+      <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 16px; color: #e6edf3;">Field Note</h2>
+
+      <textarea x-model="noteBody" rows="4" placeholder="What happened?"
+                style="width: 100%; background: #0d1117; border: 1px solid #21262d;
+                       color: #e6edf3; border-radius: 4px; padding: 12px;
+                       font-size: 16px; font-family: inherit; resize: vertical;"></textarea>
+
+      <select x-model="noteEventId"
+              :disabled="events.length === 0"
+              style="width: 100%; background: #0d1117; border: 1px solid #21262d;
+                     color: #e6edf3; border-radius: 4px; padding: 12px; margin-top: 12px;
+                     font-size: 16px; min-height: 44px;">
+        <option value="" x-text="events.length === 0 ? 'No recent events' : 'No event pin'"></option>
+        <template x-for="ev in events.slice(0, 10)" :key="ev.id">
+          <option :value="ev.id" x-text="(ev.type || 'EVENT') + ' @ ' + ev.timestamp"></option>
+        </template>
+      </select>
+
+      <div style="margin-top: 12px; font-size: 12px; font-weight: 600;">
+        <span x-show="gpsHasFix" style="color: #8b949e;">Location captured (3D fix)</span>
+        <span x-show="!gpsHasFix && gpsStaleMinutes > 0" style="color: #ca8a04;"
+              x-text="'Location from ' + gpsStaleMinutes + ' minutes ago'"></span>
+        <span x-show="!gpsHasFix && gpsStaleMinutes === 0" style="color: #ca8a04;">No GPS fix available</span>
+      </div>
+
+      <div x-show="errorMsg" x-text="errorMsg"
+           style="margin-top: 12px; color: #da3633; font-size: 12px; font-weight: 600;"></div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px;">
+        <button @click="showNoteModal = false"
+                style="background: none; color: #8b949e; padding: 8px 16px;
+                       border: none; border-radius: 4px; cursor: pointer;">Close</button>
+        <button @click.prevent="saveNote()" :disabled="savingNote || !noteBody.trim()"
+                :style="(savingNote || !noteBody.trim())
+                  ? 'background: #21262d; color: #8b949e; cursor: not-allowed; padding: 8px 16px; border: none; border-radius: 4px;'
+                  : 'background: #1f6feb; color: #fff; cursor: pointer; padding: 8px 16px; border: none; border-radius: 4px; font-weight: 600;'"
+                x-text="savingNote ? 'Saving...' : 'Save Note'"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fuel Stop modal -->
+  <div x-show="showFuelModal" x-cloak
+       @keydown.escape.window="showFuelModal = false"
+       style="position: fixed; inset: 0; background: rgba(13,17,23,0.85);
+              display: flex; align-items: center; justify-content: center; z-index: 1000;">
+    <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+                padding: 24px; max-width: 480px; width: 90%; min-height: 320px;">
+      <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 16px; color: #e6edf3;">Fuel Stop</h2>
+
+      <input type="number" step="0.1" min="0" x-model="fuelVolume" placeholder="Litres"
+             style="width: 100%; background: #0d1117; border: 1px solid #21262d;
+                    color: #e6edf3; border-radius: 4px; padding: 12px; font-size: 16px;
+                    min-height: 44px;" />
+
+      <input type="number" step="0.01" min="0" x-model="fuelCost"
+             placeholder="Cost (AUD) — private, never synced"
+             style="width: 100%; background: #0d1117; border: 1px solid #21262d;
+                    color: #e6edf3; border-radius: 4px; padding: 12px; font-size: 16px;
+                    min-height: 44px; margin-top: 12px;" />
+
+      <input type="number" step="1" min="0" x-model="fuelOdo"
+             placeholder="Odometer (km) — optional"
+             style="width: 100%; background: #0d1117; border: 1px solid #21262d;
+                    color: #e6edf3; border-radius: 4px; padding: 12px; font-size: 16px;
+                    min-height: 44px; margin-top: 12px;" />
+
+      <div style="margin-top: 12px; font-size: 12px; font-weight: 600;">
+        <span x-show="gpsHasFix" style="color: #8b949e;">Location captured (3D fix)</span>
+        <span x-show="!gpsHasFix && gpsStaleMinutes > 0" style="color: #ca8a04;"
+              x-text="'Location from ' + gpsStaleMinutes + ' minutes ago'"></span>
+        <span x-show="!gpsHasFix && gpsStaleMinutes === 0" style="color: #ca8a04;">No GPS fix available</span>
+      </div>
+
+      <div x-show="errorMsg" x-text="errorMsg"
+           style="margin-top: 12px; color: #da3633; font-size: 12px; font-weight: 600;"></div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px;">
+        <button @click="showFuelModal = false"
+                style="background: none; color: #8b949e; padding: 8px 16px;
+                       border: none; border-radius: 4px; cursor: pointer;">Close</button>
+        <button @click.prevent="saveFuel()" :disabled="savingFuel || !(parseFloat(fuelVolume) > 0)"
+                :style="(savingFuel || !(parseFloat(fuelVolume) > 0))
+                  ? 'background: #21262d; color: #8b949e; cursor: not-allowed; padding: 8px 16px; border: none; border-radius: 4px;'
+                  : 'background: #1f6feb; color: #fff; cursor: pointer; padding: 8px 16px; border: none; border-radius: 4px; font-weight: 600;'"
+                x-text="savingFuel ? 'Saving...' : 'Log Fuel Stop'"></button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/vendor/leaflet.js"></script>
   <script src="/static/vendor/alpine.min.js" defer></script>
   <script>
@@ -75,6 +176,19 @@
         events: [],
         gx: 0, gy: 0, peakG: 1.0, peakGAt: 0,
         map: null, marker: null, breadcrumb: null, lastInteract: 0,
+        showNoteModal: false,
+        showFuelModal: false,
+        noteBody: '',
+        noteEventId: '',
+        fuelVolume: '',
+        fuelCost: '',
+        fuelOdo: '',
+        gpsStaleMinutes: 0,
+        gpsHasFix: true,
+        savingNote: false,
+        savingFuel: false,
+        errorMsg: '',
+        successMsg: '',
         init() {
           this.initMap();
           this.openFast();
@@ -179,6 +293,74 @@
           ctx.fillStyle = '#8b949e'; ctx.font = '14px system-ui';
           ctx.fillText(`±${this.peakG.toFixed(1)}g`, 10, 20);
           requestAnimationFrame(() => this.drawGauge());
+        },
+        async fetchGpsStatus() {
+          try {
+            const r = await fetch('/api/logbook/gps');
+            const data = await r.json();
+            this.gpsHasFix = data.has_fix;
+            this.gpsStaleMinutes = data.stale_seconds != null
+              ? Math.max(1, Math.round(data.stale_seconds / 60)) : 0;
+          } catch { this.gpsHasFix = false; this.gpsStaleMinutes = 0; }
+        },
+        async openNoteModal() {
+          this.errorMsg = '';
+          this.noteBody = '';
+          this.noteEventId = '';
+          await this.fetchGpsStatus();
+          this.showNoteModal = true;
+        },
+        async openFuelModal() {
+          this.errorMsg = '';
+          this.fuelVolume = '';
+          this.fuelCost = '';
+          this.fuelOdo = '';
+          await this.fetchGpsStatus();
+          this.showFuelModal = true;
+        },
+        async saveNote() {
+          if (!this.noteBody.trim()) return;
+          this.savingNote = true;
+          this.errorMsg = '';
+          try {
+            const body = { body: this.noteBody };
+            if (this.noteEventId) body.event_id = parseInt(this.noteEventId, 10);
+            const r = await fetch('/api/notes', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(body)
+            });
+            if (!r.ok) throw new Error('save failed');
+            this.showNoteModal = false;
+            this.flashSuccess('Note saved');
+          } catch {
+            this.errorMsg = 'Could not save — try again';
+          } finally { this.savingNote = false; }
+        },
+        async saveFuel() {
+          const vol = parseFloat(this.fuelVolume);
+          if (!(vol > 0)) return;
+          this.savingFuel = true;
+          this.errorMsg = '';
+          try {
+            const body = { volume_litres: vol };
+            if (this.fuelCost) body.cost_aud = parseFloat(this.fuelCost);
+            if (this.fuelOdo) body.odometer_km = parseFloat(this.fuelOdo);
+            const r = await fetch('/api/fuel', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(body)
+            });
+            if (!r.ok) throw new Error('save failed');
+            this.showFuelModal = false;
+            this.flashSuccess('Fuel stop logged');
+          } catch {
+            this.errorMsg = 'Could not save — try again';
+          } finally { this.savingFuel = false; }
+        },
+        flashSuccess(msg) {
+          this.successMsg = msg;
+          setTimeout(() => { this.successMsg = ''; }, 3000);
         },
       };
     }
