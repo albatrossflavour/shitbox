@@ -61,7 +61,7 @@ cost fields) alongside events.
 
 **Plans**: 4 plans
 
-- [ ] 12-01-PLAN.md — Schema v6 migration + Wave 0 test scaffolds
+- [x] 12-01-PLAN.md — Schema v6 migration + Wave 0 test scaffolds
 - [ ] 12-02-PLAN.md — LogbookStorage, gps_state helper, FastAPI logbook router
 - [ ] 12-03-PLAN.md — CaptureSyncService JSON generator registry
 - [ ] 12-04-PLAN.md — Engine wiring + dashboard modals (UI)
@@ -215,7 +215,7 @@ pipeline, with improved Grafana dashboards; the changes are deployed via the hom
 | 9. Sync Reliability | v1.0 | — | Dropped | 2026-02-28 |
 | 10. Live Dashboard with Offline Map | v1.0 | 7/7 | Complete | 2026-04-09 |
 | 11. V2 Hardware Migration | v1.0 | 5/5 | Complete | 2026-04-09 |
-| 12. Schema Foundation and Logbook API | v2.0 | TBD | Not started | — |
+| 12. Schema Foundation and Logbook API | v2.0 | 1/4 | In Progress|  |
 | 13. Driver Tracking | v2.0 | TBD | Not started | — |
 | 14. Sensor Calibration | v2.0 | TBD | Not started | — |
 | 15. Undervoltage and Monitoring | v2.0 | TBD | Not started | — |

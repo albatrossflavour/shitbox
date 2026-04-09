@@ -11,14 +11,14 @@
 
 ### Field Notes (NOTE)
 
-- [ ] **NOTE-01**: User can compose a field note from the Pi UI using a keyboard, with DTS and GPS location auto-captured
-- [ ] **NOTE-02**: User can optionally pin a field note to an existing event
+- [x] **NOTE-01**: User can compose a field note from the Pi UI using a keyboard, with DTS and GPS location auto-captured
+- [x] **NOTE-02**: User can optionally pin a field note to an existing event
 - [ ] **NOTE-03**: Field notes sync to shit-of-theseus.com and display in a blog/notes section
 
 ### Refueling Log (FUEL)
 
-- [ ] **FUEL-01**: User can log a fuel stop with volume and location from the Pi UI
-- [ ] **FUEL-02**: System calculates and tracks fuel efficiency (km/L) per stop and as a running cumulative average
+- [x] **FUEL-01**: User can log a fuel stop with volume and location from the Pi UI
+- [x] **FUEL-02**: System calculates and tracks fuel efficiency (km/L) per stop and as a running cumulative average
 - [ ] **FUEL-03**: Fuel stop locations and efficiency data sync to the website map; cost data never syncs
 
 ### Driver Tracking (DRVR)
@@ -82,11 +82,11 @@
 | DISP-02 | Phase 17 | Pending |
 | DISP-03 | Phase 17 | Pending |
 | DISP-04 | Phase 17 | Pending |
-| NOTE-01 | Phase 12 | Pending |
-| NOTE-02 | Phase 12 | Pending |
+| NOTE-01 | Phase 12 | Complete |
+| NOTE-02 | Phase 12 | Complete |
 | NOTE-03 | Phase 18 | Pending |
-| FUEL-01 | Phase 12 | Pending |
-| FUEL-02 | Phase 12 | Pending |
+| FUEL-01 | Phase 12 | Complete |
+| FUEL-02 | Phase 12 | Complete |
 | FUEL-03 | Phase 18 | Pending |
 | DRVR-01 | Phase 13 | Pending |
 | DRVR-02 | Phase 13 | Pending |
