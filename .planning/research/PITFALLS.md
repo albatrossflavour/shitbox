@@ -1,624 +1,411 @@
-# Domain Pitfalls: Rally Car Telemetry Hardening
+# Pitfalls Research
 
-**Domain:** Raspberry Pi automotive telemetry — multi-day rally in remote Australia
-**Researched:** 2026-02-25
-**Scope:** Hardening an existing Python/RPi system for a 4,000 km rally from Port Douglas to Melbourne
-
----
+**Domain:** Embedded rally telemetry -- adding features to a running offline-first system
+**Researched:** 2026-04-09
+**Confidence:** HIGH (based on direct codebase analysis)
 
 ## Critical Pitfalls
 
-Mistakes that cause data loss, hardware failure, or complete system failure with no recovery path.
+### Pitfall 1: Calibration Offsets Shifting Event Detection Without Warning
 
----
+**What goes wrong:**
+`EngineConfig` exposes `accel_offset_x/y/z` which are subtracted from raw IMU readings before
+event detection. `DetectorConfig` thresholds (`hard_brake_threshold_g: -0.35`,
+`big_corner_threshold_g: 0.45`, `rough_road_threshold_stddev: 0.3`, `high_g_threshold: 0.8`)
+were tuned against uncalibrated data from v1.0 field testing. Applying calibration offsets moves
+the effective signal but does not adjust the thresholds. A -0.1 g static Z-axis offset means the
+rough-road stddev window now includes a DC bias, reducing sensitivity. A lateral offset makes
+the car appear to always be cornering slightly, which can fire BIG_CORNER events at rest or
+suppress real ones at the margin.
 
-### Pitfall 1: SD Card Corruption on Ignition-Linked Power Loss
+**Why it happens:**
+Calibration and detection are configured separately. It feels correct to add offsets in config and
+leave thresholds alone. Nobody tests event detection with a stationary car after calibration.
 
-**What goes wrong:** The car's ignition cuts power without warning. The Pi is mid-write to the SD
-card — kernel page cache, SQLite WAL checkpoint, or video buffer segment. On next boot, the
-filesystem is corrupt, the database is unreadable, and the system fails to start.
-
-**Why it happens:** SD cards have no power-fail protection. The OS buffers writes in RAM (dirty
-page cache). A sudden power cut means those buffered writes never reach the card. Even with SQLite
-WAL mode, if the OS is killed before the WAL file is flushed, you can lose the WAL entirely. The
-database itself survives, but recent commits are gone. Worse: if the WAL and database become
-desynchronised (e.g., WAL file partially written), SQLite may refuse to open the database at all.
-
-**Consequences:**
-- System fails to boot — telemetry lost for entire day
-- Database schema corruption requires manual intervention (impossible in the field)
-- Video ring buffer segments partially written — ffmpeg crashes on next start trying to read them
-- journald corruption causes systemd to refuse to start services
-
-**Warning signs:**
-- `fsck` errors on boot
-- SQLite `SQLITE_CORRUPT` or `SQLITE_IOERR` on startup
-- ffmpeg refusing to open ring buffer segment files
-- Journal reporting read errors on `/dev/mmcblk0`
-
-**Prevention:**
-1. Configure SQLite with `synchronous=FULL` and `journal_mode=WAL` together — WAL alone with
-   `synchronous=NORMAL` (the default) is NOT durable on power loss. HIGH confidence (SQLite
-   official docs).
-2. Use `log2ram` to keep systemd journal writes in RAM, flushed periodically — stops journal
-   growth hammering the card and reduces corruption surface.
-3. Store video ring buffer segments on a separate USB drive (even a cheap thumb drive), not on the
-   SD card. If the USB drive corrupts, the database and OS survive.
-4. On startup, always validate the database with `PRAGMA integrity_check` before beginning
-   operations. Log and alert if corrupt, but fall back gracefully (reinitialise database, start
-   fresh, do not crash the daemon).
-5. Add a `RestartSec=5` and `Restart=always` in the systemd unit so that if something does go
-   wrong on boot, the service retries rather than leaving the car with no telemetry.
-6. Consider a capacitor/UPS module (e.g., PiJuice) that provides 30 seconds of power after
-   ignition cut — time to flush buffers and shutdown gracefully. This is the gold standard for
-   ignition-linked Pi deployments.
-
-**Phase mapping:** Address in the Bulletproof Boot Recovery phase (first hardening milestone).
-
----
-
-### Pitfall 2: SD Card Wear Exhaustion from Continuous High-Rate Writes
-
-**What goes wrong:** At 100 Hz IMU sampling plus 1 Hz telemetry plus continuous video ring buffer
-writes (~15 MB/s to the buffer), a consumer SD card's write endurance is exhausted within the
-rally. The card starts producing silent write errors that appear as data corruption, not hard
-failures. You lose telemetry data without knowing it.
-
-**Why it happens:** Consumer SD cards (TLC NAND) have 3,000–10,000 write cycles per cell.
-The video ring buffer alone writes ~900 MB/hour continuously. Over 10 days at 8 hours/day that is
-72 GB of writes — achievable on a small card within endurance limits even without accounting for
-WAL checkpoints, logs, and OS activity. Consumer cards also lack power-fail protection circuits
-that industrial cards have.
-
-**Consequences:**
-- Silent data corruption — events write successfully but read back garbage
-- Card fails mid-rally with no spare
-- `/var/lib/shitbox/` fills with zero-byte files from failed writes
-- SQLite silent data corruption is the worst outcome (not detected until Prometheus shows
-  anomalous values)
+**How to avoid:**
+- Before applying any calibration offset, record at least 30 seconds of stationary data and verify
+  that zero-motion reads as approximately 0 g lateral, approximately 1 g vertical, approximately 0
+  g longitudinal after the offset.
+- After applying offsets, run the detector in a log-only mode (no capture triggered) during a slow
+  carpark drive and verify event counts are plausible. Compare against v1.0 baseline rates.
+- Do not change offsets and thresholds in the same commit -- change offsets first, observe, then
+  tune thresholds if needed.
 
 **Warning signs:**
-- `dmesg` showing `mmc0: error -110 transferring data` or `mmcblk0: error` messages
-- `SMART` not available on SD cards — no early warning mechanism
-- Increasing `SQLITE_IOERR` errors in structured logs
-- Video segment files writing at less than expected size
+- Events firing at idle (car parked, engine off)
+- Zero ROUGH_ROAD events on rough surfaces that triggered them reliably in v1.0
+- Event rate dramatically different from v1.0 on the same roads
 
-**Prevention:**
-1. Store the video ring buffer (`/var/lib/shitbox/video_buffer/`) on a USB drive, not the SD
-   card. This is the single biggest write amplification source.
-2. Use a high-endurance SD card rated for dashcam/continuous recording use (Samsung Pro
-   Endurance, SanDisk Max Endurance). These are TLC with power-fail protection and are rated for
-   tens of thousands of hours of continuous video.
-3. Enable `log2ram` so system logs are written to RAM and flushed infrequently.
-4. Disable swap on the SD card (`dphys-swapfile uninstall`) — swap is the highest-wear single
-   source on a default Raspbian install.
-5. Monitor card health via periodic `df`, `iostat`, and error log scanning in the health watchdog.
-   Alert if write errors appear in dmesg.
-
-**Phase mapping:** Address in Storage Management phase. Immediate action: move video buffer to USB.
+**Phase to address:** CAL-01 (Sensor Calibration)
 
 ---
 
-### Pitfall 3: Automotive Power Supply Voltage Spikes Killing the Pi
+### Pitfall 2: New SQLite Tables Breaking the Batch Migration Sequence
 
-**What goes wrong:** A 2001 Ford Laser produces voltage transients on the 12V rail every time the
-alternator load changes (high-beam headlights, fan, starter motor). Load dump events — where the
-battery disconnects while the alternator is running (e.g., loose battery terminal on rough roads)
-— can spike to 60–120V for up to 400 ms. A cheap buck converter with no transient suppression
-passes these spikes directly to the Pi's 5V rail, frying the SoC or corrupting flash.
+**What goes wrong:**
+`database.py` runs migrations sequentially: `< 2`, `< 3`, `< 4`, `< 5`. The `SCHEMA_SQL`
+block at the top uses `CREATE TABLE IF NOT EXISTS` for all tables including `trip_state` and
+`waypoints_reached`. New tables for notes, fuel logs, and driver tracking will be added in v2.0.
+If a v2.0 table is added to `SCHEMA_SQL` (safe on fresh DBs) but the corresponding migration
+is not correctly guarded, it will run `CREATE TABLE IF NOT EXISTS` (idempotent, fine) on existing
+databases -- but only if the version check logic is correct. The bug vector is: someone adds a
+table to `SCHEMA_SQL` and a new migration function, but forgets to bump `SCHEMA_VERSION` and
+add the `if current_version < 6` guard, or bumps it without the guard. On an existing Pi database
+at version 5, none of the new migration runs, and the new tables silently do not exist until the
+service crashes on first insert.
 
-**Why it happens:** Automotive 12V is the most hostile power environment for electronics. The
-nominal 12V is actually 10–15V depending on charge state, and transients from inductive loads
-(fan motors, fuel pumps) are commonplace. A 2001 Laser has no protection for accessories beyond
-a fuse. Rough roads loosen battery terminals, increasing the chance of a load dump event.
+**Why it happens:**
+The pattern of adding to `SCHEMA_SQL` for new DBs and adding a separate migration for existing
+DBs requires keeping two places in sync. It is easy to do one and not the other, or to test
+only on a fresh database.
 
-**Consequences:**
-- Pi SoC destroyed — total system loss with no spare
-- SD card controller damaged — data unrecoverable
-- USB devices (GPS receiver, webcam) damaged
-- Intermittent resets that look like software crashes but are actually brownouts
+**How to avoid:**
+- Increment `SCHEMA_VERSION` and add the version guard in the same commit as the migration
+  function. Never separate them.
+- Test on a copy of the live Pi database, not a fresh one. `scp` the `.db` off the Pi and run
+  `connect()` against it on the laptop before deploying.
+- Add a post-startup assertion: check that all expected tables exist and log their row counts.
 
 **Warning signs:**
-- Pi rebooting unexpectedly on acceleration or when headlights are switched on
-- INA219 power monitor showing voltage dropping below 4.8V on the 5V rail
-- `under-voltage detected` in dmesg / Pi throttling flags set (`vcgencmd get_throttled` returning
-  non-zero)
+- `OperationalError: no such table: field_notes` on first write
+- Service starts without error but `SELECT COUNT(*) FROM field_notes` returns nothing because the
+  table was never created
 
-**Prevention:**
-1. Use an automotive-grade DC-DC converter with built-in transient suppression — not a generic
-   USB car charger. The Victron Orion-Tr or Pololu automotive-grade regulators are designed for
-   this. Budget option: add a TVS diode array on the input side of any converter.
-2. Add a 100µF electrolytic capacitor across the 5V rail close to the Pi as a local reservoir.
-3. Wire the Pi power from a fused, dedicated circuit — not from the cigarette lighter socket
-   (which shares a circuit with many other loads).
-4. Monitor the 5V rail voltage via the INA219 and log brownout events. If voltage drops below
-   4.75V, the Pi will corrupt writes — treat this as a critical alert.
-5. Check `vcgencmd get_throttled` in the health watchdog — a non-zero result means the Pi has
-   seen under-voltage. Log this as a warning to prompt investigation of the power supply.
-
-**Phase mapping:** Hardware concern, but add software monitoring (INA219 voltage threshold alerts)
-in the Thermal Resilience / Health Monitoring phase.
+**Phase to address:** NOTE-01 / FUEL-01 / DRVR-01 (whichever adds the first new table)
 
 ---
 
-### Pitfall 4: Thermal Throttling Causing IMU Sample Stalls
+### Pitfall 3: `insert_readings_batch` Missing `cpu_percent` Column
 
-**What goes wrong:** The cabin of a 2001 Ford Laser with no air conditioning in Australian summer
-reaches 50–60°C ambient. The Pi's CPU temperature reaches 80–90°C under load. At 80°C, the Pi
-begins soft-throttling (frequency reduction). At 85°C, it hard-throttles. The 100 Hz IMU sampler
-loop, which is timing-sensitive, starts missing samples because the CPU cannot complete each
-iteration in 10 ms. The health watchdog detects a stalled sampler and restarts it — but the
-restart itself takes time, and during restart, no events are detected.
+**What goes wrong:**
+This is an existing bug in `database.py`. `insert_reading` (singular) includes `cpu_percent`
+in both the column list and values tuple. `insert_readings_batch` does not -- it lists
+`cpu_temp_celsius, disk_percent, sync_backlog, throttle_flags` but skips `cpu_percent`. Any
+batch insert of SYSTEM-type readings silently drops CPU percent, producing NULL for that column.
+The HealthCollector uses the singular `insert_reading`, so the live health path is unaffected.
+But if anything ever batch-inserts health readings (a replay or import flow for MON-01),
+`cpu_percent` will be silently lost.
 
-**Why it happens:** Australian summer cabin temperatures in a car with no AC easily exceed 50°C.
-With 5–10°C of self-heating from the Pi under load (100 Hz polling is CPU-intensive), the CPU
-temperature reaches the throttle threshold. Throttling is not a uniform slowdown — it causes
-jitter in the sampler loop timing, which accumulates as missed samples and timestamp drift.
+**Why it happens:**
+`cpu_percent` was added in the v5 migration, which post-dates the batch insert method. The
+singular version was updated; the batch version was not.
 
-**Consequences:**
-- Event detection gaps during the hottest part of the day
-- Missed hard braking events on corrugated dirt roads (exactly when you want them most)
-- IMU timestamp drift corrupts telemetry time alignment in Prometheus
-- Sampler restart causes a 30-second gap in the ring buffer (pre-event context is lost)
+**How to avoid:**
+Fix `insert_readings_batch` to include `cpu_percent` in both the column list and the values
+tuple. Add a unit test that asserts both insert methods produce identical column sets.
 
 **Warning signs:**
-- `vcgencmd get_throttled` returning `0x50005` (under-voltage + throttling)
-- CPU temperature readings exceeding 75°C in structured logs
-- Health watchdog logging `stalled_sampler` events
-- Irregular gaps in IMU data visible in Prometheus/Grafana
+- `shitbox_cpu_pct` metric missing from Prometheus during backlog replay
+- HealthCollector readings in the DB with `cpu_percent = NULL`
 
-**Prevention:**
-1. Mount the Pi with a heatsink on the SoC (passive cooling). In a closed box, add a small
-   5V fan controlled by GPIO based on temperature — even moving the air reduces temperature by
-   15–20°C.
-2. Configure the health watchdog to log thermal state (`vcgencmd measure_temp` and
-   `vcgencmd get_throttled`) at every health check interval, not just on warnings.
-3. Use `cpufreq-set` or the Pi's `force_turbo=0` setting to disable automatic frequency scaling —
-   prefer consistent lower frequency over burst-and-throttle behaviour for the sampler thread.
-4. If the enclosure is in the passenger footwell or boot (better than the dashboard), temperatures
-   are significantly lower — physical placement matters as much as software.
-5. Mount the Pi vertically if possible — convection cooling works better with vertical boards.
-
-**Phase mapping:** Thermal Resilience phase. Monitor in software; physical mitigation is hardware
-concern but must be logged.
+**Phase to address:** MON-01 (Monitoring Completeness)
 
 ---
 
-### Pitfall 5: GPS Cold Start Blocking System Readiness at Each Stage Start
+### Pitfall 4: Chromium Kiosk Leaking Memory Against a Long-Running SSE Connection
 
-**What goes wrong:** Each morning the car starts in a new town. The Pi boots, the systemd service
-starts, and `_wait_for_gps_fix()` blocks for up to 20 seconds waiting for GPS. If the GPS is
-still acquiring satellites (cold start after overnight power-off can take 30–60 seconds without
-assisted GPS in a remote area), the engine blocks longer than expected, systemd's
-`sd_notify(READY=1)` is delayed, and the watchdog may decide the service has failed to start.
+**What goes wrong:**
+The driver display (DISP-01) runs Chromium in kiosk mode continuously for days. The dashboard
+holds three SSE connections simultaneously (`/sse/fast` at 10 Hz, `/sse/slow` at 1 Hz,
+`/sse/events`). Chromium on Linux has well-documented memory leaks under continuous SSE and DOM
+updates, particularly when the page re-renders the map (Leaflet) at high frequency. At 10 Hz,
+`/sse/fast` pushes 864,000 events per day. If the JavaScript handler does any DOM manipulation
+on each fast event without explicit cleanup (removing old nodes, cancelling animation frames,
+clearing object references), heap usage climbs over hours and Chromium OOMs.
 
-In remote Australia, there is no mobile data for assisted GPS (A-GPS). Cold start time to first
-fix without A-GPS is 30–90 seconds. If the car is parked under a tree or inside a building
-overnight, the GPS has no sky view until it moves.
+Works fine in testing (20 minutes). The problem only shows at 12-24 hour timescales.
 
-**Why it happens:** The existing code blocks startup on GPS fix for up to 20 seconds but the
-GPS cold start time exceeds this. `_wait_for_gps_fix()` is synchronous during `start()`, which
-means if GPS is slow, the entire engine startup blocks, systemd readiness is delayed, and the
-watchdog timeout may fire.
+**Why it happens:**
+Nobody runs a kiosk stability test before deploying. The Pi 5 has 4 GB RAM, which creates false
+confidence. Memory pressure is worst when the system is also recording video in summer heat.
 
-**Consequences:**
-- System reports unhealthy on startup every morning — creates false alert noise
-- Boot events have no GPS coordinates (acceptable) but also block telemetry collection starting
-- If systemd watchdog fires, the service is killed and restarted — adding another 20-second delay
-  per restart cycle
-- Cascading: GPS fix delay → watchdog fires → restart → GPS fix delay → infinite loop
+**How to avoid:**
+- The fast SSE stream should not drive DOM updates directly. Use it to update a JavaScript
+  variable, and let a `requestAnimationFrame` loop read that variable and repaint at 30-60 Hz.
+  This decouples the SSE ingest rate from the render rate.
+- Add a nightly Chromium restart via cron (e.g., 03:00 AEST) timed to a known rest period.
+- Use `--disable-dev-shm-usage --disable-gpu --no-sandbox` in the Chromium launch flags for
+  kiosk on Pi. These are not optional for embedded kiosk use.
+- Memory-test by leaving the display running for 8+ hours before the rally starts.
 
 **Warning signs:**
-- `journalctl` showing `watchdog_timeout` events on morning starts
-- OLED display showing `NO GPS` for minutes after startup
-- Boot events consistently missing GPS metadata
+- Chromium becoming unresponsive after several hours
+- `dmesg` showing OOM killer entries
+- Chromium process consuming > 500 MB RSS
 
-**Prevention:**
-1. Make GPS fix acquisition asynchronous — fire off a background task on startup and proceed
-   immediately. Do not block `start()` on GPS. Report `READY=1` to systemd as soon as the daemon
-   is running, not when GPS is fixed.
-2. Set systemd watchdog timeout generously (120 seconds) to account for GPS cold start.
-3. Use `fake-hwclock` (already in use) to ensure the system clock is reasonable before GPS sync,
-   preventing timestamp anomalies during GPS acquisition.
-4. Log a structured event when GPS fix is acquired with the time-to-fix so you can diagnose
-   acquisition delays over the rally.
-5. For the USB GPS, configure `gpsd` with `-n` (no-wait) and ensure udev rules create a stable
-   symlink (`/dev/gps0` → `/dev/serial/by-id/...`) so the device path does not change between
-   reboots or if the GPS is disconnected and reconnected.
-
-**Phase mapping:** Bulletproof Boot Recovery phase.
+**Phase to address:** DISP-01 (Driver Display)
 
 ---
 
-## Moderate Pitfalls
+### Pitfall 5: ELP 4K v4l2 Controls Causing ffmpeg to Hang at Startup
 
-Mistakes that degrade reliability or cause data loss in specific scenarios but do not destroy the
-system.
+**What goes wrong:**
+`VideoRecorder._configure_camera()` applies v4l2 controls before recording starts. The current
+list is minimal (`backlight_compensation`, `exposure_dynamic_framerate`). For a 4K ELP camera,
+the temptation is to add controls: manual exposure, white balance, focus. Some v4l2 controls on
+UVC cameras require the device to be in a specific state to accept them. Setting `exposure_auto`
+to manual mode and then immediately setting `exposure_absolute` can cause the UVC driver to stall
+waiting for the camera firmware to acknowledge the change. If `v4l2-ctl` times out silently (5s
+timeout is already coded), the device state is indeterminate: the camera received the first
+control but not the second. ffmpeg then opens the device and tries to negotiate 4K MJPEG against
+a partially-applied control state, which can cause ffmpeg to hang on device open. There is no
+timeout on the `subprocess.Popen` call.
 
----
+**Why it happens:**
+Controls work fine when tested interactively (human pacing between commands). The automated
+sequence runs too fast for some camera firmware.
 
-### Pitfall 6: I2C Bus Lockup Taking Down All Sensors
-
-**What goes wrong:** A vibration jolt causes a momentary glitch on the I2C bus while the MPU6050
-is mid-transaction. The device holds SDA low (I2C "stuck bus" condition). The Linux I2C driver
-returns `EREMOTEIO` for every subsequent read. All sensors on bus 1 (MPU6050, BME680, INA219,
-MCP9808, SSD1306) become unresponsive. The health watchdog detects a stalled sampler and attempts
-restart, but the restart fails because the I2C bus itself is locked.
-
-**Why it happens:** I2C bus lockup is a known hardware limitation of the I2C protocol. A clock
-glitch or power brownout mid-transfer leaves a slave device driving SDA low. The master cannot
-recover without bit-banging 9 clock pulses to reset the slave's state machine. The Linux I2C
-driver does not do this automatically on Raspberry Pi — it requires either a kernel module reset
-or a power cycle.
-
-**Consequences:**
-- No IMU data until reboot — no event detection for remainder of day
-- All I2C sensors offline simultaneously (one bus, multiple devices)
-- OLED display goes blank (also on I2C bus)
-- Health watchdog correctly detects failure but cannot self-heal
+**How to avoid:**
+- Add a 200ms sleep between v4l2-ctl calls for any camera where controls depend on each other
+  (exposure mode then exposure value, WB lock then WB value).
+- Always verify the control was applied by reading it back and logging a warning if it does not
+  match the intended value.
+- Add a startup timeout to the ffmpeg monitoring thread: check `is_recording` after 10 seconds
+  and kill/restart if ffmpeg has not produced output. This is already a known gap in
+  `_monitor_recording()`.
+- Verify with `v4l2-ctl --list-formats-ext` that the camera actually supports the target
+  resolution at the target framerate. 4K at 30 fps is often USB 3.0 bandwidth-limited.
 
 **Warning signs:**
-- `dmesg` showing `i2c i2c-1: sendbytes: error -121` or similar
-- `smbus2` raising `OSError: [Errno 121] Remote I/O error`
-- Health watchdog logging consecutive sampler stall events
-- OLED display going blank mid-journey
+- Silent hang rather than `ffmpeg_not_found` log (process started but `video_recording_complete`
+  never appears)
+- `dmesg` showing USB reset events on the camera device
+- `v4l2-ctl --list-ctrls-menu` showing the control in a different state than configured
 
-**Prevention:**
-1. Add an I2C bus reset routine to the health watchdog: if the sampler stalls and I2C reads fail,
-   attempt recovery by toggling the SCL pin 9 times via GPIO bit-banging (`pigpio` or direct GPIO
-   sysfs) before declaring failure.
-2. Use short, shielded I2C cables (< 30 cm) between the Pi and sensor breakout boards. Long
-   cables are more susceptible to vibration-induced glitches.
-3. Add I2C pull-up resistors (4.7kΩ) externally rather than relying on the Pi's internal weak
-   pull-ups — stronger pull-ups make the bus more resistant to noise.
-4. Reduce I2C bus speed from 400 kHz to 100 kHz (`dtparam=i2c_arm=on,i2c_arm_baudrate=100000`
-   in `/boot/config.txt`) — lower speed is more tolerant of marginal signal quality.
-5. As a fallback: have the health watchdog trigger a `systemctl restart shitbox-telemetry` if I2C
-   errors persist for > 60 seconds — the service restart re-initialises the I2C bus driver.
-
-**Phase mapping:** Watchdog and Self-Healing phase.
+**Phase to address:** VID-01 (ELP 4K Video Tuning)
 
 ---
 
-### Pitfall 7: USB GPS Device Path Changing After Reconnect
+### Pitfall 6: Driver Attribution Time Gaps During Handovers and Parking
 
-**What goes wrong:** The USB GPS is connected via a cable in a vibrating car. The connector works
-loose briefly, the device disconnects and reconnects. Linux assigns it `/dev/ttyUSB1` instead of
-`/dev/ttyUSB0`. gpsd, configured with the original path, cannot see the device. GPS telemetry
-goes silent. The system runs for hours with no GPS coordinates — events are recorded without
-location.
+**What goes wrong:**
+DRVR-01 requires tracking who is driving, with time and percentage per driver. The naive
+implementation: when a driver change is recorded, close the previous session with
+`end_time = now()` and open a new one. Edge cases that break this:
 
-**Why it happens:** USB device enumeration order is not guaranteed after hot-plug events. The
-device path (`/dev/ttyUSB0`) is not stable. gpsd requires a stable device path unless configured
-with udev hotplug rules.
+1. **Handover gap**: Driver A stops; driver B has not been assigned yet. An event fires during
+   the gap (GPS jump, road bump at rest). If attribution queries "which driver session overlaps
+   this event's timestamp", a gap means the event is unattributed.
 
-**Consequences:**
-- Events recorded without GPS coordinates for the rest of the day
-- No location data on the public website (significant for engagement)
-- Speed readings unavailable — event metadata incomplete
+2. **No GPS fix at handover**: If the driver change is recorded without a GPS fix, the stored
+   location is NULL or the last-known position, which may be many kilometres stale.
+
+3. **Multi-day sessions**: A driver is assigned at 08:00, the system shuts down at 23:00
+   (ignition off), restarts at 07:00 next day. The session `end_time` is never written because
+   the shutdown was unclean. If boot recovery closes orphaned events but not orphaned driver
+   sessions, the session appears to span the overnight stop.
+
+4. **Boundary conditions**: An event fires at the exact same millisecond as a driver handover
+   is recorded. Depending on query boundary conditions (`>=` vs `>`), the event may be attributed
+   to either driver.
+
+**Why it happens:**
+Attribution by time overlap is simple to implement for the happy path and only breaks in boundary
+conditions that do not appear in short testing sessions.
+
+**How to avoid:**
+- Store a `driver_id` directly on the Event record at the time of detection (not derived later
+  by query). The current driver is always known at event-fire time.
+- Use closed intervals: when driver A hands over to driver B, write B's start timestamp as
+  exactly 1ms after A's end timestamp.
+- Extend boot recovery (BootRecoveryService) to also close open driver sessions with an
+  estimated end time (last known event timestamp or a shutdown timestamp persisted to SQLite).
+- When GPS fix is unavailable, still record the handover with the correct timestamp and NULL
+  location. Do not defer the handover waiting for a fix.
 
 **Warning signs:**
-- `gpsd` logging `no devices attached`
-- `dmesg` showing USB disconnect/reconnect events on the ttyUSB device
-- GPS state in engine showing `_gps_available = False` for extended period
+- Events with `driver_id = NULL` in the database after a full day's driving
+- Driver session coverage percentage summing to less than 100% of driving time
+- The same driver appearing twice with different session IDs on the stats page
 
-**Prevention:**
-1. Create a udev rule that creates a stable symlink `/dev/gps0` based on USB serial ID:
-   ```
-   SUBSYSTEM=="tty", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="XXXX",
-   SYMLINK+="gps0", RUN+="/bin/systemctl restart gpsd"
-   ```
-   Configure gpsd to use `/dev/gps0` instead of `/dev/ttyUSB0`.
-2. The udev rule's `RUN` trigger restarts gpsd automatically after reconnect — no manual
-   intervention required.
-3. Physically secure the GPS USB cable with a zip tie or cable clamp so vibration cannot work
-   it loose. This is the simplest fix.
-4. Log GPS reconnect events in the engine so you can identify how often this happens.
-
-**Phase mapping:** Bulletproof Boot Recovery phase (udev rules). Hardware fix is immediate.
+**Phase to address:** DRVR-01 (Driver Tracking)
 
 ---
 
-### Pitfall 8: ffmpeg Process Silently Dying, Video Buffer Reporting Running
+### Pitfall 7: CaptureSyncService JSON Race When Adding New Index Files
 
-**What goes wrong:** The video ring buffer runs ffmpeg as a long-lived subprocess. ffmpeg crashes
-(SIGSEGV, OOM, codec error on a corrupted segment) and exits. The Python wrapper checks
-`is_running` via `self._process is not None`, which returns `True` even after the process exits
-because `_process` is not cleared on unexpected death. The health watchdog detects the ffmpeg
-process is "running" but video buffer segments stop being written. Events trigger video saves, but
-the save fails silently because there is no running ffmpeg to provide the buffer.
+**What goes wrong:**
+`_do_sync_inner()` uses a two-pass rsync: pass 1 syncs media excluding `events.json` and
+`timelapse.json`; pass 2 syncs everything including the index files. This protects against the
+website referencing videos that have not yet arrived. The risk when adding new JSON index files
+for field notes, fuel logs, and driver stats: if the new JSON files are generated before pass 1
+but not excluded from pass 1, the website receives the new index before the data it references
+exists.
 
-**Why it happens:** The existing code uses `_process.poll()` only in limited places. The
-`is_running` property (noted in CONCERNS.md) does not check `poll()` return value. ffmpeg can die
-for many reasons in an automotive environment: write error to SD card, codec assertion on a
-corrupt segment from a previous power cut, signal from OOM killer.
+More specifically: new JSON files that reference IDs in SQLite (e.g., `driver_id` in an event
+record references a row in a `drivers` table that only lives on the Pi) have no second-pass
+protection. The two-pass pattern protects file references (video path X exists on NAS). It does
+not protect data references (driver ID Y has a stats record). These are different problems.
 
-**Consequences:**
-- All events after the ffmpeg crash have no video
-- Silent failure — no alerts until the health watchdog notices the stall
-- Partial video segments on disk are not cleaned up, accumulating corrupt files
+**Why it happens:**
+People assume the two-pass rsync solves both "file not yet transferred" and "data not yet
+available". It only solves the first.
+
+**How to avoid:**
+- New JSON files that are self-contained (all referenced data embedded inline) are safe.
+  Generate them the same way as `events.json`.
+- New JSON files that reference IDs in a separate data store must either embed the referenced
+  data inline, or the website must handle missing references gracefully (show "unknown driver"
+  rather than crashing).
+- Explicitly add any new JSON index files to the pass 1 exclusion list and add a comment
+  explaining why.
 
 **Warning signs:**
-- Health watchdog logging `video_ring_buffer_not_running` but the service was supposedly running
-- `dmesg` showing OOM kills or `ffmpeg` in kill list
-- Video buffer segment files not updating (timestamp not advancing)
-- Events saving with `video_path: null` continuously
+- Website showing `undefined` or blank values for new data types immediately after a sync
+- Console errors in the website JS about missing referenced objects
 
-**Prevention:**
-1. Fix `is_running` to always call `self._process.poll()` and return `False` if the process has
-   exited. Log the exit code as a structured warning event.
-2. Add a dedicated video buffer health check in the watchdog that reads the modification time of
-   the latest segment file. If the segment has not been updated in > 30 seconds, the buffer is
-   dead regardless of what `is_running` reports.
-3. On detection of dead ffmpeg, attempt restart automatically (not just log). The health watchdog
-   already has restart logic for the telemetry thread — extend this to the video ring buffer.
-4. Clean up partial segment files on ffmpeg restart so corrupt segments do not accumulate.
-
-**Phase mapping:** Watchdog and Self-Healing phase. Fix `is_running` immediately as a bug fix.
+**Phase to address:** NOTE-01 / FUEL-01 / DRVR-01 / WEB-01
 
 ---
 
-### Pitfall 9: Storage Exhaustion Silently Stopping Event Writes
+### Pitfall 8: Pi 5 Throttle Bitmask Misreading "Has Ever Seen" as "Currently"
 
-**What goes wrong:** The captures directory fills up over multiple days of event recording and
-video storage. SQLite write errors are logged but the daemon continues running. New events are
-detected but cannot be saved (write fails). The system appears healthy from the OLED display but
-telemetry data is silently lost.
+**What goes wrong:**
+`thermal_monitor.py` correctly defines both current-state flags (bits 0-3) and historical
+"since boot" flags (bits 16-19). `HealthCollector` stores `throttle_flags` as the raw integer.
+The risk is in how this is displayed and alerted on.
 
-**Why it happens:** The existing health watchdog checks disk space but the threshold of 95% may
-be too late — video files at 15–50 MB each can fill the last 5% quickly. More importantly, the
-disk-full condition does not trigger an emergency cleanup of old data; it only logs a warning and
-eventually shuts down when truly critical.
+Bit 16 (`under_voltage_since_boot`) is set if undervoltage occurred at any point since boot,
+even if it only lasted 50ms at startup and the power supply is fine now. If PWR-01 alert logic
+reads the raw flags integer and checks `flags & 0x10000`, it fires an alert every single cycle
+for the entire session even after the hardware fix. That makes the alert useless and trains
+occupants to ignore it.
 
-At 10 events/hour with video (~50 MB each) over 8 hours of driving for 10 days, that is 4,000
-events × 50 MB = 200 GB of video — vastly more than a 64 GB SD card. The current system relies
-on CaptureSyncService to rsync to NAS and then clean up, but this only works when connected.
+For the Pi 5 specifically: it uses a Renesas DA9091 PMIC rather than the discrete power circuit
+of the Pi 4. The `vcgencmd get_throttled` output format is identical but the voltage thresholds
+differ. The Pi 5 minimum input voltage is approximately 5.1V vs 4.63V for Pi 4. A supply that
+was borderline acceptable on Pi 4 hardware will trip undervoltage flags on Pi 5 more easily.
 
-**Consequences:**
-- Events lost silently during storage exhaustion
-- Database WAL grows unbounded if checkpoint cannot write (disk full causes WAL checkpoint
-  failure, which causes the WAL to grow, which fills disk faster)
-- NAS sync fails on next connection (rsync aborts on disk-full conditions at source)
+**Why it happens:**
+The `get_throttled` bitmask is widely copy-pasted without noting the "since boot" vs "current"
+distinction. Alert code written without reading the bitmask spec will use the full integer.
+
+**How to avoid:**
+- Alert only on current-state bits (bits 0-3, mask `0x0000000F`), not the historical bits.
+- Log the full raw integer for debugging, but separate the display and alert logic.
+- For PWR-01 validation: after the hardware fix, reboot and verify that bits 0-3 are clear
+  within 10 seconds of startup. Bits 16-19 may still be set and that is acceptable.
+- Measure the actual 5V rail voltage under full load (4K camera recording + GPS + all sensors
+  active) with a multimeter. Do not trust software indicators alone.
 
 **Warning signs:**
-- `df -h` showing > 80% on `/var/lib/shitbox/`
-- `SQLITE_FULL` errors in structured logs
-- Video files not appearing after events
-- CaptureSyncService reporting sync failures
+- `speak_under_voltage` TTS alert firing on every thermal monitor cycle, not just at startup
+- `shitbox_throttle_flags` Prometheus metric stuck at a non-zero value that never clears
 
-**Prevention:**
-1. Implement aggressive proactive cleanup: when disk usage > 70%, start deleting the oldest
-   synced video files (not the database). Delete synced files first, unsynced last.
-2. Track per-file sync status — CaptureSyncService should mark files as synced in the database
-   after successful rsync. Only delete marked files during cleanup.
-3. Implement a configurable video retention policy: keep videos for last N days or until disk is
-   X% full, delete oldest first.
-4. Lower the warning threshold to 70% and critical to 85% — at 95% you have no headroom. Add an
-   alert on the OLED display when disk is above warning threshold.
-5. Consider splitting the SD card partition: a small root partition (16 GB) and a larger data
-   partition, so root filesystem corruption from a full data partition is prevented.
-
-**Phase mapping:** Storage Management phase.
+**Phase to address:** PWR-01 (Undervoltage Resolution) / MON-01 (Monitoring Completeness)
 
 ---
 
-### Pitfall 10: WireGuard Tunnel Stale After Long Connectivity Gap
+## Technical Debt Patterns
 
-**What goes wrong:** The car drives through 400 km of outback with no mobile signal (not
-uncommon on the Nullarbor). WireGuard's UDP tunnel expires. When mobile signal returns, the IP
-address changes (mobile carrier reassigns). WireGuard does not automatically re-handshake without
-`PersistentKeepalive` configured. The connectivity check (`connection.is_connected`) continues to
-report `False` because the TCP socket to the Prometheus host times out, but WireGuard's interface
-is up — confusing the diagnosis. The batch sync backlog grows to thousands of readings.
+Shortcuts that seem reasonable but create long-term problems.
 
-**Why it happens:** WireGuard is a stateless protocol — it does not maintain a connection. After
-a long gap with no traffic, the peer's endpoint (IP:port) may change when mobile data reconnects.
-Without `PersistentKeepalive`, WireGuard on the Pi does not re-initiate the handshake.
-
-**Consequences:**
-- Prometheus sync backlog grows unbounded during multi-day connectivity gaps
-- When sync resumes, it attempts to push thousands of readings — may overwhelm Prometheus or
-  hit rate limits
-- rsync also fails until WireGuard is re-established
-
-**Warning signs:**
-- `wg show` reporting last handshake was > 3 minutes ago
-- `ping` to WireGuard peer failing while `ip link show wg0` shows interface up
-- Connectivity check consistently returning `False` after entering signal coverage
-
-**Prevention:**
-1. Set `PersistentKeepalive = 25` in the WireGuard peer config on the Pi. This sends a keepalive
-   every 25 seconds, keeping NAT mappings alive and triggering re-handshake when signal returns.
-   This is low-bandwidth (one UDP packet per 25 seconds) and has no meaningful data cost. HIGH
-   confidence (WireGuard documentation).
-2. Add a WireGuard health check to the connectivity monitor: if `is_connected` has been `False`
-   for > 5 minutes, run `wg show` to check handshake recency and optionally trigger
-   `wg set wg0 peer ... endpoint <current_endpoint>` to force re-handshake.
-3. Cap the Prometheus sync batch size aggressively — never send more than 2,000 readings per
-   batch. With a 15-second batch interval, catching up from a 24-hour gap takes ~24 minutes of
-   connected time. This is acceptable.
-
-**Phase mapping:** Remote Health Monitoring phase.
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Adding new writer threads calling `db.insert_reading()` directly | Fast to implement, follows existing pattern | `_write_lock` serialises all writes; adding notes/fuel/driver writers increases contention during the 1 Hz telemetry cycle | Only if write rate is low (< 1 Hz per new service) |
+| Storing driver name as free text rather than a foreign key to a `drivers` table | Simpler schema, no migration needed | Typos create duplicate drivers; stats aggregation breaks | Never for v2 -- use an ID |
+| Generating new JSON files inside the existing `generate_events_json()` call | One code change | Function does multiple things; harder to test; all-or-nothing failure | Never -- keep each JSON generator separate |
+| Sharing the existing `event_queue` (used by the capture path) for new feature events | No new queue | The `event_queue` is bounded at 256 and drops on full to protect the capture path; non-capture events competing for the same queue will be dropped under load | Never -- separate queue for non-capture SSE events |
+| Using `trip_state` key-value table to persist driver tracking state | No new table needed | `trip_state` is a flat KV store; storing multiple driver sessions as JSON blobs in it is unqueryable | Never -- add proper tables |
 
 ---
 
-### Pitfall 11: Clock Drift Corrupting Telemetry Timestamps
+## Integration Gotchas
 
-**What goes wrong:** The Pi has no real-time clock (RTC). On boot without GPS, it reads time from
-`fake-hwclock` (last saved time). If the Pi has been off for 12+ hours, `fake-hwclock` may be
-hours behind. GPS sync corrects this, but only after GPS fix. Between boot and GPS fix, all
-telemetry readings go to SQLite with wrong timestamps. When Prometheus batch sync runs, these
-readings arrive out of order. Prometheus rejects out-of-order samples by default (samples must
-arrive in increasing timestamp order per series).
+Common mistakes when connecting to external services or subsystems.
 
-The Pi's crystal oscillator drifts ~2 seconds/day without NTP or GPS sync. Over a 10-day rally,
-that is 20 seconds of drift — enough to misalign video timestamps with telemetry events.
-
-**Why it happens:** The existing GPS clock sync (`_sync_clock_from_gps`) runs once on first GPS
-fix and then hourly via `fake-hwclock`. But if GPS fix takes 60 seconds and telemetry starts
-immediately, those first 60 seconds of readings have wrong timestamps that Prometheus will reject.
-
-**Consequences:**
-- Prometheus rejects out-of-order telemetry — readings are silently lost
-- Video timestamps and telemetry timestamps drift apart, making event correlation difficult
-- On the public website, events appear at wrong times
-
-**Warning signs:**
-- Prometheus ingestion errors in batch sync logs
-- Events appearing at unexpected times in Grafana
-- GPS clock sync logging large time corrections (> 30 seconds)
-
-**Prevention:**
-1. On startup, before writing any telemetry to the database, wait for GPS fix OR a configurable
-   timeout (60 seconds). Tag all pre-GPS-fix readings with a `time_source: fake_hwclock` label
-   in the metadata. Prometheus can filter these out.
-2. Save `fake-hwclock` more frequently — every 10 minutes instead of the default hourly — to
-   reduce boot-time clock error.
-3. Log all clock sync events with the before/after delta so you can identify systematic drift.
-4. Consider adding a cheap DS3231 RTC module (I2C, ~$3) — a hardware RTC provides accurate time
-   from boot without requiring GPS fix. This eliminates the entire class of boot-time clock
-   errors.
-
-**Phase mapping:** Bulletproof Boot Recovery phase.
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| FastAPI REST endpoints for notes/fuel entry | Instantiating a new `Database` object per request | Pass the single `Database` instance through dependency injection at app startup, same as the dashboard server |
+| Chromium kiosk adding a REST POST endpoint for driver selection | Assuming the API is only accessible locally | The current dashboard has no auth; document this and ensure the API is not accessible outside the WireGuard interface |
+| ELP 4K replacing the 1280x720 configuration | Changing `capture_video_resolution` and `video_buffer_resolution` to 4K simultaneously | Change one at a time; 4K ring buffer segments use dramatically more disk -- recalculate `video_buffer_segments` first |
+| HealthCollector adding new Prometheus metric names | Naming new metrics inconsistently with existing `shitbox_*` labels | Check `_readings_to_metrics()` in `batch_sync.py` -- add new SYSTEM sensor fields there too, or the data lands in SQLite but never reaches Prometheus |
+| New REST API sharing the uvicorn event loop with SSE generators | Blocking database calls inside async route handlers | Use `asyncio.to_thread()` for any SQLite access inside FastAPI routes, as established in `sse.py` |
 
 ---
 
-## Minor Pitfalls
+## Performance Traps
 
-Mistakes that are annoying or reduce data quality but do not cause system failure.
+Patterns that work at small scale but fail as usage grows.
 
----
-
-### Pitfall 12: GPS Satellite Workaround Socket Leaks Accumulating
-
-**What goes wrong:** The `_get_satellite_count()` method opens a raw socket to gpsd on every GPS
-read (1 Hz). The socket has exception handling, but if `sock.close()` fails inside the `finally`
-block (which itself can raise), the socket leaks. Over hours of operation, open file descriptors
-accumulate. Linux's default `ulimit` for file descriptors is 1,024. After ~1,000 hours the daemon
-runs out of file descriptors and crashes.
-
-At 1 Hz for 10 days (80 hours of driving), that is 288,000 socket open/close cycles. If 0.1%
-leak, that is 288 leaked sockets — not immediately fatal but a ticking clock.
-
-**Prevention:**
-1. Convert `_get_satellite_count()` to use a persistent socket or a context manager. Open the
-   socket once in `__init__`, reuse it, and only reconnect on error.
-2. Alternatively, fix the gpsd-py3 bug by switching to `pynmea2` or direct NMEA parsing from
-   `/dev/gps0` — eliminates the workaround entirely.
-3. Monitor open file descriptor count in the health watchdog (`/proc/<pid>/fd/` count).
-
-**Phase mapping:** Watchdog and Self-Healing phase (monitoring). Fix the socket leak as a bug fix
-in Boot Recovery phase.
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| `get_sync_backlog_count()` running a full `COUNT(*)` scan at 1 Hz | No immediate symptom; disk I/O visible in iostat | Already the pattern; SQLite `COUNT(*)` with WAL is fast at current scale | Noticeable above approximately 1 million rows |
+| Leaflet map re-centering on every GPS update at 1 Hz | Map jerks every second; distracting in a car | Smooth interpolation in JS; only re-centre if position moved more than N metres from view centre | Immediately annoying regardless of scale |
+| `EventStorage.generate_events_json()` scanning all events on every sync | Slow generation as event count grows | Add a date range limit (last 7 days) or stream JSON generation | Noticeable at approximately 5,000+ events (1-3 seconds at rally day 5) |
+| 4K ring buffer filling the SD card | Capture path fails silently with "no space left" | Check disk space before starting any recording; the stall detection watchdog catches a dead ffmpeg process but does not check space first | At 4K MJPEG 30 fps, each 10-second segment is 200-400 MB; 5 segments = up to 2 GB for the ring buffer alone |
 
 ---
 
-### Pitfall 13: Reverse Geocoder Blocking the Telemetry Thread
+## "Looks Done But Isn't" Checklist
 
-**What goes wrong:** `reverse_geocoder` resolves GPS coordinates to a place name. This library
-loads a large in-memory dataset on first use and performs a kdtree lookup. The lookup is normally
-fast (< 10 ms) but the first call triggers a CSV file load (~200 ms). If this happens during
-active driving, the telemetry loop stalls for 200 ms, causing a 200 ms gap in 1 Hz telemetry.
-In an extreme case (long overnight with the Pi powered off), the lookup file may not be in the
-OS page cache, causing a disk read.
+Things that appear complete but are missing critical pieces.
 
-**Prevention:**
-1. Pre-warm `reverse_geocoder` during startup (before the telemetry loop starts) by calling it
-   once with the last known GPS position from `fake-hwclock` state.
-2. Ensure geocoding runs in a background thread with a timeout, not inline in the telemetry loop.
-
-**Phase mapping:** Minor — note for Boot Recovery phase.
-
----
-
-### Pitfall 14: Event `id()` Keys Causing Silent Video Link Failures
-
-**What goes wrong:** `_pending_post_capture` uses `id(event)` as the dict key. Python recycles
-memory addresses — a garbage-collected event object's `id()` may be reused by a new event object.
-If the video callback fires for the old event but looks up by the same `id()`, it finds the new
-event and writes the video path to the wrong event. Or the old event has been deleted from the
-dict and the video path is dropped entirely.
-
-This is most likely during rough road sections where many ROUGH_ROAD events fire in rapid
-succession — exactly the conditions of the Shitbox Rally.
-
-**Prevention:**
-1. Replace `id(event)` with a UUID generated at event detection time.
-2. Alternatively, use `event.start_time` + `event.event_type` as a composite key — this is
-   unique per event and stable across the event lifecycle.
-
-**Phase mapping:** Bug fix — can be addressed in any phase, but prioritise before the rally.
+- [ ] **Driver display productionised**: Often missing a Chromium restart cron job -- verify the kiosk
+  recovers after an 8-hour soak test, not just a 20-minute demo.
+- [ ] **Field notes syncing to website**: Often missing handling for notes entered without GPS fix --
+  verify that NULL lat/lng does not break the Leaflet map rendering.
+- [ ] **Undervoltage fix confirmed**: Often declared done after `vcgencmd` shows zero flags -- verify
+  under full load (4K recording + GPS + sensors active), not just at idle.
+- [ ] **HealthCollector end-to-end (HLTH-01)**: "Implemented but not confirmed" means the metric exists
+  in SQLite but the Grafana panel shows no data -- verify the Prometheus scrape job label matches
+  what `_readings_to_metrics()` emits for `sensor_type == "system"`.
+- [ ] **Sensor calibration applied**: Often stops at "offsets calculated" -- verify event detection
+  rates are unchanged by running a test drive before and after and comparing event counts by type.
+- [ ] **ELP 4K tuning complete**: Often stops at "v4l2-ctl commands found" -- verify a full 60-second
+  recording at the target resolution plays back without artefacts and the file size is within
+  expected bounds.
+- [ ] **Driver tracking attribution**: Often complete for the happy path -- verify event attribution
+  works through a simulated overnight power cycle (shutdown with open driver session, restart,
+  check boot recovery closed the session).
 
 ---
 
-### Pitfall 15: Log Volume Growing Without Bound on Rough Road Sections
+## Recovery Strategies
 
-**What goes wrong:** On corrugated dirt roads, ROUGH_ROAD events fire at high frequency. Each
-event writes structured log entries at INFO level: event detected, samples collected, JSON saved,
-video triggered, video completed. At 10 events/minute, that is several hundred log lines/minute.
-`journald` compresses and rotates, but aggressive logging also causes the telemetry thread to
-spend CPU time in log formatting — impacting the 100 Hz sampler.
+When pitfalls occur despite prevention, how to recover.
 
-**Prevention:**
-1. Set ROUGH_ROAD events to log at DEBUG level rather than INFO, or implement event-type-specific
-   log levels. INFO-level log only the first event in a burst, then switch to DEBUG for subsequent
-   events within a 60-second window.
-2. Configure `journald` with `SystemMaxUse=200M` and `SystemMaxFileSize=20M` in
-   `/etc/systemd/journald.conf` to cap log disk usage.
-
-**Phase mapping:** Minor — note during Watchdog and Self-Healing phase.
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Migration ran but new tables missing | LOW | Open `sqlite3 telemetry.db`; manually run the `CREATE TABLE` statements; update `schema_version`; restart service |
+| Calibration offsets caused false-positive event storm | LOW | Set all offsets back to 0 in config; restart service; re-run calibration with longer stationary sample |
+| Chromium OOM on display | LOW | `sudo systemctl restart kiosk`; add the nightly cron restart as an immediate mitigation |
+| ffmpeg hanging after v4l2 control change | MEDIUM | Kill the ffmpeg process manually; unplug/replug the camera; revert the control change; restart the service |
+| Driver sessions with no end_time after unclean shutdown | LOW | Run the boot recovery extension via a one-shot script, or manually `UPDATE sessions SET end_time = ? WHERE end_time IS NULL` in the sqlite3 shell |
+| Throttle alert firing every cycle despite hardware fix | LOW | Check bits 0-3 of the raw flags integer; if clear, the fix worked -- update the alert mask in the alert logic |
+| events.json referencing videos not yet on NAS | LOW | Next sync cycle will push the videos; website already handles missing video paths with a fallback state |
 
 ---
 
-## Phase-Specific Warnings
+## Pitfall-to-Phase Mapping
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|----------------|------------|
-| Bulletproof Boot Recovery | GPS blocking startup; clock wrong before GPS fix; database corruption check | Async GPS, integrity\_check on startup, RTC module |
-| Watchdog and Self-Healing | ffmpeg zombie not detected; I2C bus lockup unrecoverable; `is_running` lying | Fix `is_running`, add I2C reset routine, file-mtime health check for video buffer |
-| Thermal Resilience | CPU throttle causing sampler stalls; no passive cooling in enclosure | Heat sink + fan, log throttle state in health check, monitor `vcgencmd get_throttled` |
-| Storage Management | Disk fills before NAS sync opportunity; cleanup deletes unsynced files | Track sync status per file in DB, proactive cleanup at 70%, video buffer to USB |
-| Remote Health Monitoring | WireGuard tunnel stale after days without signal; clock drift | `PersistentKeepalive=25`, frequent `fake-hwclock` saves |
-| Power Supply | Voltage spikes killing Pi; brownout causing write corruption | Automotive-grade DC-DC converter, INA219 voltage monitoring, brownout logging |
+How roadmap phases should address these pitfalls.
 
----
-
-## Confidence Assessment
-
-| Area | Confidence | Sources |
-|------|------------|---------|
-| SD card corruption on power loss | HIGH | SQLite official docs, multiple Raspberry Pi Forum case studies |
-| SD card wear exhaustion | HIGH | Community measurement data, dashcam card endurance ratings |
-| Automotive voltage spikes | HIGH | Analog Devices, Littelfuse, EEVBlog automotive power discussions |
-| Thermal throttling thresholds | HIGH | Raspberry Pi official docs (80°C soft limit confirmed) |
-| GPS cold start without A-GPS | MEDIUM | GPS vendor documentation, community reports from remote areas |
-| I2C bus lockup | HIGH | Raspberry Pi Forums, Linux kernel I2C driver behaviour |
-| USB device path instability | HIGH | gpsd GitLab issue tracker, udev documentation |
-| ffmpeg zombie process | MEDIUM | GitHub issues across multiple Python-ffmpeg libraries |
-| WireGuard reconnection | HIGH | WireGuard official documentation on PersistentKeepalive |
-| Clock drift without NTP | HIGH | RPi community measurements (~2 s/day), NTP documentation |
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Calibration offsets shifting detection thresholds | CAL-01 | Pre/post detection rate comparison on a known road segment |
+| New table migration sequence bug | First phase adding new tables (NOTE-01 or FUEL-01) | Test migration against a copy of the live Pi DB before deploying |
+| `insert_readings_batch` missing cpu_percent | MON-01 | Unit test asserting column parity between singular and batch insert methods |
+| Chromium kiosk memory leak | DISP-01 | 8-hour soak test; monitor RSS growth over time |
+| ELP 4K v4l2 hang | VID-01 | Full recording test at target resolution; verify no ffmpeg zombie processes after 10 minutes |
+| Driver attribution gaps | DRVR-01 | Simulated overnight power cycle with open driver session; verify boot recovery closes it |
+| CaptureSyncService JSON race for new data | NOTE-01 / FUEL-01 / WEB-01 | Inspect NAS after sync: all new JSON uses embedded data only, no external ID references without inline data |
+| Pi 5 throttle bitmask misread | PWR-01 / MON-01 | Alert only fires when bits 0-3 are non-zero; clears after hardware fix under full load |
 
 ---
 
 ## Sources
 
-- [SQLite WAL Mode — Official Documentation](https://sqlite.org/wal.html)
-- [SQLite Durability Settings analysis](https://www.agwa.name/blog/post/sqlite_durability)
-- [SD Card Power Failure Resilience — Raspberry Pi Forums](https://forums.raspberrypi.com/viewtopic.php?t=253104)
-- [Running a Raspberry Pi with a Read-Only Root Filesystem (2024)](https://www.dzombak.com/blog/2024/03/running-a-raspberry-pi-with-a-read-only-root-filesystem/)
-- [Pi Reliability: Reduce Writes to SD Card (2024)](https://www.dzombak.com/blog/2024/04/pi-reliability-reduce-writes-to-your-sd-card/)
-- [Raspberry Pi Temperature and Throttling — Sunfounder Guide](https://www.sunfounder.com/blogs/news/raspberry-pi-temperature-guide-how-to-check-throttling-limits-cooling-tips)
-- [Automotive 12V Load Dump Protection — Analog Devices](https://www.analog.com/en/resources/technical-articles/loaddump-protection-for-24v-automotive-applications.html)
-- [TVS Diodes for Automotive Load Dump — Littelfuse](https://www.littelfuse.com/assetdocs/littelfuse-tvs-diode-meet-automotive-load-dump-standard-application-note?assetguid=a53ad6b0-87f7-4ca3-a783-55133fc020dc)
-- [Raspberry Pi Automotive Power Supply — RPi Forums](https://forums.raspberrypi.com/viewtopic.php?t=352266)
-- [Automatic Recovery from I2C Stuck Bus — RPi Forums](https://forums.raspberrypi.com/viewtopic.php?t=326603)
-- [I2C Bus Lockup Recovery — Spell Foundry](https://spellfoundry.com/2020/06/25/reliable-embedded-systems-recovering-arduino-i2c-bus-lock-ups/)
-- [gpsd fails to reconnect after USB unplug — gpsd GitLab Issue #60](https://gitlab.com/gpsd/gpsd/-/issues/60)
-- [GPS Tracking Challenges in Remote Australia — Locate2u](https://www.locate2u.com/gps-tracking/gps-tracking-challenges-in-regional-and-remote-australia/)
-- [WireGuard PersistentKeepalive Explained](https://www.oreateai.com/blog/understanding-persistentkeepalive-in-wireguard-keeping-your-vpn-connection-alive/abf0b8aa7afab6c76a9910986dce8dcd)
-- [Raspberry Pi Clock Drift Without NTP — RPi Forums](https://forums.raspberrypi.com/viewtopic.php?t=337797)
-- [ffmpeg Zombie Process Issues — moviepy GitHub Issue #833](https://github.com/Zulko/moviepy/issues/833)
-- [microSD Endurance and Monitoring — RPi Forums](https://forums.raspberrypi.com/viewtopic.php?t=317568)
+- Direct analysis of `src/shitbox/storage/database.py` -- migration sequence and batch insert column mismatch
+- Direct analysis of `src/shitbox/events/detector.py` -- threshold values and calibration offset integration points
+- Direct analysis of `src/shitbox/dashboard/sse.py` -- SSE architecture and queue design constraints
+- Direct analysis of `src/shitbox/capture/video.py` -- ffmpeg subprocess pattern and v4l2 control sequence
+- Direct analysis of `src/shitbox/health/health_collector.py` and `thermal_monitor.py` -- throttle bitmask implementation
+- Direct analysis of `src/shitbox/sync/capture_sync.py` -- two-pass rsync pattern and its limits
+- Pi Foundation documentation: `vcgencmd get_throttled` bitmask definition; Pi 5 PMIC minimum voltage differs from Pi 4
+- Chromium kiosk memory behaviour: established pattern in Pi display deployments; scheduled restart is standard mitigation
 
 ---
 
-*Research completed: 2026-02-25*
+*Pitfalls research for: Shitbox Rally Telemetry v2.0 feature additions*
+*Researched: 2026-04-09*

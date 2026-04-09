@@ -1,303 +1,327 @@
 # Technology Stack
 
-**Project:** Shitbox Rally Telemetry — Hardening Milestone
-**Researched:** 2026-02-25
-**Scope:** Libraries and system-level tools needed to add bulletproof boot recovery,
-watchdog/self-healing, remote health monitoring, 7" driver display, rally stage
-tracking, thermal resilience, and storage management to the existing Python/RPi system.
+**Project:** Shitbox Rally Telemetry
+**Researched:** 2026-04-09 (v2.0 Rally Ready milestone)
+**Confidence:** MEDIUM-HIGH (see per-area assessment below)
 
 ---
 
-## Existing Stack (Do Not Change)
+## Baseline Stack (v1.0 — Do Not Re-research)
 
-These are already in the codebase and working. Document them here to establish the
-baseline all new additions must be compatible with.
+Already in `pyproject.toml` and confirmed working:
 
 | Component | Technology | Notes |
 |-----------|-----------|-------|
-| Language | Python 3.9+ | Constrained by `pyproject.toml` |
-| Platform | Raspberry Pi OS (Bookworm) | Target production platform |
-| Process management | systemd | Already wired; shitbox-telemetry.service |
-| Logging | structlog 24.0.0+ | All new code must use the same conventions |
-| Config | pyyaml 6.0+ + dataclasses | Extend existing `config/config.yaml` |
-| Storage | SQLite (stdlib) + WAL | Offline-first; already hardened |
-| Sync | Prometheus remote_write + Snappy | Batch; cursor-based |
+| Language | Python 3.9+ | Pinned in `pyproject.toml` |
+| Platform | Raspberry Pi OS Bookworm | Pi 5 |
+| Process management | systemd + sdnotify | watchdog wired |
+| Logging | structlog 24.0.0+ | keyword-args convention |
+| Config | pyyaml + dataclasses | `config/config.yaml` hierarchy |
+| Storage | SQLite WAL (stdlib) | offline-first, crash-hardened |
+| Sync | Prometheus remote\_write + Snappy | cursor-based batch |
 | Sensors | smbus2, gpsd-py3, Adafruit libs | I2C bus 1 |
-| Video | ffmpeg subprocess | Event-triggered |
-| Display (OLED) | SSD1306 via smbus2 | 128x64, existing `OLEDDisplayService` |
-| Retry | tenacity 8.0.0+ | Already used for sync retries |
+| Video | ffmpeg subprocess | event-triggered |
+| Web API | FastAPI 0.115+ + uvicorn + sse-starlette | in-process dashboard |
+| Frontend | Alpine.js + Tailwind + Leaflet | vendored to `/static/vendor/` |
+| Health | psutil 6.1.1 + vcgencmd subprocess | CPU/disk/throttle |
+| IMU | adafruit-circuitpython-lsm6ds 4.6.2+ | LSM6DSOX |
+| Magnetometer | adafruit-circuitpython-lis3mdl 1.2.7+ | LIS3MDL |
+| Stage tracking | gpxpy 1.6.2 | GPX route parsing |
+| Display | pygame-ce 2.5.x | KMSDRM fullscreen |
+| TTS | piper-tts 1.4.0+ | spoken alerts |
 
 ---
 
-## New Stack — Hardening Milestone
+## v2.0 New Stack Additions
 
-### 1. Watchdog and Self-Healing
+### 1. Field Notes / Blog Entry (NOTE-01)
 
-**Recommendation: systemd hardware watchdog + sdnotify (pure Python)**
+**Problem:** Text entry from a touchscreen kiosk with no physical keyboard wired.
+Physical USB keyboard is also a valid input path — the car will sometimes be parked.
 
-The RPi BCM283x hardware watchdog is built-in and managed via systemd's
-`RuntimeWatchdogSec`. The Python layer must send `WATCHDOG=1` pings via the
-sd_notify socket at intervals shorter than the watchdog deadline.
+**Recommendation: simple-keyboard (JS, CDN) + vanilla input handling in Alpine.js**
+
+The dashboard is already a FastAPI-served HTML page with Alpine.js. The right
+approach is a floating on-screen keyboard rendered in the browser, not a system-level
+virtual keyboard. This avoids the Chromium kiosk + Wayland layer-shell conflict that
+affects both wvkbd and squeekboard on Bookworm.
+
+The Wayland/kiosk problem: on Bookworm (Labwc compositor), squeekboard and wvkbd are
+hardcoded to appear on the `top` layer but Chromium in kiosk mode requires
+`overlay` layer. The issue is open against labwc as of late 2024 and has no clean fix
+without patching the compositor. A JS in-browser keyboard sidesteps this entirely.
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| sdnotify | 0.3.2+ | Pure Python sd_notify protocol | Zero C dependencies, works on Python 3.9; the existing `UnifiedEngine` health-check loop (30s interval) can send watchdog pings inline without a separate daemon |
-| systemd (OS) | n/a | Hardware watchdog via `RuntimeWatchdogSec` | BCM2835 hardware watchdog resets the Pi on hard lock; set to 15s max (hardware limit on RPi) |
+| simple-keyboard | 3.x (CDN) | On-screen soft keyboard in browser | Pure JS, no framework deps, mobile-touch native, actively maintained (hodgef/simple-keyboard), vanilla JS usage supported via CDN |
+| simple-keyboard CSS | 3.x (CDN) | Keyboard visual styling | Companion CSS for simple-keyboard |
+| FastAPI new route | n/a | `POST /notes` endpoint | Stores note to SQLite with GPS + timestamp from existing data; no new library needed |
 
 **What NOT to use:**
 
-- `systemd-watchdog` (PyPI) — active fork by AaronDMarasco/rtkwlf but adds abstraction over what is essentially a two-line socket write; sdnotify is simpler and more widely tested.
-- `watchdog` (PyPI) — filesystem watch library, wrong domain entirely.
-- `pywatchdog` (PyPI) — directly opens `/dev/watchdog`, bypasses systemd, fights with `RuntimeWatchdogSec`.
+- squeekboard / wvkbd (system OSK) — both fail to appear above Chromium kiosk on Bookworm/Wayland as of early 2025; tracked in labwc issue #2926. LOW reliability.
+- matchbox-keyboard / Florence — X11-only; Bookworm defaults to Wayland; would require forcing X11 session which breaks pygame-ce display path.
+- Physical keyboard GPIO wiring — unnecessary; USB HID keyboards work natively on Pi 5 and the browser `<input>` elements accept them without any code changes.
 
-**Confidence: HIGH** — systemd sd_notify protocol is stable and well-documented at freedesktop.org. sdnotify is a pure-Python implementation of a published protocol.
+**Confidence: MEDIUM** — simple-keyboard CDN path is reliable; the Wayland/kiosk
+issue is confirmed in multiple forum threads and a tracked labwc issue. The JS-in-browser approach is a proven workaround in kiosk deployments (Home Assistant community, BrewPi).
 
-**systemd unit additions required:**
+**Integration note:** simple-keyboard is loaded from CDN (or vendored into
+`/static/vendor/` like the existing Alpine/Leaflet/Tailwind files). The keyboard
+component renders inside the existing Alpine.js dashboard context. Physical USB
+keyboards continue to work transparently via browser `<input>` events.
 
-```ini
-[Service]
-Type=notify
-WatchdogSec=30
-Restart=always
-RestartSec=5
-StartLimitBurst=5
-StartLimitIntervalSec=60
+---
+
+### 2. Refueling Log (FUEL-01)
+
+**No new Python libraries needed.**
+
+The refueling log is a new SQLite table (`refuel_events`) with columns for
+timestamp, GPS lat/lng, volume (litres), odometer reading, and a calculated
+efficiency field. The storage pattern is identical to the existing event storage.
+
+The website integration requires `refuel_events` to be included in the events.json
+generation (`EventStorage.generate_events_json()`) — already the right integration
+point.
+
+**FastAPI:** New `POST /refuel` and `GET /refuel` routes. No new dependencies.
+
+**Confidence: HIGH** — pure CRUD on existing SQLite infrastructure.
+
+---
+
+### 3. Driver Tracking (DRVR-01, DRVR-02)
+
+**No new Python libraries needed.**
+
+Driver sessions are a new SQLite table (`driver_sessions`) with columns for driver
+name, start/end timestamp, and start/end odometer. Event attribution (which driver
+was active when an event fired) is a join against this table at query time.
+
+The driver selection UI is a touch-friendly dropdown or button group in the existing
+Alpine.js dashboard. `POST /driver/start` and `POST /driver/end` FastAPI routes.
+
+Driver stats (time/percentages/event counts) are computed as SQLite aggregates at
+read time — no caching layer needed at this scale (a 10-day rally generates thousands
+of rows, not millions).
+
+**Confidence: HIGH** — same pattern as all other data in the system.
+
+---
+
+### 4. ELP 4K Video Capture Tuning (VID-01)
+
+**Recommendation: v4l2-ctl (system, already in v4l-utils) + subprocess from Python**
+
+The ELP 4K camera is a UVC USB device. V4L2 controls (brightness, contrast,
+saturation, sharpness, exposure, white balance, gain) are set via `v4l2-ctl` before
+or at ffmpeg startup. There is no reason to use a Python v4l2 binding library when
+`subprocess.run(["v4l2-ctl", "--device", "/dev/video0", "--set-ctrl", "brightness=128"])`
+does the job cleanly.
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| v4l-utils (system) | system package | `v4l2-ctl` for camera control | Standard tool, pre-installed on Bookworm or `apt install v4l-utils`; enumerate controls with `--list-ctrls`, set with `--set-ctrl` |
+| ffmpeg (system) | system package | Video capture and encoding | Already in use; relevant flags below |
+
+**ffmpeg flags for UVC 4K capture:**
+
+```
+-f v4l2
+-input_format mjpeg          # ELP cameras output MJPEG in hardware at high res
+-video_size 3840x2160        # or 1920x1080 depending on actual mount/field of view
+-framerate 30                # confirm with v4l2-ctl --list-formats-ext
+-i /dev/video0
+-c:v copy                    # if MJPEG → keep as-is for recording
 ```
 
----
-
-### 2. Remote Health Monitoring
-
-**Recommendation: prometheus_client (push via existing remote_write) + vcgencmd subprocess**
-
-The infrastructure already pushes metrics to Prometheus via remote_write. Health
-metrics should travel the same path — no new infrastructure needed.
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| prometheus_client | 0.20.0+ | Expose Gauge/Counter metrics for health state | Official Prometheus Python client; push_to_gateway or manual remote_write both work; integrates with existing BatchSyncService pattern |
-| psutil | 6.1.1 | CPU %, memory %, disk %, network I/O | Well-maintained; `sensors_temperatures()` reads Pi CPU temp directly; note: 7.x requires GLIBC_2.34 which Bullseye/Bookworm on RPi4 may not have — pin to 6.1.1 until Bookworm compatibility confirmed |
-| vcgencmd (system) | n/a | Throttle and under-voltage detection | Built-in RPi firmware tool; call via `subprocess.run(["vcgencmd", "get_throttled"])`, parse hex bitmask; no Python wrapper needed |
+Note: confirm actual supported resolutions and framerates with
+`v4l2-ctl --device /dev/video0 --list-formats-ext` on the mounted camera. ELP 4K
+cameras often only achieve 4K at 15fps; 1080p60 may be more practical for
+event recording.
 
 **What NOT to use:**
 
-- A separate Pushgateway — adds an extra service to deploy and maintain; the existing remote_write path is sufficient for a single Pi.
-- node_exporter — Go binary, not Python; adds process overhead; duplicates what psutil provides; the existing Prometheus stack already handles custom metrics.
+- v4l2py (PyPI) — adds a Python binding for what is a one-line subprocess call; overkill, and adds a C-extension dependency.
+- OpenCV for camera control — `cv2.CAP_*` props often silently fail on UVC cameras; v4l2-ctl is authoritative.
+- libcamera — libcamera is for the CSI camera port (RPi Camera Module); the ELP is USB/UVC; v4l2 is correct.
 
-**Throttle bitmask reference (vcgencmd get_throttled):**
-
-```
-bit 0: under-voltage now
-bit 1: arm freq capped now
-bit 2: throttling now
-bit 3: soft temp limit active
-bit 16-19: historical versions of bits 0-3
-```
-
-Parse with `int(value, 16) & 0xF` — non-zero means currently degraded.
-
-**Confidence: HIGH** for psutil + vcgencmd. MEDIUM for prometheus_client version
-pinning — GLIBC constraint needs validation on target Bookworm image.
+**Confidence: MEDIUM** — v4l2-ctl subprocess pattern is confirmed working on Pi 5 in
+forum threads. Exact ELP control names need empirical listing on the actual hardware
+(`v4l2-ctl --list-ctrls` output varies by camera firmware).
 
 ---
 
-### 3. Driver Display (7" Pi Touchscreen)
+### 5. Sensor Calibration (CAL-01)
 
-**Recommendation: pygame-ce 2.5.x (Community Edition)**
+**Recommendation: numpy (stdlib-like at this point) + manual offset constants in config YAML**
 
-The 7" Official Raspberry Pi touchscreen is directly attached to the DSI port. It
-presents as a standard framebuffer/KMSDRM display under Bookworm. A fullscreen
-Python process with no window manager is the correct pattern for an automotive
-dashboard — fast startup, direct framebuffer access, no compositor overhead.
+Calibration for the v2 sensor hat involves:
+
+- **Accelerometer (LSM6DSOX):** Stationary bias measurement. Record mean of N samples in each axis, subtract from readings. Store as `accel_offset_x/y/z` in `config.yaml`. No library needed beyond numpy for averaging.
+- **Gyroscope (LSM6DSOX):** Zero-rate offset (drift at rest). Same approach.
+- **Magnetometer (LIS3MDL):** Hard-iron calibration. Rotate sensor through full 3D sphere, fit ellipsoid, apply offset + scale matrix. This is the only one needing more than numpy.
+- **Temperature (DS18B20):** Validate against known reference. Offset constant in config if needed.
+- **Lux (VEML7700):** Validate gain settings match environment. Adafruit library already handles gain/integration time.
+- **Power (INA226):** Validate shunt resistance value in library init matches actual hardware. Already configured in existing collector.
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| pygame-ce | 2.5.6 | Fullscreen dashboard rendering | Community Edition fork of pygame; more actively maintained (last release Oct 2025 vs pygame's Sep 2024); SDL2-backed; KMSDRM driver works on RPi Bookworm without X11; touch input treated as mouse events |
-| Pillow | 10.0.0+ | Image loading for any icons/logos | Already available in most Pi environments; pygame-ce can load PIL images directly |
+| numpy | 1.24.0+ (already available on Bookworm) | Statistical averaging for bias calculation | Already a transitive dep via Adafruit libs; no new install needed |
+| scipy (optional) | 1.11.0+ | Ellipsoid fitting for magnetometer hard-iron calibration | Only needed if magnetometer calibration is in-scope; scipy.optimize.least\_squares fits the sphere/ellipsoid; not needed for accel/gyro |
 
-**What NOT to use:**
+**Calibration procedure pattern:**
 
-- Kivy — heavier framework; has a known issue with the RPi official touchscreen's touch driver; adds significant dependency weight for what is a read-only status display.
-- tkinter — requires X11/Wayland; X11 startup adds 10-15s to boot; unacceptable for an automotive display that must show status within seconds of ignition.
-- Qt/PyQt5 — heavyweight; licensing complexity; overkill for a single-screen status display.
-- pygame (standard) — last release September 2024; pygame-ce is the actively maintained fork used by the community going forward.
-
-**Display architecture:**
-
-Run as a separate systemd service (`shitbox-display.service`) that starts after
-`shitbox-telemetry.service`. Read state via a shared in-memory structure or a
-small Unix socket IPC. Do NOT import the display into the engine process — keeps
-the 100 Hz IMU loop isolated from rendering jank.
-
-The display service runs `pygame.display.set_mode((800, 480), pygame.FULLSCREEN)`
-and refreshes at 10 Hz (100ms sleep between frames) — sufficient for speed/heading
-display without burning CPU the IMU path needs.
-
-**Confidence: MEDIUM** — pygame-ce KMSDRM on Bookworm is confirmed working in
-RPi forum threads. The GLIBC and SDL2 package versions on the specific Pi image
-need validation at integration time. Boot without X11 requires `SDL_VIDEODRIVER=kmsdrm`
-environment variable set in the systemd unit.
-
----
-
-### 4. Rally Stage Tracking
-
-**Recommendation: gpxpy 1.6.2 + stdlib math (haversine)**
-
-Stage tracking requires two capabilities: parsing a GPX route file containing the
-rally stages, and computing point-on-route progress from live GPS coordinates.
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| gpxpy | 1.6.2 | Parse GPX route/track files | Mature, pure Python, no C extensions; provides `get_length_2d()` and `get_nearest_location()` for distance-along-route; PyPI version 1.6.2 is current |
-
-**What NOT to use:**
-
-- shapely / pyproj — geospatial heavyweights; correct for complex polygon operations but severe overkill for "distance along a 1D route". Pull in C extension compilation, large binary wheels.
-- geopy — primarily for geocoding/distance calculations; no GPX parsing; reverse_geocoder already handles location names in the existing stack.
-- folium / geopandas — visualisation/analysis libraries, not embedded runtime libraries.
-
-**Implementation pattern:**
-
-Pre-load the GPX route at startup. On each GPS fix, find the nearest route point
-using `track.get_nearest_location(gpxpy.geo.Location(lat, lon))`. Compute km
-remaining using total track length minus cumulative distance to that point. Cache
-the result — GPS updates at 1 Hz, route calculation at 1 Hz is acceptable overhead.
-
-**Confidence: HIGH** — gpxpy is the standard Python GPX library; capabilities
-verified against PyPI documentation and README.
-
----
-
-### 5. Thermal Resilience
-
-**Recommendation: stdlib only (subprocess + /sys filesystem) + config thresholds**
-
-Thermal resilience on the Pi is about detecting and responding to throttling events,
-not preventing them at the hardware level. The software response is:
-
-1. Detect throttling (`vcgencmd get_throttled` — already covered under health monitoring).
-2. Log at WARNING level with structlog.
-3. Optionally reduce the timelapse capture rate (highest sustained CPU consumer).
-4. Emit a Prometheus metric for remote visibility.
-
-No additional Python library is needed. CPU temperature is read from
-`/sys/class/thermal/thermal_zone0/temp` (divide by 1000 for Celsius) — this is
-faster and more reliable than psutil's sensor path on RPi.
-
-**Thresholds (RPi hardware, HIGH confidence):**
-
-| Temperature | Condition | Response |
-|-------------|-----------|----------|
-| < 60°C | Normal | No action |
-| 60–80°C | Warm | Log at INFO; emit metric |
-| 80°C | Soft throttle begins | Log at WARNING; reduce timelapse rate |
-| 82°C+ | Hard throttling active | Log at ERROR; emit degraded metric |
-| 85°C | Hardware limit | Pi will throttle aggressively |
+Offsets go into `config.yaml` under a new `calibration:` section and are applied in
+the sampler/collector classes at read time — not in a separate calibration daemon.
+Calibration is a one-time tool run, not a runtime service.
 
 **What NOT to add:**
 
-- Active cooling control via GPIO fan — valid engineering but out of scope; the car's cabin airflow provides passive cooling; if throttling is sustained, it is a hardware mounting problem, not a software problem.
+- imu-calibration (PyPI, careweather) — targets MPU9250 specifically, not LSM6DSOX; the
+  calibration math is simple enough to implement directly.
+- Full AHRS (complementary filter, Madgwick, Mahony) — that is attitude estimation,
+  not calibration; out of scope for this milestone.
 
-**Confidence: HIGH** — temperature limits are documented in official RPi hardware specs.
+**Confidence: HIGH** for accel/gyro (standard numpy averaging). MEDIUM for
+magnetometer (ellipsoid fitting with scipy is well-understood but needs careful
+rotation procedure on the actual hardware).
 
 ---
 
-### 6. Storage Management
+### 6. Undervoltage Detection and Alerting (PWR-01)
 
-**Recommendation: log2ram (OS-level) + stdlib (pathlib, shutil) for capture rotation**
+**Recommendation: vcgencmd subprocess + INA226 existing readings (already in stack)**
 
-Two separate storage problems:
+This is already 90% in the stack from v1.0. The gaps are:
 
-**SD card wear (journald + /var/log writes):**
+1. The existing `HealthCollector` already reads `vcgencmd get_throttled` — it just
+   needs to emit a Prometheus metric AND trigger a TTS alert when bit 0 is set
+   (under-voltage currently active).
+
+2. The INA226 collector already reads bus voltage. Add a threshold check: if
+   `bus_voltage < 4.7V` (below the PMIC threshold of 4.63V, with margin), emit an
+   alert. This catches brown-out conditions before the PMIC fires.
+
+3. Pi 5 also supports `vcgencmd pmic_read_adc` for detailed PMIC voltage rails.
+   Worth adding to HealthCollector.
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| log2ram | latest (azlux/log2ram) | Mount /var/log in RAM, flush periodically | Purpose-built for RPi; syncs to disk on clean shutdown; survives unclean power loss with at most one sync interval of logs lost (acceptable given structlog also writes to journald); install via azlux Debian repo |
+| vcgencmd pmic\_read\_adc (system) | n/a | Pi 5 PMIC rail voltages | Pi 5 specific; provides 3V3, 5V, VDDCORE readings; call via subprocess same as get\_throttled |
 
-Set `SIZE=128M` (default 40M is too small given structlog verbosity at 100 Hz event rate). Configure journald `SystemMaxUse=50M` to bound persistent storage.
+**Bitmask reference for get\_throttled:**
 
-**Capture storage rotation (video files filling the SD card):**
+```
+bit  0: under-voltage currently detected (PMIC threshold: 4.63V)
+bit  1: ARM frequency capped
+bit  2: currently throttled
+bit  3: soft temperature limit active
+bit 16: under-voltage has occurred since boot (sticky)
+bit 17: ARM freq cap has occurred since boot (sticky)
+bit 18: throttling has occurred since boot (sticky)
+bit 19: soft temp limit has occurred since boot (sticky)
+```
 
-No new library needed — the existing `EventStorage` class already has `max_event_age_days` and `max_event_storage_mb` enforcement. Extend this pattern for captures:
-
-- Enforce `max_capture_age_days` in `CaptureSyncService` post-sync: delete local copies of files that have been confirmed synced to NAS.
-- Add a disk-space floor check: if free space drops below 500 MB, delete oldest captures regardless of age.
-
-Use `shutil.disk_usage(path)` (stdlib) — no additional library needed.
+Parse: `throttled = int(vcgencmd_output.split("=")[1], 16)`. Current state is
+`throttled & 0xF`. Historical is `(throttled >> 16) & 0xF`.
 
 **What NOT to use:**
 
-- overlayFS (raspi-config) — makes the root filesystem read-only; incompatible with SQLite WAL writes to `/var/lib/shitbox/`; the project needs write access to its data directory at all times.
-- logrotate — already present on Raspbian but does not help with journald; use journald's `SystemMaxUse` instead.
+- A dedicated Python undervoltage library — none of sufficient quality exist; the
+  vcgencmd + subprocess pattern is two lines and well-understood.
+- Reading `/sys/class/hwmon` for voltage — works but provides less information than
+  `pmic_read_adc` on Pi 5 specifically.
 
-**Confidence: HIGH** for log2ram (actively maintained, Bookworm-compatible per azlux
-apt repo). HIGH for stdlib disk management.
+**Confidence: HIGH** — vcgencmd bitmask is documented in multiple official and
+community sources. INA226 readings are already in the system.
 
 ---
 
-## Installation Summary
+### 7. Monitoring Completeness (MON-01)
 
-### New Python Dependencies
+**No new Python libraries needed.**
 
-```bash
-# In pyproject.toml [project.dependencies]:
-pip install sdnotify>=0.3.2
-pip install prometheus_client>=0.20.0
-pip install psutil==6.1.1
-pip install pygame-ce>=2.5.0
-pip install gpxpy>=1.6.2
-```
+HLTH-01 closure requires:
 
-### New System-Level Dependencies
+- Confirming `HealthCollector` metrics appear in Prometheus. Debug with
+  `promtool query instant http://prometheus:9090 'shitbox_health_cpu_percent'`.
+- Fixing the Prometheus scrape label conflict (likely a `job` or `instance` label
+  collision between the push path and any existing scrape config).
 
-```bash
-# SD card wear reduction
-curl -s https://azlux.fr/repo.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/azlux-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/azlux-archive-keyring.gpg] http://packages.azlux.fr/debian/ bookworm main" | sudo tee /etc/apt/sources.list.d/azlux.list
-sudo apt update && sudo apt install log2ram
+Grafana embedding improvements for the website (WEB-01):
 
-# SDL2 for pygame-ce on Bookworm (may already be present)
-sudo apt install libsdl2-2.0-0 libsdl2-image-2.0-0 libsdl2-ttf-2.0-0 libsdl2-mixer-2.0-0
+- Grafana 11.3.0+ broke `&kiosk` mode (time picker moved into content pane, not
+  hidden by kiosk). Workaround: add `&_dash.hideTimePicker=true` to the iframe URL.
+  Variables panel still shows — no clean fix yet in 11.4.x as of early 2025.
+- The correct iframe URL pattern:
+  `https://grafana.host/d/<dashboard-id>?orgId=1&kiosk&_dash.hideTimePicker=true&theme=dark&from=now-1h&to=now`
+- Variables can be pre-set via `&var-<name>=<value>` URL params. Useful for
+  pre-filtering by driver or day.
+- `allow_embedding = true` in Grafana's `grafana.ini` [security] section is required.
+  Already should be set given it's an embedded iframe use case.
 
-# vcgencmd is pre-installed on Raspberry Pi OS
-which vcgencmd  # should return /usr/bin/vcgencmd
-```
+**Grafana version note:** If self-hosted Grafana is on 11.3.0+, the kiosk issue is
+active. Pinning to 11.2.x or waiting for a fix in 11.5.x is the pragmatic choice.
+Check current version with `grafana-server --version`.
 
-### systemd Unit Changes
+**Confidence: MEDIUM** — kiosk regression is confirmed in GitHub issues #97759 and
+#98724. The hideTimePicker workaround is partial and confirmed in community threads.
 
-The existing `shitbox-telemetry.service` needs these additions:
+---
 
-```ini
-[Service]
-Type=notify
-WatchdogSec=30
-Restart=always
-RestartSec=5
-StartLimitBurst=5
-StartLimitIntervalSec=60
-```
+### 8. Website Revamp (WEB-01)
 
-New unit for the driver display:
+**No new server-side libraries needed.**
 
-```ini
-# /etc/systemd/system/shitbox-display.service
-[Unit]
-Description=Shitbox Driver Display
-After=shitbox-telemetry.service
-Requires=shitbox-telemetry.service
+The public website (`shit-of-theseus.com`) is plain HTML/CSS/JS. Integrating new
+data streams means:
 
-[Service]
-Type=simple
-User=pi
-Environment=SDL_VIDEODRIVER=kmsdrm
-ExecStart=/opt/shitbox/venv/bin/python -m shitbox.display.dashboard
-Restart=always
-RestartSec=3
+- Extending `EventStorage.generate_events_json()` to include refuel events, driver
+  session boundaries, and field notes in the output.
+- Adding new sections/tabs to `index.html` for the blog/notes view and driver stats.
+- Existing Leaflet map already accepts multiple data types; refuel stops can be new
+  marker icons.
 
-[Install]
-WantedBy=multi-user.target
-```
+The website has no build step. No framework to add. Keep it that way.
+
+**Grafana dashboard improvements** are config/JSON work in Grafana, not code changes.
+
+---
+
+## Summary: New Python Dependencies Required
+
+| Library | Version | Purpose | Already Installed? |
+|---------|---------|---------|-------------------|
+| numpy | 1.24.0+ | Calibration averaging | Yes (transitive) |
+| scipy | 1.11.0+ | Magnetometer ellipsoid fitting (optional) | No — only if doing full mag cal |
+
+No other new Python packages are required. All v2.0 features extend the existing
+FastAPI/SQLite/structlog/subprocess infrastructure.
+
+---
+
+## Summary: New System Dependencies Required
+
+| Package | Install | Purpose |
+|---------|---------|---------|
+| v4l-utils | `sudo apt install v4l-utils` | `v4l2-ctl` for ELP camera tuning |
+
+v4l-utils may already be installed; confirm with `which v4l2-ctl`.
+
+---
+
+## Summary: New JS Dependencies Required
+
+| Library | Source | Purpose |
+|---------|--------|---------|
+| simple-keyboard | CDN or vendor to `/static/vendor/` | On-screen keyboard for notes/field entry |
+| simple-keyboard CSS | CDN or vendor | Keyboard styling |
+
+CDN: `https://cdn.jsdelivr.net/npm/simple-keyboard/build/index.modern.js`
+
+Vendor locally (recommended, matches existing pattern for Alpine/Tailwind/Leaflet).
 
 ---
 
@@ -305,14 +329,26 @@ WantedBy=multi-user.target
 
 | Category | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| Watchdog Python lib | sdnotify 0.3.2 | systemd-watchdog (PyPI) | systemd-watchdog adds abstraction for no benefit; sdnotify is simpler and more widely used |
-| Display framework | pygame-ce 2.5.x | Kivy | Kivy has known RPi touchscreen driver issues; heavier runtime |
-| Display framework | pygame-ce 2.5.x | tkinter | Requires X11; slow boot; unacceptable for in-car display |
-| Health metrics | psutil + vcgencmd | node_exporter | Go binary adds process weight; duplicates existing Python metrics path |
-| Route tracking | gpxpy 1.6.2 | shapely/pyproj | C extension heavyweight; overkill for 1D route progress |
-| SD card protection | log2ram | overlayFS | overlayFS makes root read-only, breaks SQLite WAL writes |
-| Process supervision | systemd Restart= | supervisord | supervisord adds external dependency; systemd already present |
-| pygame version | pygame-ce 2.5.6 | pygame 2.6.1 | pygame-ce is more actively maintained; last pygame release Sep 2024 vs pygame-ce Oct 2025 |
+| On-screen keyboard | simple-keyboard (JS in-browser) | squeekboard (system OSK) | squeekboard fails to appear above Chromium kiosk on Bookworm/Wayland; labwc issue #2926, no fix as of early 2025 |
+| On-screen keyboard | simple-keyboard (JS in-browser) | wvkbd | Same Wayland layer-shell problem as squeekboard |
+| On-screen keyboard | simple-keyboard (JS in-browser) | matchbox-keyboard | X11-only; Bookworm uses Wayland by default |
+| Camera control | v4l2-ctl subprocess | v4l2py (PyPI) | subprocess is two lines; v4l2py adds a C-extension dep for no practical benefit |
+| Camera control | v4l2-ctl subprocess | OpenCV cv2.CAP\_\* | CAP props silently fail on many UVC cameras; v4l2-ctl is authoritative |
+| Magnetometer cal | numpy + scipy | imu-calibration (PyPI) | Targets MPU9250; calibration math is simple enough to write directly |
+| Undervoltage | vcgencmd subprocess | python-rpi-bad-power (PyPI) | python-rpi-bad-power reads the same `/sys` path; no advantage over direct subprocess |
+| Grafana kiosk | `&_dash.hideTimePicker=true` workaround | Grafana 11.2.x pin | Pin is safer if rally date is imminent; workaround is partial |
+
+---
+
+## Version Compatibility Notes
+
+| Concern | Detail |
+|---------|--------|
+| numpy on Pi 5 Bookworm | numpy 1.24+ is available as a Bookworm apt package (`python3-numpy`) and via pip; already a transitive dep of the Adafruit libraries so almost certainly installed |
+| scipy on Pi 5 | Available as `python3-scipy` (Bookworm apt) or via pip wheel; reasonably large install (~60 MB) — only add if magnetometer calibration is in scope |
+| simple-keyboard version | 3.x is current; API stable since 2020; no breaking changes expected |
+| Grafana kiosk regression | Confirmed broken in 11.3.0, 11.4.x; workaround `&_dash.hideTimePicker=true` is partial |
+| wvkbd / squeekboard Wayland | Issue is in labwc compositor, not the keyboard apps; not fixed in Bookworm as of 2025-04 |
 
 ---
 
@@ -320,30 +356,33 @@ WantedBy=multi-user.target
 
 | Area | Confidence | Reason |
 |------|------------|--------|
-| Watchdog (sdnotify + systemd) | HIGH | Official protocol; well-documented; widely deployed |
-| Health monitoring (psutil + vcgencmd) | MEDIUM | psutil version constraint needs GLIBC validation on target image |
-| Driver display (pygame-ce) | MEDIUM | KMSDRM path confirmed in forums; exact SDL2 package list needs integration test |
-| Rally stage tracking (gpxpy) | HIGH | Standard library; stable API; pure Python |
-| Thermal resilience (stdlib) | HIGH | No new library; /sys path and vcgencmd are RPi standards |
-| Storage management (log2ram + stdlib) | HIGH | log2ram well-established; stdlib disk management trivial |
+| Field notes / keyboard | MEDIUM | JS-in-browser path is solid; Wayland OSK problem is confirmed |
+| Refuel + driver tracking | HIGH | Pure CRUD on existing stack; no new dependencies |
+| ELP camera tuning | MEDIUM | v4l2-ctl pattern solid; exact control names need empirical listing on hardware |
+| Sensor calibration | HIGH (accel/gyro) / MEDIUM (mag) | Numpy averaging is trivial; ellipsoid fit needs care |
+| Undervoltage | HIGH | vcgencmd path already in codebase; pmic\_read\_adc is Pi 5 specific and documented |
+| Grafana embedding | MEDIUM | Kiosk regression confirmed; workaround is partial; full fix TBD by upstream |
+| Website revamp | HIGH | Plain HTML/JS; no new stack; extend existing JSON generation |
 
 ---
 
 ## Sources
 
-- systemd sd_notify protocol: <https://www.freedesktop.org/software/systemd/man/latest/sd_notify.html>
-- sdnotify (pure Python): <https://github.com/bb4242/sdnotify>
-- RPi hardware watchdog limit (15s): <https://dri.es/keeping-your-raspberry-pi-online-with-watchdogs>
-- RPi forum: watchdog on Pi3B+: <https://forums.raspberrypi.com/viewtopic.php?t=210974>
-- pygame-ce PyPI: <https://pypi.org/project/pygame-ce/>
-- pygame-ce release history: <https://github.com/pygame-community/pygame-ce/releases>
-- pygame-ce on Pi5 + 7" Screen 2: <https://forums.raspberrypi.com/viewtopic.php?t=383284>
-- pygame Bookworm KMSDRM: <https://forums.raspberrypi.com/viewtopic.php?t=358144>
-- psutil PyPI (version 7.2.2 / GLIBC note): <https://pypi.org/project/psutil/>
-- vcgencmd get_throttled bitmask: <https://forums.raspberrypi.com/viewtopic.php?t=257569>
-- gpxpy PyPI: <https://pypi.org/project/gpxpy/>
-- log2ram GitHub: <https://github.com/azlux/log2ram>
-- SD card wear reduction (2024): <https://www.dzombak.com/blog/2024/04/pi-reliability-reduce-writes-to-your-sd-card/>
-- Raspberry Pi temperature limits: <https://www.sunfounder.com/blogs/news/raspberry-pi-temperature-guide-how-to-check-throttling-limits-cooling-tips>
-- SQLite WAL and power loss: <https://sqlite.org/wal.html>
-- overlayFS incompatibility on Bookworm: <https://github.com/raspberrypi/bookworm-feedback/issues/137>
+- simple-keyboard GitHub: <https://github.com/hodgef/simple-keyboard>
+- simple-keyboard npm: <https://www.npmjs.com/package/simple-keyboard>
+- Squeekboard above Chromium kiosk (Wayland): <https://github.com/labwc/labwc/issues/2926>
+- RPi Bookworm OSK + Chromium kiosk: <https://forums.raspberrypi.com/viewtopic.php?t=389707>
+- Grafana kiosk broken 11.3.0: <https://github.com/grafana/grafana/issues/97759>
+- Grafana time picker kiosk 11.2.2: <https://github.com/grafana/grafana/issues/96595>
+- Grafana allow\_embedding config: <https://last9.io/blog/how-to-get-grafana-iframe-embedding-right/>
+- v4l2-ctl USB camera controls Pi 5: <https://forums.raspberrypi.com/viewtopic.php?t=364972>
+- v4l2-ctl Python subprocess pattern: <https://gist.github.com/jwhendy/12bf558011fe5ff58bd5849954e84af4>
+- vcgencmd get\_throttled bitmask Pi 5: <https://forums.raspberrypi.com/viewtopic.php?t=377392>
+- vcgencmd pmic\_read\_adc Pi 5: <https://forums.raspberrypi.com/viewtopic.php?t=313358>
+- IMU calibration with numpy (MPU9250, same principles): <https://makersportal.com/blog/calibration-of-an-inertial-measurement-unit-imu-with-raspberry-pi-part-ii>
+- Adafruit LSM6DS Python library: <https://learn.adafruit.com/lsm6dsox-and-ism330dhc-6-dof-imu/python-circuitpython>
+
+---
+
+*Stack research for: Shitbox Rally Telemetry v2.0 Rally Ready milestone*
+*Researched: 2026-04-09*

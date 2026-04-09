@@ -1,243 +1,268 @@
 # Feature Landscape
 
-**Domain:** Hardened automotive telemetry — multi-day rally across remote Australia
-**Researched:** 2026-02-25
-**Milestone context:** Rally-readiness hardening of an existing telemetry system
+**Domain:** Rally car companion system — driver display, logging, fuel tracking, driver attribution, website
+**Researched:** 2026-04-09
+**Milestone context:** v2.0 — new capabilities layered onto a working telemetry system
+**Confidence:** HIGH (existing system well-understood; new features draw on established patterns)
 
 ---
 
 ## Framing
 
-The Shitbox Rally runs ~4,000 km from Far North Queensland to Melbourne over eight or more days.
-It traverses outback stations, gravel roads, and remote communities with no mobile coverage for hours
-at a time. The car is a 2001 Ford Laser with no OBD-II. The Pi system is powered directly off 12V
-with ignition-switched supply, meaning it sees dozens of hard power cuts per day (ignition off at
-fuel stops, camp sites, checkpoints). "Multi-day" here means 8 consecutive driving days, not a
-single stage race.
+The v1.0 system does the hard thing well: it captures data reliably across thousands of kilometres
+of hard power cycles, heat, and intermittent connectivity. v2.0 is about making that data useful
+to the people in the car and the people following from home.
 
-This framing changes the feature calculus significantly. Systems that would be "nice to have" for a
-weekend event become mandatory for 4,000 km of continuous operation.
+The new features split into two audiences:
+
+- **In-car crew**: driver display, field notes, fuel log, who's driving
+- **Public website**: followers want to know what's happening, who's driving, how far they've gone
+
+These are genuinely different. In-car features must work completely offline and survive a 50°C
+cabin. Website features need to handle data arriving in batches after hours without signal.
 
 ---
 
 ## Table Stakes
 
-Features the system must have or it fails during the rally. Missing any of these risks data loss,
-system failure with no recovery path, or the system becoming a hazard to the crew.
+Features that must work or the new capability is broken. Missing any of these means the feature
+ship is not ready.
 
-| Feature | Why Table Stakes | Complexity | Already Exists? |
-|---------|-----------------|------------|----------------|
-| Bulletproof boot after hard power cut | Ignition cycling 20+ times/day; filesystem corruption kills the event | Low–Med | Partial — WAL mode exists, boot capture exists, but no boot-state recovery audit |
-| Hardware watchdog (BCM2835 /dev/watchdog) | Software-only health check cannot recover a fully hung kernel; hardware watchdog reboots it | Low | No — systemd health checks exist, not hardware watchdog |
-| Automatic service restart on any crash | Crash during driving means no data until someone notices | Low | Partial — systemd `Restart=always` likely needed audit |
-| Disk space management with safe eviction | SD card fills in <2 days at current write rate; existing check only warns and shuts down | Med | Partial — disk check exists, eviction strategy incomplete |
-| SQLite WAL checkpoint management | WAL grows unbounded; at 100+ readings/sec fills 500 MB in ~1.4 hours | Med | No — autocheckpoint tuning and background checkpoint not implemented |
-| Read-only filesystem mount for OS partition | Prevents SD card corruption on hard power cut to OS partition | Med | No |
-| GPS-based time sync on every boot | No RTC on Pi; clock will be wrong without GPS sync; timestamps wrong on all data | Low | Yes — implemented |
-| Structured boot event capture | Need to know when system came up and went down to align telemetry across days | Low | Yes — BOOT event captured |
-| Storage rotation for captured video | Videos are never deleted; SD card exhaustion guaranteed on multi-day rally | Med | Partial — disk threshold triggers warning but no proactive deletion |
-| ffmpeg process monitoring and recovery | ffmpeg crash silently stops recording; no detection currently | Low–Med | No — flagged in CONCERNS.md as fragile area |
-| Graceful shutdown on detected power loss | Reduces filesystem corruption risk; GPIO line from power supply can signal imminent cutoff | Med | No — no power loss signal wiring or handler |
-| Connectivity-resilient sync (already exists) | Prometheus batch sync must handle days without any signal | Low | Yes — cursor-based batch sync implemented |
+### Driver Display
+
+| Feature | Why Table Stakes | Complexity | Notes |
+|---------|-----------------|------------|-------|
+| Speed in large, readable text | First thing any driver looks for; missing = useless display | LOW | Already in SSE stream from GPS collector |
+| G-force circle (traction circle) | The whole point of having IMU data displayed — lateral/longitudinal dot | MED | Two axes from existing IMU readings; canvas/SVG dot on live stream |
+| Current temperature(s) | Engine bay temp is operational; Pi temp is system health; both matter in Aus summer | LOW | DS18B20 readings already in SSE stream |
+| GPS signal status indicator | Crew needs to know if GPS has a fix; bad fix = wrong speed displayed | LOW | Fix quality already in GPS collector output |
+| Sync backlog indicator | Crew needs to know if data is accumulating behind schedule | LOW | Already tracked by batch sync cursor delta |
+| Event ticker (last N events) | What just happened — hard brake, high G, etc. — crew situational awareness | MED | Events already stored; need live feed on display |
+| Driver name shown prominently | Who is driving, displayed at all times — "are we logging Tony or Hannah?" | LOW | Simple display of active driver string; set via UI |
+| Alerts visible when triggered | Thermal alert, undervoltage, system fault — must be visible in cabin | MED | Needs alert overlay on display; sources already exist |
+
+### Field Notes
+
+| Feature | Why Table Stakes | Complexity | Notes |
+|---------|-----------------|------------|-------|
+| Free text entry from Pi UI | The whole feature — if you can't type a note, it doesn't exist | MED | On-screen keyboard or USB keyboard input on 7" screen |
+| Auto-timestamp on save | Manual timestamps are wrong or forgotten; auto is the only correct default | LOW | `datetime.now()` at save time |
+| Auto GPS coordinates on save | Context of where you were is the main value; optional if no fix | LOW | Snapshot of last known GPS fix at time of save |
+| Offline-first storage | Notes go to SQLite immediately; sync happens later when connected | LOW | Follows existing batch sync pattern |
+| Pin note to a recent event | "That high-G event we just had — here's what happened" is valuable context | MED | FK to event table; recent events list in UI |
+| Sync to website | Notes appear on the public blog; the whole point of the feature | MED | New JSON payload in CaptureSyncService or dedicated sync |
+
+### Fuel Log
+
+| Feature | Why Table Stakes | Complexity | Notes |
+|---------|-----------------|------------|-------|
+| Log fuel stop: volume in litres | Core data capture — without this there's nothing to calculate | LOW | Simple form entry; saves to SQLite |
+| Log fuel stop: GPS location auto-captured | Where you stopped is the map pin on the website | LOW | Same as field notes — snapshot GPS at save time |
+| km/L efficiency calculated per segment | The metric everyone cares about — how far per litre between stops | LOW | (distance since last stop) / litres added |
+| Cumulative efficiency | Overall rally average builds over time | LOW | Simple running average from all stops |
+| Website map pins for fuel stops | Followers can see where you refuelled across 4,000 km | MED | New data type in events.json or separate JSON file |
+| Efficiency visible on website | "Currently doing 11.3 km/L" is engaging for followers | LOW | Derived stat in website data payload |
+
+### Driver Tracking
+
+| Feature | Why Table Stakes | Complexity | Notes |
+|---------|-----------------|------------|-------|
+| Set active driver from Pi UI | The entry point — without this nothing else works | LOW | Simple button/select in display UI |
+| Record driver stints (who, start time, end time) | Time attribution needs this granularity | LOW | SQLite table: driver, start_ts, end_ts |
+| Total time per driver | The headline stat — "Tony drove 52% of the rally" | LOW | Sum stint durations per driver name |
+| Allocate driving events to active driver | High-G event at 14:32 → Tony was driving at 14:32 | MED | Join events to stints by timestamp at query time |
+| Website: "who's driving now" widget | Public-facing — followers want to know | LOW | Syncs active driver in health/status payload |
+
+### Website Integration
+
+| Feature | Why Table Stakes | Complexity | Notes |
+|---------|-----------------|------------|-------|
+| Notes appear as blog entries | The feature doesn't exist if it's not visible | MED | New section on website; render from JSON |
+| Fuel stop pins on existing map | Map already exists with events; fuel stops are just another layer | MED | Leaflet layer toggle; existing Leaflet map |
+| Driver stats shown somewhere | Even a simple percentage breakdown satisfies the question | LOW | New section or sidebar on website |
+| "Who's driving now" on homepage | Prominent because it drives engagement; people check it | LOW | Top-of-page widget using synced status payload |
 
 ---
 
 ## Differentiators
 
-Features that add value beyond data capture — primarily for driver awareness and public engagement.
-Not required for the system to function but meaningfully improve the experience.
+Features beyond the minimum that meaningfully improve the product.
 
-| Feature | Value Proposition | Complexity | Dependencies |
-|---------|-------------------|------------|--------------|
-| Driver dashboard on 7" touchscreen | Speed, heading, trip distance, system health at a glance; driver awareness without phone | High | GPS collector, display service, tkinter or pygame |
-| Rally stage/day progress tracking | Distance covered today, cumulative total, estimated progress to destination | Med | GPS track accumulator, route waypoint data |
-| Thermal resilience monitoring and alerts | Australian summer cabin temps exceed 50°C; Pi throttles at 80°C; need early warning and graceful degradation | Med | Existing CPU temp metric, new threshold alerts |
-| Remote health reporting via Prometheus | When connectivity is available, push a health summary (CPU temp, disk %, battery V, sync backlog) so crew can monitor from home | Low–Med | Existing batch sync, new health metrics readings |
-| Live website updates with position | When connected, push current GPS coordinates so followers can see route progress on the map | Med | GPS collector, new sync endpoint or events.json update |
-| Donor engagement stats on website | Events triggered, km covered, days into rally — gives followers something to follow beyond just event videos | Med | Route tracking, event counts, website update |
-| In-car audio alert on system fault | Piezo buzzer already wired; beep pattern on watchdog failure or critical fault | Low | Existing buzzer GPIO; currently only beeps on 2 consecutive health failures |
-| Configuration hot-reload via SIGHUP | Tune detection thresholds from laptop via SSH without restarting (losing data in flight) | Low–Med | New signal handler in engine |
-| Persistent event queue for failed captures | Events and videos that fail to upload are retried on next connectivity rather than lost | Med | SQLite, new pending_sync state |
-| OLED display showing current mode/health | Already exists — ensure it degrades gracefully (turn off if display fails) | Low | Existing OLEDDisplayService |
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| G-force circle with trail (last N seconds) | More useful than a single dot — shows corner shape, not just peak | MED | Keep circular buffer of last 30s of IMU; fade older points |
+| Fuel cost per km (private — Pi only) | Actual operating cost of the rally — useful for crew, not website | LOW | Price per litre field on fuel stop entry; calculated stat; never synced |
+| "Better driver" comparison on website | Fun public stat — who triggered more events per km driven? | MED | Events per km by driver; requires stint + event join at sync time |
+| Note pinning on website map | Click a map location, see the note written there | MED | lat/lng on note → marker on Leaflet map |
+| Event attribution on website | "This hard brake was during Tony's stint" — richer event context | LOW | Driver name in events.json alongside event data |
+| Daily fuel efficiency chart | Bar chart: efficiency per day, showing how driving style or terrain affected it | MED | Day-bucketed fuel data; simple chart.js addition to website |
+| Note attachments: photos from Pi camera | Take a photo from the Pi at note time to accompany the log entry | HIGH | Complex: needs camera control, thumbnail sync, storage budget |
+| Grafana improved graphs on website | Better Grafana embedding, longer time windows, per-driver overlays | MED | Grafana configuration work; iframe improvements on website |
 
 ---
 
 ## Anti-Features
 
-Things to explicitly NOT build for this milestone. Each has a clear reason.
+Things that seem like good ideas but are wrong for this context.
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| Real-time video streaming | Connectivity too sparse for reliable streaming; waste of mobile data | Batch rsync video to NAS when connected |
-| OBD-II / ECU integration | 2001 Ford Laser is OBD-I; no practical interface | Not applicable to this vehicle |
-| Mobile app | Adds cross-platform build complexity for no benefit; driver can't use phone while driving | Web-based display on Pi touchscreen is sufficient |
-| G-force live display for driver | Driver does not need live accelerometer readout; it is a distraction | Event detection handles this autonomously |
-| Full filesystem read-only (overlay rootfs) | Complex to set up; risks breaking Python venv and config writes; overkill for this timeline | Read-only OS partition only; data partition stays writable |
-| Multi-vehicle tracking | Single car event; tracking infra is the rally organiser's job | Focus on single-vehicle reliability |
-| AI/ML event classification | Existing threshold-based detection is well-suited to this hardware; ML adds weight and complexity | Tune existing thresholds if needed |
-| Cloud video transcoding | Adds latency and cost; NAS rsync is sufficient | rsync to NAS; website serves direct MP4 |
-| Automatic over-the-air updates | High risk during rally; a bad update bricks the car mid-trip | Disable auto-update; update only at camp sites via SSH |
-| MQTT re-enable | MQTT causes duplicate metrics with Prometheus; currently correctly disabled | Leave disabled |
-| Per-session lap timing | Not a lap-based event; no stages in the motorsport sense | Trip odometer is sufficient |
+| Real-time display refresh below ~500ms | At 100 Hz IMU, driving too many DOM updates slows Chromium → display freezes mid-rally | Throttle display to 2 Hz for speed/G; event ticker on-demand |
+| Complex OSK (on-screen keyboard) | Linux/Chromium OSK is flaky on Pi touch display; touch targets unreliable at 50°C with sweaty hands | USB keyboard for notes; minimal tap targets for driver/fuel UI |
+| Rich text editor for field notes | Markdown/WYSIWYG adds complexity for zero benefit; these are rally notes not blog posts | Plain textarea, render as `<pre>` or simple `<p>` on website |
+| Per-km or per-minute fuel efficiency | Too granular and noisy; segment efficiency (stop to stop) is the right unit | Segment km/L from GPS odometer delta between fuel stops |
+| Shared editing / conflict resolution | Two people editing the same note from different devices is not a thing that happens here | Single-writer (Pi is the only entry point); no conflict resolution needed |
+| Driver GPS-track deduplication | Auto-detecting who's driving from GPS patterns is a research project; unreliable without OBD data | Explicit driver selection from UI; simple and correct |
+| Cost data on website | Fuel cost is private crew information; putting it in the sync payload risks accidental exposure | Store cost in SQLite only; never include in sync or events.json |
+| Note editing after sync | Edit-then-resync creates conflict surface; not worth it for occasional rally notes | Notes are append-only; add a new note instead of editing |
+| Driver photo / avatar | Adds media management complexity for negligible public engagement gain | Driver name string is sufficient |
+| Automated "best driver" algorithm | Defining "best" is contested; ranking creates crew friction for a charity rally | Show raw stats (km/L, events/km); let people draw their own conclusions |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Hardware watchdog (BCM2835)
-  └─ Requires: dtparam=watchdog=on in /boot/config.txt + RuntimeWatchdogSec in systemd.conf
+Driver Display
+  └─ requires ──> GPS collector (speed, lat/lng, fix status) — EXISTS
+  └─ requires ──> IMU SSE stream (lateral/longitudinal G) — EXISTS
+  └─ requires ──> DS18B20 temperature readings — EXISTS
+  └─ requires ──> Driver tracking (active driver name) — NEW
+  └─ requires ──> Alert subsystem hook (thermal, undervoltage) — EXISTS (partial)
+  └─ requires ──> Event storage (recent events for ticker) — EXISTS
 
-Disk space management (proactive eviction)
-  └─ Requires: Priority ordering for deletion (oldest video first, then old DB rows)
-  └─ Blocks: Storage rotation for captured video
+Driver Tracking
+  └─ requires ──> Driver stint table in SQLite — NEW (schema)
+  └─ requires ──> Pi UI for driver selection — NEW
+  └─ enhances ──> Event attribution (join stints to events at query time)
+  └─ feeds ──> Website driver stats widget
 
-SQLite WAL checkpoint management
-  └─ Requires: Background checkpoint thread or autocheckpoint tuning
-  └─ Blocks: Long-term multi-day data integrity
+Field Notes
+  └─ requires ──> On-screen or USB keyboard input — NEW (USB keyboard simplest)
+  └─ requires ──> GPS collector (location snapshot) — EXISTS
+  └─ requires ──> Notes table in SQLite — NEW (schema)
+  └─ requires ──> Sync payload extension (notes JSON) — NEW
+  └─ optionally pins to ──> Event storage (FK to events table)
 
-Read-only OS filesystem
-  └─ Requires: overlayfs or ro mount configuration in /boot/cmdline.txt
-  └─ Requires: Data partition (SQLite, captures) must remain on writable partition
-  └─ Blocks: Bulletproof boot after hard power cut
+Fuel Log
+  └─ requires ──> Pi UI form entry — NEW
+  └─ requires ──> GPS collector (location snapshot) — EXISTS
+  └─ requires ──> GPS odometer (distance since last stop) — EXISTS (stage tracking)
+  └─ requires ──> Fuel stops table in SQLite — NEW (schema)
+  └─ requires ──> Sync payload extension (fuel JSON) — NEW
+  └─ cost field ──> MUST NOT sync to website (private)
 
-Driver dashboard (7" touchscreen)
-  └─ Requires: GPS collector (position, speed, heading) — exists
-  └─ Requires: Rally stage/day progress tracking (new)
-  └─ Requires: System health metrics (CPU temp, disk %, sync backlog) — partial
-  └─ Requires: Display framework choice (tkinter or pygame)
-
-Rally stage/day progress tracking
-  └─ Requires: GPS track accumulator (distance calculation from coordinates)
-  └─ Requires: Day boundary detection (new boot = new day, or GPS date change)
-
-Remote health reporting
-  └─ Requires: Health metrics as Prometheus readings (new reading types)
-  └─ Requires: Existing batch sync — no change needed
-
-Live website position update
-  └─ Requires: GPS collector (exists)
-  └─ Requires: New sync endpoint or periodic events.json position injection
-
-Graceful shutdown on power loss
-  └─ Requires: GPIO-connected power-loss signal from power supply (hardware)
-  └─ Requires: Signal handler and ordered shutdown sequence
-
-Thermal resilience monitoring
-  └─ Requires: Existing CPU temp metric (exists)
-  └─ Requires: New threshold logic (warning at 70°C, throttle-aware at 80°C)
-  └─ Blocks: Remote health reporting (temp is a key health metric)
-
-Persistent event queue for failed captures
-  └─ Requires: New SQLite table for pending captures
-  └─ Requires: CaptureSyncService retry loop changes
+Website Revamp
+  └─ requires ──> Notes sync payload — NEW (from field notes)
+  └─ requires ──> Fuel sync payload — NEW (from fuel log)
+  └─ requires ──> Driver stats sync payload — NEW (from driver tracking)
+  └─ requires ──> Active driver in status payload — NEW
+  └─ builds on ──> Existing Leaflet map (existing)
+  └─ builds on ──> Existing events.json pattern (existing)
 ```
 
----
+### Dependency Notes
 
-## Complexity Assessment
-
-### Low complexity (days, not weeks)
-
-- Hardware watchdog configuration (kernel module + systemd.conf line)
-- systemd `Restart=always` audit and fix
-- In-car audio alert expansion (buzzer already wired)
-- Remote health reporting (new reading types on existing sync path)
-- Configuration hot-reload via SIGHUP
-- ffmpeg process monitoring (poll `_process.poll()` in health check)
-
-### Medium complexity (weeks, careful testing)
-
-- Disk space management with safe priority eviction (must not delete in-progress captures)
-- SQLite WAL checkpoint management (background thread, tuning)
-- Read-only OS filesystem (overlayfs or ro mount; must test boot/write paths carefully)
-- Driver dashboard on 7" touchscreen (UI framework, layout, refresh loop)
-- Rally stage/day progress tracking (GPS distance accumulation, persistence across reboots)
-- Live website position update (new sync logic, website change)
-- Persistent event queue (schema change, retry logic, race condition care)
-
-### High complexity (requires significant investigation)
-
-- Graceful shutdown on power loss (requires hardware GPIO signal from power supply; wiring work not just software)
-- Full overlayfs read-only root (significant Raspbian-specific complexity; easy to break the system)
+- **All new features require SQLite schema additions**: notes, fuel_stops, driver_stints tables. These should be designed together in a single schema migration phase.
+- **Sync payload is the integration point**: Pi calculates all derived stats (km/L, driver percentages, event attribution) before syncing; website is read-only. Keeps website dumb and simple.
+- **Driver selection gates event attribution**: Events before first driver selection have no driver. This is acceptable — the first thing crew does on day 1 is set the driver.
+- **Field notes and fuel log share the same GPS-snapshot pattern**: Consolidate into a single helper.
 
 ---
 
-## MVP Recommendation for Rally Readiness
+## MVP Definition
 
-Prioritise in this order — earlier items protect data, later items improve experience.
+The system is going on a rally. Rally readiness = MVP.
 
-**Must ship (system survival):**
+### Ship With (v2.0)
 
-1. Hardware watchdog via BCM2835 — prevents silent hangs with no recovery
-2. systemd restart policy audit — ensures all services recover from crashes
-3. Proactive disk eviction — prevents SD card exhaustion on day 3
-4. SQLite WAL checkpoint management — prevents WAL overflow
-5. ffmpeg health monitoring and restart — silent video loss is unacceptable
-6. Thermal monitoring with alerts — 50°C cabin, Pi throttles at 80°C; need warning
+- Driver display: speed, G-circle, temps, driver name, GPS fix, sync status, event ticker, alerts
+- Driver tracking: set active driver from UI, basic stint tracking, time percentages
+- Field notes: text entry (USB keyboard), auto-timestamp + GPS, pin to event, sync to website
+- Fuel log: volume entry, location auto-captured, km/L per segment, sync to website (no cost)
+- Website: blog entries section, fuel stop map pins, driver stats section, "who's driving" widget
 
-**Should ship (data quality and crew confidence):**
+### Defer Post-Rally
 
-7. Remote health reporting via Prometheus — crew visibility from home
-8. Persistent event queue — no lost events if sync fails mid-rally
-9. Configuration hot-reload — ability to tune thresholds without restart
+- G-force trail (nice visual improvement; single dot is functional for v2.0)
+- "Better driver" comparison stats (needs full rally data to be interesting anyway)
+- Daily fuel efficiency chart (same — data accumulates over the rally)
+- Note map pins on website (useful but not blocking)
+- Grafana deep improvements (cosmetic; existing graphs work)
+- Photo attachments on notes (HIGH complexity, LOW priority)
 
-**Nice to have (engagement and driver awareness):**
+---
 
-10. Driver dashboard on 7" touchscreen — speed, heading, trip stats
-11. Rally stage/day progress tracking — cumulative distance, current day distance
-12. Live website position update — followers can see route progress
+## Feature Prioritisation Matrix
 
-**Defer (hardware work or high risk):**
-
-13. Graceful shutdown on power loss — needs hardware; WAL mode already mitigates corruption risk adequately
-14. Read-only OS filesystem — high implementation risk; WAL + good power supply is sufficient mitigation
+| Feature | Driver Value | Public Value | Implementation Cost | Priority |
+|---------|-------------|--------------|---------------------|----------|
+| Driver display productionised | HIGH | NONE | MED | P1 |
+| Driver name on display | HIGH | LOW | LOW | P1 |
+| G-force circle | MED | NONE | MED | P1 |
+| Alert overlay on display | HIGH | NONE | MED | P1 |
+| Driver tracking (stints, time %) | MED | HIGH | LOW | P1 |
+| Field notes entry | HIGH | MED | MED | P1 |
+| Fuel log (volume + location) | MED | MED | LOW | P1 |
+| km/L efficiency | MED | MED | LOW | P1 |
+| Website: notes as blog | LOW | HIGH | MED | P1 |
+| Website: fuel stop map pins | LOW | HIGH | MED | P1 |
+| Website: driver stats | LOW | HIGH | LOW | P1 |
+| Website: "who's driving now" | LOW | HIGH | LOW | P1 |
+| G-force trail (last 30s) | LOW | NONE | MED | P2 |
+| "Better driver" stats | LOW | MED | MED | P2 |
+| Fuel cost tracking (Pi only) | MED | NONE | LOW | P2 |
+| Daily fuel efficiency chart | LOW | MED | MED | P2 |
+| Note map pins on website | LOW | MED | MED | P2 |
+| Grafana graph improvements | LOW | MED | MED | P2 |
+| Note photo attachments | LOW | MED | HIGH | P3 |
 
 ---
 
 ## Context-Specific Notes
 
-**Australian summer heat.** The Pi 4 throttles at 80°C SoC temperature. With ambient cabin temps
-of 50-55°C and direct sun, the Pi needs active cooling and thermal monitoring. The system should
-log thermal events as readings and alert via OLED and buzzer before throttling degrades 100 Hz
-sampling. Confidence: HIGH (official Raspberry Pi docs confirm throttle threshold).
+**Touch input at 50°C is unreliable.** Jeff Geerling's testing on the Pi Touch Display 2 confirmed
+that the onscreen keyboard in Chromium is intermittent. For field notes, a USB keyboard is the
+right call — rally crew already have one for SSH. For driver selection and fuel entry, large tap
+targets are sufficient because these are simple selections, not text entry.
 
-**SD card endurance.** At 100+ readings/second into SQLite plus continuous video ring buffer writes
-(~15 MB/s), a consumer-grade SD card will fail within the rally. The system must use an endurance
-card (SanDisk High Endurance or equivalent) AND reduce write load via WAL checkpoint tuning and
-reduced ring buffer write frequency. Software mitigations are insufficient alone — card selection
-is a prerequisite. Confidence: HIGH (Raspberry Pi forum community data, multiple sources).
+**Driver stint overlap does not happen.** There is one driver and one co-driver. Co-driver doesn't
+drive. The stint model is simple: one driver active at any time, changed explicitly from the UI.
+No need for overlap handling or GPS-based inference.
 
-**Hardware watchdog maximum.** The BCM2835 hardware watchdog maximum timeout is 15 seconds.
-`RuntimeWatchdogSec=14` in `/etc/systemd/system.conf` is the correct configuration.
-Values above 15s are silently ignored — this is a known gotcha. Confidence: HIGH (systemd
-GitHub issue #27427, multiple Raspberry Pi forum threads confirm).
+**Fuel cost stays private, always.** The sync payload must explicitly exclude the cost field.
+This is not a configuration option — it is a hard rule. Cost data lives in SQLite only.
 
-**No GPS = no time sync = wrong timestamps.** On multi-day rally with hard power cuts, the Pi
-clock will drift significantly overnight. GPS-based clock sync on boot is table stakes.
-The existing implementation is correct but should be validated in the field.
-Confidence: HIGH (existing implementation, well-understood Pi limitation).
+**km/L is the right unit for Australia.** L/100km is what Australian drivers use on the road,
+but for a rally context where you're tracking "how far can we go on this tank" the km/L form
+is more intuitive. Use km/L on the Pi display and the website; L/100km is for sedans on the highway.
 
-**Shitbox Rally connectivity profile.** Long stretches (Outback Way route segments, Gibb River Road)
-have zero mobile coverage. The system must operate fully offline for 12+ hour periods, then batch
-sync at camp sites and towns. The existing offline-first architecture is the right model.
-Confidence: HIGH (Shitbox Rally website confirms outback/off-road route characteristics).
+**Website is append-only during the rally.** The sync model pushes from Pi to NAS; the website
+reads from NAS. Notes and fuel stops are append-only. No editing from the website, no conflicts.
+
+**Event attribution is a join, not a write.** Don't store driver name on each event row.
+Query the driver_stints table at sync time to determine who was driving for each event's timestamp.
+This means you can correct a stint assignment after the fact (fix the stint record) without touching
+the events table.
+
+**Grafana graphs on the website need better framing, not rebuilding.** The existing iframe
+embedding works. The issue is context — unlabelled graphs with no time window or legend description.
+Fix with better URL parameters and surrounding HTML explanation, not a Grafana overhaul.
 
 ---
 
 ## Sources
 
-- [Shitbox Rally 2025 — route and event details](https://www.shitboxrally.com.au/rallies)
-- [Raspberry Pi thermal throttling — 80°C threshold (official)](https://www.sunfounder.com/blogs/news/raspberry-pi-temperature-guide-how-to-check-throttling-limits-cooling-tips)
-- [BCM2835 hardware watchdog — 15s maximum, RuntimeWatchdogSec](https://bends.se/?page=notebook%2Fsbc%2Fraspberry-pi%2Fhw-watchdog)
-- [systemd RuntimeWatchdogSec silent failure above 15s — GitHub issue #27427](https://github.com/systemd/systemd/issues/27427)
-- [SD card endurance — TLC consumer cards: 3K-10K write cycles per block](https://forums.raspberrypi.com/viewtopic.php?t=317568)
-- [SanDisk High Endurance SD card on Raspberry Pi](https://forums.raspberrypi.com/viewtopic.php?t=288190)
-- [SQLite VACUUM and WAL growth on embedded devices](https://www.theunterminatedstring.com/sqlite-vacuuming/)
-- [Watchdogd — advanced system monitor for embedded Linux](https://github.com/troglobit/watchdogd)
-- [In-vehicle power ignition management patterns](https://premioinc.com/blogs/blog/power-ignition-management-for-in-vehicle-computing)
-- [Prometheus Pushgateway — limitations for continuous device monitoring](https://prometheus.io/docs/practices/pushing/)
-- [Rally telemetry display features — speed, heading, trip distance](https://www.rally.cc/)
-- [Telemetry in Rally — special case for multi-day events](https://www.canevarally.com/gravel/telemetry-in-rally-a-special-case/)
-- [watchdog firmware best practices — Interrupt blog](https://interrupt.memfault.com/blog/firmware-watchdog-best-practices)
-- [Leveraging systemd for hardware watchdog control](https://cornersoftsolutions.com/leveraging-systemd-for-hardware-watchdog-control-in-embedded-linux/)
+- [AIM Technologies MX Series dash displays — data shown by professional rally systems](https://www.aimtechnologies.com/mx-series/)
+- [Traction circle G-G diagram explained — VR Performance Development](https://vrperfdev.wordpress.com/2016/01/01/traction-circle-g-g-diagram-explained/)
+- [G-Force Meter real-time display — VBOX Automotive app](https://www.vboxautomotive.co.uk/index.php/en/customer-area/app-store/vb-touch-g-force-meter)
+- [Offline field data collection patterns — Felt platform](https://felt.com/blog/field-data-collection-app)
+- [GPS-tagged offline notes with sync-later — NestForms](https://www.nestforms.com/blog/276/Data-Collection-with-your-Offline-GPS-Survey-App)
+- [Fuel efficiency KPIs — fleet context, same metrics apply](https://heavyvehicleinspection.com/blog/post/fuel-efficiency-kpis-for-fleets-mileage-idle-time-cost-km)
+- [Pi kiosk mode touchscreen — Jeff Geerling's real-world Pi Touch Display 2 assessment](https://www.jeffgeerling.com/blog/2024/home-assistant-and-carplay-pi-touch-display-2/)
+- [Offline-first sync patterns — LogRocket 2025](https://blog.logrocket.com/offline-first-frontend-apps-2025-indexeddb-sqlite/)
+
+---
+
+*Feature research for: shitbox v2.0 — rally companion features*
+*Researched: 2026-04-09*
