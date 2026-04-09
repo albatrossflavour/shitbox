@@ -98,9 +98,49 @@ import sqlite3
 
 def test_v6_fresh_schema(tmp_path):
     """Phase 12: Fresh database contains notes and fuel_stops tables at schema v6."""
-    pytest.skip("pending Task 2 — schema v6 not yet implemented")
+    db = Database(tmp_path / "t.db")
+    db.connect()
+    try:
+        conn = db._get_connection()
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('notes','fuel_stops')"
+        )
+        rows = cursor.fetchall()
+        assert len(rows) == 2, f"Expected 2 tables, got {len(rows)}: {[r[0] for r in rows]}"
+
+        cursor = conn.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
+        row = cursor.fetchone()
+        assert row[0] == 6, f"Expected schema_version 6, got {row[0]}"
+    finally:
+        db.close()
 
 
 def test_v6_migration(tmp_path):
     """Phase 12: Existing v5 database migrates to v6 gaining notes and fuel_stops tables."""
-    pytest.skip("pending Task 2 — schema v6 not yet implemented")
+    db_path = tmp_path / "v5.db"
+
+    # Build a minimal v5 database by hand
+    raw = sqlite3.connect(str(db_path))
+    raw.execute(
+        "CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at TEXT DEFAULT (datetime('now')))"
+    )
+    raw.execute("INSERT INTO schema_version (version) VALUES (5)")
+    raw.commit()
+    raw.close()
+
+    # Now let Database.connect() migrate it
+    db = Database(db_path)
+    db.connect()
+    try:
+        conn = db._get_connection()
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('notes','fuel_stops')"
+        )
+        rows = cursor.fetchall()
+        assert len(rows) == 2, f"Expected 2 tables after migration, got {len(rows)}: {[r[0] for r in rows]}"
+
+        cursor = conn.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
+        row = cursor.fetchone()
+        assert row[0] == 6, f"Expected schema_version 6 after migration, got {row[0]}"
+    finally:
+        db.close()

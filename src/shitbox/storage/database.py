@@ -13,7 +13,7 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 # Database schema version for migrations
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -95,6 +95,29 @@ CREATE TABLE IF NOT EXISTS schema_version (
     applied_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp_utc TEXT NOT NULL,
+    body TEXT NOT NULL,
+    event_id INTEGER,
+    lat REAL,
+    lng REAL,
+    gps_stale BOOLEAN NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS fuel_stops (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp_utc TEXT NOT NULL,
+    volume_litres REAL NOT NULL,
+    cost_aud REAL,
+    lat REAL,
+    lng REAL,
+    gps_stale BOOLEAN NOT NULL DEFAULT 0,
+    odometer_km REAL,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Indexes for efficient queries
 CREATE INDEX IF NOT EXISTS idx_readings_timestamp ON readings(timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_readings_sensor_type ON readings(sensor_type);
@@ -167,6 +190,9 @@ class Database:
 
         if current_version < 5:
             self._migrate_to_v5(conn)
+
+        if current_version < 6:
+            self._migrate_to_v6(conn)
 
         if current_version < SCHEMA_VERSION:
             conn.execute(
@@ -250,6 +276,40 @@ class Database:
             pass  # Column already exists
         conn.commit()
         log.info("migrated_to_v5", columns=["cpu_percent"])
+
+    def _migrate_to_v6(self, conn: sqlite3.Connection) -> None:
+        """Add notes and fuel_stops tables for Phase 12 logbook feature."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp_utc TEXT NOT NULL,
+                body TEXT NOT NULL,
+                event_id INTEGER,
+                lat REAL,
+                lng REAL,
+                gps_stale BOOLEAN NOT NULL DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS fuel_stops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp_utc TEXT NOT NULL,
+                volume_litres REAL NOT NULL,
+                cost_aud REAL,
+                lat REAL,
+                lng REAL,
+                gps_stale BOOLEAN NOT NULL DEFAULT 0,
+                odometer_km REAL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.commit()
+        log.info("migrated_to_v6", tables=["notes", "fuel_stops"])
 
     def close(self) -> None:
         """Close database connection for current thread."""
