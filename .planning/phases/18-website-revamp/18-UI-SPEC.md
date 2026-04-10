@@ -39,9 +39,9 @@ Declared values (multiples of 4). Units expressed in rem as-used in the existing
 |-------|-------|----------------|-------|
 | xs | 4px | 0.25rem | Icon gaps, badge internal padding, note icon offset in card corner |
 | sm | 8px | 0.5rem | Gap between nav items, inline element gaps |
-| md | 16px | 1rem | Card padding (status-card, note card), default element spacing |
-| lg | 20px | 1.25rem | Header padding, card padding for larger cards (about-card uses 1.5rem) |
-| xl | 24px | 1.5rem | Main content padding, section bottom margin |
+| md | 16px | 1rem | Card padding (status-card), default element spacing |
+| lg | 20px | 1.25rem | Note card horizontal padding only — see Exceptions |
+| xl | 24px | 1.5rem | Main content padding, section bottom margin, about-card padding |
 | 2xl | 32px | 2rem | Header horizontal padding, main horizontal padding |
 | 3xl | 48px | 3rem | Empty/loading state vertical padding |
 
@@ -51,6 +51,10 @@ Exceptions:
 - Note icon badge in event card corner: `4px` offset from card edge, `20px` touch target — no
   layout change to the card
 - Fuel popup content uses existing Leaflet popup sizing — no custom override needed
+- `lg = 20px` (1.25rem): not a multiple of 4 and therefore not a standard token. Justified as the
+  horizontal padding of `.note-card` (`padding: 1rem 1.25rem`) which matches the existing pattern
+  for asymmetric card padding (more horizontal breathing room than vertical). This value is used
+  only in `.note-card` horizontal padding. Do not generalise it to other components.
 
 Source: measured from existing CSS, lines 94, 104, 340, 491-504.
 
