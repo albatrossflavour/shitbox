@@ -16,6 +16,7 @@ class SensorType(str, Enum):
     SYSTEM = "system"
     POWER = "power"
     ENVIRONMENT = "environment"
+    LIGHT = "light"
 
 
 @dataclass
@@ -131,6 +132,9 @@ class Reading:
     env_temp_celsius: Optional[float] = None
     gas_resistance_ohms: Optional[float] = None
 
+    # Light fields (VEML7700)
+    lux: Optional[float] = None
+
     # System fields (Pi health)
     cpu_temp_celsius: Optional[float] = None
     cpu_percent: Optional[float] = None
@@ -201,6 +205,15 @@ class Reading:
             humidity_pct=reading.humidity_pct,
             env_temp_celsius=reading.env_temp_celsius,
             gas_resistance_ohms=reading.gas_resistance_ohms,
+        )
+
+    @classmethod
+    def from_light(cls, lux: float, timestamp: datetime) -> "Reading":
+        """Create a Reading from a VEML7700 lux measurement."""
+        return cls(
+            timestamp_utc=timestamp,
+            sensor_type=SensorType.LIGHT,
+            lux=lux,
         )
 
     def to_mqtt_payload(self) -> dict:

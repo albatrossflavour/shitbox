@@ -167,7 +167,7 @@ def test_migration_v7_creates_driver_stints(tmp_path):
             version = conn.execute(
                 "SELECT MAX(version) AS v FROM schema_version"
             ).fetchone()["v"]
-        assert version == 7, f"Expected schema_version 7, got {version}"
+        assert version >= 7, f"Expected schema_version >= 7, got {version}"
     finally:
         db.close()
 
@@ -218,6 +218,30 @@ def test_migration_v7_from_v6(tmp_path):
             version = conn.execute(
                 "SELECT MAX(version) AS v FROM schema_version"
             ).fetchone()["v"]
-        assert version == 7
+        assert version >= 7
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Schema v8 migration tests
+# ---------------------------------------------------------------------------
+
+
+def test_migration_v8_adds_lux_column(tmp_path):
+    """Fresh database contains lux column in readings table at schema v8."""
+    db = Database(tmp_path / "test.db")
+    db.connect()
+    try:
+        with db.transaction() as conn:
+            cols = conn.execute("PRAGMA table_info(readings)").fetchall()
+            col_names = {c["name"] for c in cols}
+        assert "lux" in col_names, f"Expected lux column in readings. Got: {col_names}"
+
+        with db.transaction() as conn:
+            version = conn.execute(
+                "SELECT MAX(version) AS v FROM schema_version"
+            ).fetchone()["v"]
+        assert version == 8, f"Expected schema_version 8, got {version}"
     finally:
         db.close()

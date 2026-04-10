@@ -234,5 +234,4 @@ capture:
 # Driver roster for Phase 13 driver tracking. Change this file to change the roster.
 drivers:
   - Tony
-  - Smithy
-  - Nav
+  - Steve

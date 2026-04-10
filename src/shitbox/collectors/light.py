@@ -7,7 +7,7 @@ dashboard integration. Graceful degradation per D-24.
 from typing import Optional
 
 from shitbox.collectors.base import BaseCollector
-from shitbox.storage.models import Reading
+from shitbox.storage.models import Reading, SensorType
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -87,6 +87,4 @@ class VEML7700Collector(BaseCollector["VEML7700Reading"]):
 
     def to_reading(self, data: "VEML7700Reading") -> Reading:
         """Convert VEML7700Reading to a generic Reading for storage."""
-        return Reading(
-            sensor_type="light",  # type: ignore[arg-type]
-        )
+        return Reading.from_light(lux=data.lux, timestamp=self.now_utc())
