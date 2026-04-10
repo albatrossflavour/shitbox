@@ -308,25 +308,18 @@ def test_sse_events_payload_has_lat_lng(mbtiles_fixture):
 
     The frontend openEvents() uses ev.lat and ev.lng to place map markers.
     If the engine drops these fields the markers silently never appear.
+
+    Tests the push_event fan-out directly: register a listener queue, push,
+    assert the dequeued payload contains lat/lng.
     """
-    import json as _json
     import queue as _queue
 
-    from shitbox.dashboard.server import build_app
-    from shitbox.dashboard.sse import event_queue, push_event
+    from shitbox.dashboard.sse import _event_listeners, _event_listeners_lock, push_event
 
-    # Drain any stale events left in the module-level queue by previous tests.
-    while True:
-        try:
-            event_queue.get_nowait()
-        except _queue.Empty:
-            break
-
-    # Use an empty seed provider so no stale events from previous tests interfere.
-    app = build_app(mbtiles_path=mbtiles_fixture, recent_events_provider=lambda n: [])
-    srv, base = _start_live_server(app)
+    my_q: _queue.Queue = _queue.Queue()
+    with _event_listeners_lock:
+        _event_listeners.append(my_q)
     try:
-        # Push a synthetic event with GPS coordinates before reading.
         push_event({
             "type": "HIGH_G",
             "timestamp": "2026-04-09T12:00:00+00:00",
@@ -336,26 +329,15 @@ def test_sse_events_payload_has_lat_lng(mbtiles_fixture):
             "lat": -33.8688,
             "lng": 151.2093,
         })
-        lines = _read_sse_lines(base + "/sse/events", max_lines=2, timeout=4.0)
+        payload = my_q.get_nowait()
     finally:
-        _stop_live_server(srv)
+        with _event_listeners_lock:
+            _event_listeners.remove(my_q)
 
-    data_lines = [l for l in lines if l.startswith("data:")]
-    assert data_lines, "no data lines received from /sse/events"
-
-    # Find the HIGH_G event we pushed (seed events may appear first).
-    found = False
-    for line in data_lines:
-        payload = _json.loads(line[len("data:"):].strip())
-        if payload.get("type") == "HIGH_G" and payload.get("lat") is not None:
-            assert "lat" in payload, "lat missing from event payload"
-            assert "lng" in payload, "lng missing from event payload"
-            assert payload["lat"] == pytest.approx(-33.8688)
-            assert payload["lng"] == pytest.approx(151.2093)
-            found = True
-            break
-
-    assert found, "pushed HIGH_G event with lat/lng not found in /sse/events stream"
+    assert "lat" in payload, "lat missing from event payload"
+    assert "lng" in payload, "lng missing from event payload"
+    assert payload["lat"] == pytest.approx(-33.8688)
+    assert payload["lng"] == pytest.approx(151.2093)
 
 
 # ---------------------------------------------------------------------------

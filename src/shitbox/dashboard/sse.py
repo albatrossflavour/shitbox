@@ -39,10 +39,13 @@ router = APIRouter()
 _active_clients: int = 0
 _clients_lock = threading.Lock()
 
-# Bounded thread-safe queue. The engine pushes from a sync thread via
-# push_event(); the /sse/events generator drains from an asyncio thread via
-# asyncio.to_thread. Drop on full — never block the capture path.
-event_queue: "queue.Queue[Dict[str, Any]]" = queue.Queue(maxsize=256)
+# Fan-out: each connected /sse/events client registers its own queue.
+# push_event() broadcasts to all of them so every client sees every event,
+# regardless of how many connections are active. A single shared queue would
+# let stale generators (from reconnects) consume events before the live
+# connection sees them.
+_event_listeners: "List[queue.Queue[Dict[str, Any]]]" = []
+_event_listeners_lock = threading.Lock()
 
 _recent_provider: Optional[Callable[[int], List[Dict[str, Any]]]] = None
 
@@ -59,15 +62,18 @@ def set_recent_events_provider(
 
 
 def push_event(event: Dict[str, Any]) -> None:
-    """Non-blocking enqueue of a freshly-detected event for SSE fan-out.
+    """Broadcast a freshly-detected event to all connected /sse/events clients.
 
-    If the queue is full the event is dropped with a warning log — the capture
-    path must never wait on the dashboard.
+    Each client has its own queue; we put_nowait on all of them so a stale
+    generator from a prior reconnect cannot consume the event before the live
+    connection sees it. Drop on full per client — never block the capture path.
     """
-    try:
-        event_queue.put_nowait(event)
-    except queue.Full:
-        log.warning("dashboard_event_queue_full", dropped=event.get("type"))
+    with _event_listeners_lock:
+        for q in _event_listeners:
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                log.warning("dashboard_event_queue_full", dropped=event.get("type"))
 
 
 def _check_capacity() -> None:
@@ -155,6 +161,9 @@ async def sse_events(request: Request) -> Response:
     _check_capacity()
 
     async def gen() -> AsyncIterator[Dict[str, Any]]:
+        my_queue: "queue.Queue[Dict[str, Any]]" = queue.Queue(maxsize=256)
+        with _event_listeners_lock:
+            _event_listeners.append(my_queue)
         try:
             # Seed: last 10 events from the provider (wired by the engine)
             if _recent_provider is not None:
@@ -165,14 +174,16 @@ async def sse_events(request: Request) -> Response:
                     seed = []
                 for ev in seed:
                     yield {"event": "event", "data": json.dumps(ev, default=str)}
-            # Live: drain the bounded queue
-            while True:
+            # Live: drain this client's queue
+            while not await request.is_disconnected():
                 try:
-                    ev = await asyncio.to_thread(event_queue.get, True, 1.0)
+                    ev = await asyncio.to_thread(my_queue.get, True, 1.0)
                 except queue.Empty:
                     continue
                 yield {"event": "event", "data": json.dumps(ev, default=str)}
         finally:
+            with _event_listeners_lock:
+                _event_listeners.remove(my_queue)
             _release_slot()
 
     return EventSourceResponse(gen())
