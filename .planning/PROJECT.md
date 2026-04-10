@@ -131,4 +131,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-09 — v2.0 Rally Ready milestone started.*
+*Last updated: 2026-04-10 — Phase 17 complete: kiosk-first 800x480 driver display shipped.*
