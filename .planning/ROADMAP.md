@@ -36,7 +36,7 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [ ] **Phase 14: Sensor Calibration** - All sensors validated and calibrated; event thresholds re-confirmed
 - [ ] **Phase 15: Undervoltage and Monitoring** - Undervoltage fix confirmed, monitoring gaps closed, critical events visible
 - [ ] **Phase 16: Video Capture Tuning** - Camera modes empirically listed; optimal settings confirmed
-- [ ] **Phase 17: Driver Display** - Fullscreen 7" kiosk productionised with live data, alerts, and active driver
+- [x] **Phase 17: Driver Display** - Fullscreen 7" kiosk productionised with live data, alerts, and active driver (completed 2026-04-10)
 - [ ] **Phase 18: Website Revamp** - Notes, fuel, and driver data integrated; Grafana improved
 
 ## Phase Details
@@ -228,5 +228,5 @@ pipeline, with improved Grafana dashboards; the changes are deployed via the hom
 | 14. Sensor Calibration | v2.0 | TBD | Not started | — |
 | 15. Undervoltage and Monitoring | v2.0 | TBD | Not started | — |
 | 16. Video Capture Tuning | v2.0 | TBD | Not started | — |
-| 17. Driver Display | v2.0 | 1/2 | In Progress|  |
+| 17. Driver Display | v2.0 | 1/2 | Complete    | 2026-04-10 |
 | 18. Website Revamp | v2.0 | TBD | Not started | — |
