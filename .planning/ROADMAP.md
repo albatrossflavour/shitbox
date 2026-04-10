@@ -207,7 +207,7 @@ pipeline, with improved Grafana dashboards; the changes are deployed via the hom
 Plans:
 
 - [x] 18-01-PLAN.md — batch_sync metric fixes: shitbox_lux + DS18B20 probe labels + schema v9
-- [ ] 18-02-PLAN.md — Website: notes feed, current driver card, drivers tab, note badges
+- [x] 18-02-PLAN.md — Website: notes feed, current driver card, drivers tab, note badges
 - [ ] 18-03-PLAN.md — Website: fuel map pins, Grafana iframe fix, nginx cache headers
 - [ ] 18-04-PLAN.md — Grafana dashboard API update: Ambient Light panel + DS18B20 series
 
@@ -236,4 +236,4 @@ Plans:
 | 15. Undervoltage and Monitoring | v2.0 | TBD | Not started | — |
 | 16. Video Capture Tuning | v2.0 | TBD | Not started | — |
 | 17. Driver Display | v2.0 | 1/2 | Complete    | 2026-04-10 |
-| 18. Website Revamp | v2.0 | 1/4 | In Progress|  |
+| 18. Website Revamp | v2.0 | 2/4 | In Progress|  |
