@@ -11,7 +11,7 @@
     * { cursor: none !important; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
     .num { font-variant-numeric: tabular-nums; font-weight: 600; }
     .card { background: #161b22; border: 1px solid #21262d; }
-    .badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-block; }
+    .badge { padding: 2px 8px; border-radius: 4px; font-size: 23px; font-weight: 600; display: inline-block; }
     .ev-HIGH_G { background: #da3633; color: #fff; }
     .ev-HARD_BRAKE { background: #f85149; color: #fff; }
     .ev-BIG_CORNER { background: #d29922; color: #000; }
@@ -23,53 +23,53 @@
     .bg-red-700 { background: #b91c1c; color: #fff; }
     .bg-yellow-600 { background: #ca8a04; color: #000; }
     .bg-green-700 { background: #15803d; color: #fff; }
+    .bg-gray-700 { background: #374151; color: #9ca3af; }
   </style>
 </head>
 <body x-data="dashboard()" x-init="init()" style="display: flex; flex-direction: column; width: 800px; height: 480px; overflow: hidden;">
 
-  <!-- TOP STRIP (h: 72px) -->
-  <header class="card flex items-center gap-3 px-4" style="height: 72px; flex-shrink: 0;">
-    <!-- Speed: dominant -->
-    <div class="num" style="font-size: 64px; line-height: 1; min-width: 120px; text-align: right;">
-      <span x-text="speed"></span>
-    </div>
-    <div class="text-gray-400" style="font-size: 13px; padding-top: 4px;">km/h</div>
+  <!-- TOP STRIP (h: 140px) — three equal columns -->
+  <header class="card" style="height: 140px; flex-shrink: 0; display: flex; padding: 0 32px; gap: 16px;">
 
-    <!-- Divider -->
-    <div style="width: 1px; height: 40px; background: #21262d; flex-shrink: 0;"></div>
-
-    <!-- Active driver -->
-    <div style="min-width: 100px; flex-shrink: 0;">
-      <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Driver</div>
-      <div class="cursor-pointer text-gray-100 hover:text-white font-semibold"
-           style="font-size: 15px;"
-           @click="openDriverModal()"
-           x-text="activeDriver || '---'"></div>
+    <!-- Col 1: Speed + driver (33%) -->
+    <div style="flex: 1; display: flex; align-items: center; gap: 16px; overflow: hidden;">
+      <div class="num" style="font-size: 125px; line-height: 1; width: 260px; flex-shrink: 0; text-align: right;">
+        <span x-text="speed"></span>
+      </div>
+      <div style="display: flex; flex-direction: column; justify-content: center; gap: 2px;">
+        <div class="text-gray-400" style="font-size: 26px;">km/h</div>
+        <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 8px;">Driver</div>
+        <div class="cursor-pointer text-gray-100 hover:text-white font-semibold"
+             style="font-size: 29px;"
+             @click="openDriverModal()"
+             x-text="activeDriver || '---'"></div>
+      </div>
     </div>
 
-    <!-- GPS + sync badges -->
-    <div style="display: flex; flex-direction: column; gap: 3px; flex-shrink: 0;">
-      <span class="badge" :class="gpsBadgeClass" x-text="gpsBadge"></span>
-      <span class="badge" :class="syncBadgeClass" x-text="syncBadge"></span>
+    <!-- Col 2: Status badges 2×2 grid (33%) -->
+    <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <span class="badge" :class="gpsBadgeClass" x-text="gpsBadge"></span>
+        <span class="badge" :class="netBadgeClass" x-text="netBadge"></span>
+        <span class="badge" :class="syncBadgeClass" x-text="syncBadge"></span>
+        <span class="badge" :class="recBadgeClass" x-text="recBadge"></span>
+      </div>
     </div>
 
-    <!-- Spacer -->
-    <div style="flex: 1;"></div>
-
-    <!-- Action buttons + success flash -->
-    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+    <!-- Col 3: Action buttons (33%) -->
+    <div style="flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
       <button @click="openMap()"
               style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
-                     color: #58a6ff; font-size: 20px; font-weight: 700;
-                     padding: 6px 14px; border-radius: 4px; min-height: 44px;">MAP</button>
+                     color: #58a6ff; font-size: 39px; font-weight: 700;
+                     padding: 6px 12px; border-radius: 4px; min-height: 44px;">MAP</button>
       <button @click="openNoteModal()"
               style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
-                     color: #e6edf3; font-size: 20px; font-weight: 700;
-                     padding: 6px 14px; border-radius: 4px; min-height: 44px;">+ Note</button>
+                     color: #e6edf3; font-size: 39px; font-weight: 700;
+                     padding: 6px 12px; border-radius: 4px; min-height: 44px;">Note</button>
       <button @click="openFuelModal()"
               style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
-                     color: #e6edf3; font-size: 20px; font-weight: 700;
-                     padding: 6px 14px; border-radius: 4px; min-height: 44px;">+ Fuel</button>
+                     color: #e6edf3; font-size: 39px; font-weight: 700;
+                     padding: 6px 12px; border-radius: 4px; min-height: 44px;">Fuel</button>
       <span class="badge" x-show="successMsg" x-text="successMsg"
             style="background: #238636; color: #fff;"></span>
     </div>
@@ -89,43 +89,43 @@
       <!-- Temp row -->
       <div style="display: flex; gap: 6px; flex-shrink: 0;">
         <div class="card" style="flex: 1; padding: 8px;">
-          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Cabin Temp</div>
-          <div class="num" style="font-size: 28px;"><span x-text="imuTemp"></span> <span class="text-gray-400" style="font-size: 14px;">&deg;C</span></div>
+          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">Cabin Temp</div>
+          <div class="num" style="font-size: 55px;"><span x-text="imuTemp"></span> <span class="text-gray-400" style="font-size: 27px;">&deg;C</span></div>
         </div>
         <div class="card" style="flex: 1; padding: 8px;">
-          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">SoC Temp</div>
-          <div class="num" style="font-size: 28px;"><span x-text="socTemp"></span> <span class="text-gray-400" style="font-size: 14px;">&deg;C</span></div>
+          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">SoC Temp</div>
+          <div class="num" style="font-size: 55px;"><span x-text="socTemp"></span> <span class="text-gray-400" style="font-size: 27px;">&deg;C</span></div>
         </div>
       </div>
 
       <!-- Waypoint distance + Bearing row -->
       <div style="display: flex; gap: 6px; flex: 1;">
         <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
-          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Next WP</div>
-          <div class="num" style="font-size: 20px;" x-text="waypointText"></div>
+          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">Next WP</div>
+          <div class="num" style="font-size: 39px;" x-text="waypointText"></div>
         </div>
         <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
-          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Bearing</div>
-          <div class="num" style="font-size: 20px;" x-text="bearingText"></div>
+          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">Bearing</div>
+          <div class="num" style="font-size: 39px;" x-text="bearingText"></div>
         </div>
       </div>
 
       <!-- Current G + Time row -->
       <div style="display: flex; gap: 6px; flex: 1;">
         <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
-          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Current G</div>
-          <div class="num" style="font-size: 28px;" x-text="(Math.hypot(gx, gy)).toFixed(2) + 'g'"></div>
+          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">Current G</div>
+          <div class="num" style="font-size: 55px;" x-text="(Math.hypot(gx, gy)).toFixed(2) + 'g'"></div>
         </div>
         <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
-          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Time</div>
-          <div class="num" style="font-size: 28px;" x-text="new Date(now).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: false})"></div>
+          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">Time</div>
+          <div class="num" style="font-size: 55px;" x-text="new Date(now).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: false})"></div>
         </div>
       </div>
     </div>
   </main>
 
-  <!-- BOTTOM STRIP: 5-item event ticker + timelapse thumbnail (h: 120px) -->
-  <footer class="card" style="height: 120px; flex-shrink: 0; padding: 6px 10px; overflow: hidden; display: flex; gap: 8px;">
+  <!-- BOTTOM STRIP: 4-item event ticker + timelapse thumbnail (h: 160px) -->
+  <footer class="card" style="height: 160px; flex-shrink: 0; padding: 6px 10px; overflow: hidden; display: flex; gap: 8px;">
     <!-- Event ticker -->
     <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
       <template x-for="ev in events" :key="ev.ts || ev.timestamp">
@@ -133,13 +133,13 @@
           <span class="badge" :class="'ev-' + ev.type"
                 :style="`background:${EVENT_COLOURS[ev.type] || '#8b949e'}`"
                 x-text="ev.type"></span>
-          <span class="num text-gray-300" style="font-size: 13px;"
+          <span class="num text-gray-300" style="font-size: 26px;"
                 x-text="(ev.peak_g || 0).toFixed(1) + 'g'"></span>
-          <span class="text-gray-400" style="font-size: 12px;"
+          <span class="text-gray-400" style="font-size: 23px;"
                 x-text="relativeTime(ev.ts || ev.timestamp)"></span>
         </div>
       </template>
-      <div x-show="events.length === 0" class="text-gray-400" style="font-size: 13px;">No events yet</div>
+      <div x-show="events.length === 0" class="text-gray-400" style="font-size: 26px;">No events yet</div>
     </div>
     <!-- Timelapse thumbnail -->
     <div x-show="timelapseUrl" style="flex-shrink: 0; width: 106px; height: 106px; cursor: pointer;"
@@ -157,7 +157,7 @@
     <button @click="closeTimelapse()"
             style="position: absolute; top: 12px; right: 16px; z-index: 110;
                    background: #161b22; border: 1px solid #21262d; color: #e6edf3;
-                   padding: 6px 14px; border-radius: 4px; font-size: 18px;
+                   padding: 6px 14px; border-radius: 4px; font-size: 35px;
                    cursor: pointer; font-weight: 700;">&times; Close</button>
     <img :src="timelapseUrl" alt="timelapse"
          style="max-width: 100%; max-height: 100%; object-fit: contain;">
@@ -172,7 +172,7 @@
     <button @click="closeMap()"
             style="position: absolute; top: 12px; right: 16px; z-index: 110;
                    background: #161b22; border: 1px solid #21262d; color: #e6edf3;
-                   padding: 6px 14px; border-radius: 4px; font-size: 18px;
+                   padding: 6px 14px; border-radius: 4px; font-size: 35px;
                    cursor: pointer; font-weight: 700;">&times; Close</button>
     <div id="map" style="position: absolute; inset: 0;"></div>
   </div>
@@ -183,156 +183,161 @@
        style="position: fixed; inset: 0; z-index: 150; display: flex; align-items: center; justify-content: center; pointer-events: none;"
        :style="alertOverlay ? `background:${alertOverlay.colour}CC` : ''">
     <div class="text-white font-bold"
-         style="font-size: 52px; text-align: center; padding: 24px; text-shadow: 0 2px 8px rgba(0,0,0,0.6);"
+         style="font-size: 101px; text-align: center; padding: 24px; text-shadow: 0 2px 8px rgba(0,0,0,0.6);"
          x-text="alertOverlay ? alertOverlay.message : ''"></div>
   </div>
 
-  <!-- Field Note modal -->
-  <div x-show="showNoteModal" x-cloak
-       @keydown.escape.window="showNoteModal = false"
-       style="position: fixed; inset: 0; background: rgba(13,17,23,0.85);
-              display: flex; align-items: center; justify-content: center; z-index: 1000;">
-    <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px;
-                padding: 24px; max-width: 480px; width: 90%; min-height: 320px;">
-      <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 16px; color: #e6edf3;">Field Note</h2>
+  <!-- Field Note modal (full screen) — x-if recreates element fresh, avoiding Alpine display-toggle -->
+  <template x-if="showNoteModal">
+  <div @keydown.escape.window="showNoteModal = false"
+       style="position: fixed; inset: 0; background: #0d1117; z-index: 1000;
+              display: grid; grid-template-rows: auto auto 1fr auto; padding: 48px; gap: 24px;
+              box-sizing: border-box;">
 
-      <textarea x-model="noteBody" rows="4" placeholder="What happened?"
-                style="width: 100%; background: #0d1117; border: 1px solid #21262d;
-                       color: #e6edf3; border-radius: 4px; padding: 12px;
-                       font-size: 16px; font-family: inherit; resize: vertical;"></textarea>
-
-      <select x-model="noteEventId"
-              :disabled="events.length === 0"
-              style="width: 100%; background: #0d1117; border: 1px solid #21262d;
-                     color: #e6edf3; border-radius: 4px; padding: 12px; margin-top: 12px;
-                     font-size: 16px; min-height: 44px;">
-        <option value="" x-text="events.length === 0 ? 'No recent events' : 'No event pin'"></option>
-        <template x-for="ev in events.slice(0, 10)" :key="ev.id">
-          <option :value="ev.id" x-text="(ev.type || 'EVENT') + ' @ ' + ev.timestamp"></option>
-        </template>
-      </select>
-
-      <div style="margin-top: 12px; font-size: 12px; font-weight: 600;">
-        <span x-show="gpsHasFix" style="color: #8b949e;">Location captured (3D fix)</span>
-        <span x-show="!gpsHasFix && gpsStaleMinutes > 0" style="color: #ca8a04;"
-              x-text="'Location from ' + gpsStaleMinutes + ' minutes ago'"></span>
-        <span x-show="!gpsHasFix && gpsStaleMinutes === 0" style="color: #ca8a04;">No GPS fix available</span>
-      </div>
-
-      <div x-show="errorMsg" x-text="errorMsg"
-           style="margin-top: 12px; color: #da3633; font-size: 12px; font-weight: 600;"></div>
-
-      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px;">
+    <!-- Title row + buttons -->
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <h2 style="font-size: 39px; font-weight: 600; margin: 0; color: #e6edf3;">Field Note</h2>
+      <div style="display: flex; gap: 16px;">
         <button @click="showNoteModal = false"
-                style="background: none; color: #8b949e; padding: 8px 16px;
-                       border: none; border-radius: 4px; cursor: pointer;">Close</button>
+                style="background: #161b22; color: #8b949e; padding: 16px 32px; font-size: 35px;
+                       border: 1px solid #21262d; border-radius: 8px; cursor: pointer;">Close</button>
         <button @click.prevent="saveNote()" :disabled="savingNote || !noteBody.trim()"
                 :style="(savingNote || !noteBody.trim())
-                  ? 'background: #21262d; color: #8b949e; cursor: not-allowed; padding: 8px 16px; border: none; border-radius: 4px;'
-                  : 'background: #1f6feb; color: #fff; cursor: pointer; padding: 8px 16px; border: none; border-radius: 4px; font-weight: 600;'"
+                  ? 'background: #21262d; color: #8b949e; cursor: not-allowed; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px;'
+                  : 'background: #1f6feb; color: #fff; cursor: pointer; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px; font-weight: 600;'"
                 x-text="savingNote ? 'Saving...' : 'Save Note'"></button>
       </div>
     </div>
-  </div>
 
-  <!-- Fuel Stop modal -->
+    <!-- Event pin -->
+    <select x-model="noteEventId" :disabled="events.length === 0"
+            style="background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                   border-radius: 8px; padding: 12px 16px; font-size: 26px; min-height: 60px;">
+      <option value="" x-text="events.length === 0 ? 'No recent events' : 'No event pin'"></option>
+      <template x-for="ev in events.slice(0, 10)" :key="ev.id">
+        <option :value="ev.id" x-text="(ev.type || 'EVENT') + ' @ ' + ev.timestamp"></option>
+      </template>
+    </select>
+
+    <!-- Textarea fills the 1fr row -->
+    <textarea x-model="noteBody" placeholder="What happened?"
+              style="width: 100%; height: 100%; background: #161b22; border: 1px solid #21262d;
+                     color: #e6edf3; border-radius: 8px; padding: 24px; box-sizing: border-box;
+                     font-size: 31px; font-family: inherit; resize: none;"></textarea>
+
+    <!-- Bottom row: GPS status + error -->
+    <div style="display: flex; align-items: center; gap: 24px; font-size: 26px; font-weight: 600;">
+      <span x-show="gpsHasFix" style="color: #8b949e;">Location captured (3D fix)</span>
+      <span x-show="!gpsHasFix && gpsStaleMinutes > 0" style="color: #ca8a04;"
+            x-text="'Location from ' + gpsStaleMinutes + ' minutes ago'"></span>
+      <span x-show="!gpsHasFix && gpsStaleMinutes === 0" style="color: #ca8a04;">No GPS fix available</span>
+      <span x-show="errorMsg" x-text="errorMsg" style="color: #da3633;"></span>
+    </div>
+  </div>
+  </template>
+
+  <!-- Fuel Stop modal (full screen) -->
   <div x-show="showFuelModal" x-cloak
        @keydown.escape.window="showFuelModal = false"
-       style="position: fixed; inset: 0; background: rgba(13,17,23,0.85);
-              display: flex; align-items: center; justify-content: center; z-index: 1000;">
-    <div style="background: #161b22; border: 1px solid #21262d; border-radius: 8px;
-                padding: 24px; max-width: 480px; width: 90%; min-height: 320px;">
-      <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 16px; color: #e6edf3;">Fuel Stop</h2>
+       style="position: fixed; inset: 0; background: #0d1117; z-index: 1000;
+              display: flex; flex-direction: column; padding: 48px; gap: 32px;">
 
-      <input type="number" step="0.1" min="0" x-model="fuelVolume" placeholder="Litres"
-             style="width: 100%; background: #0d1117; border: 1px solid #21262d;
-                    color: #e6edf3; border-radius: 4px; padding: 12px; font-size: 16px;
-                    min-height: 44px;" />
+    <h2 style="font-size: 39px; font-weight: 600; margin: 0; color: #e6edf3; flex-shrink: 0;">Fuel Stop</h2>
 
-      <input type="number" step="0.01" min="0" x-model="fuelCost"
-             placeholder="Cost (AUD) — private, never synced"
-             style="width: 100%; background: #0d1117; border: 1px solid #21262d;
-                    color: #e6edf3; border-radius: 4px; padding: 12px; font-size: 16px;
-                    min-height: 44px; margin-top: 12px;" />
+    <!-- Litres + Cost side by side -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; flex-shrink: 0;">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <label style="font-size: 23px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em;">Litres</label>
+        <input type="number" step="0.1" min="0" x-model="fuelVolume" placeholder="0.0"
+               style="background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                      border-radius: 8px; padding: 20px; font-size: 39px; min-height: 90px;" />
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <label style="font-size: 23px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em;">Cost (AUD)</label>
+        <input type="number" step="0.01" min="0" x-model="fuelCost" placeholder="0.00"
+               style="background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                      border-radius: 8px; padding: 20px; font-size: 39px; min-height: 90px;" />
+      </div>
+    </div>
 
-      <input type="number" step="1" min="0" x-model="fuelOdo"
-             placeholder="Odometer (km) — optional"
-             style="width: 100%; background: #0d1117; border: 1px solid #21262d;
-                    color: #e6edf3; border-radius: 4px; padding: 12px; font-size: 16px;
-                    min-height: 44px; margin-top: 12px;" />
+    <!-- Odometer full width -->
+    <div style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0;">
+      <label style="font-size: 23px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em;">Odometer (km) — optional</label>
+      <input type="number" step="1" min="0" x-model="fuelOdo" placeholder="0"
+             style="background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                    border-radius: 8px; padding: 20px; font-size: 39px; min-height: 90px;" />
+    </div>
 
-      <div style="margin-top: 12px; font-size: 12px; font-weight: 600;">
+    <!-- GPS status + error + buttons -->
+    <div style="margin-top: auto; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
+      <div style="font-size: 26px; font-weight: 600;">
         <span x-show="gpsHasFix" style="color: #8b949e;">Location captured (3D fix)</span>
         <span x-show="!gpsHasFix && gpsStaleMinutes > 0" style="color: #ca8a04;"
               x-text="'Location from ' + gpsStaleMinutes + ' minutes ago'"></span>
         <span x-show="!gpsHasFix && gpsStaleMinutes === 0" style="color: #ca8a04;">No GPS fix available</span>
+        <span x-show="errorMsg" x-text="errorMsg" style="color: #da3633; margin-left: 16px;"></span>
       </div>
-
-      <div x-show="errorMsg" x-text="errorMsg"
-           style="margin-top: 12px; color: #da3633; font-size: 12px; font-weight: 600;"></div>
-
-      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px;">
+      <div style="display: flex; gap: 16px;">
         <button @click="showFuelModal = false"
-                style="background: none; color: #8b949e; padding: 8px 16px;
-                       border: none; border-radius: 4px; cursor: pointer;">Close</button>
+                style="background: #161b22; color: #8b949e; padding: 16px 32px; font-size: 35px;
+                       border: 1px solid #21262d; border-radius: 8px; cursor: pointer;">Close</button>
         <button @click.prevent="saveFuel()" :disabled="savingFuel || !(parseFloat(fuelVolume) > 0)"
                 :style="(savingFuel || !(parseFloat(fuelVolume) > 0))
-                  ? 'background: #21262d; color: #8b949e; cursor: not-allowed; padding: 8px 16px; border: none; border-radius: 4px;'
-                  : 'background: #1f6feb; color: #fff; cursor: pointer; padding: 8px 16px; border: none; border-radius: 4px; font-weight: 600;'"
+                  ? 'background: #21262d; color: #8b949e; cursor: not-allowed; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px;'
+                  : 'background: #1f6feb; color: #fff; cursor: pointer; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px; font-weight: 600;'"
                 x-text="savingFuel ? 'Saving...' : 'Log Fuel Stop'"></button>
       </div>
     </div>
   </div>
 
-  <!-- Driver stats modal -->
+  <!-- Driver stats modal (full screen) -->
   <div x-show="showDriverModal"
        x-cloak
        @keydown.escape.window="showDriverModal = false"
-       class="fixed inset-0 flex items-center justify-center bg-black/70"
-       style="z-index: 1000;"
-       @click.self="showDriverModal = false">
-    <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 w-full max-w-md">
-      <div class="flex justify-between items-center mb-4">
-        <h2 class="text-lg font-semibold text-gray-100">Driver</h2>
-        <button @click="showDriverModal = false"
-                class="text-gray-400 hover:text-white">&times;</button>
-      </div>
+       style="position: fixed; inset: 0; background: #0d1117; z-index: 1000;
+              display: flex; flex-direction: column; padding: 48px; gap: 24px;">
 
-      <div class="mb-4">
-        <label class="block text-sm text-gray-400 mb-1">Switch to</label>
-        <select x-model="driverSelection"
-                @change="switchDriver(driverSelection)"
-                class="w-full bg-gray-800 border border-gray-700 text-gray-100 rounded px-3 py-2">
-          <option value="">-- No driver --</option>
-          <template x-for="name in driverRoster" :key="name">
-            <option :value="name" x-text="name"></option>
-          </template>
-        </select>
-      </div>
+    <h2 style="font-size: 39px; font-weight: 600; margin: 0; color: #e6edf3;">Driver</h2>
 
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="text-gray-400 border-b border-gray-700">
-            <th class="text-left py-1">Driver</th>
-            <th class="text-right py-1">Time</th>
-            <th class="text-right py-1">%</th>
+    <select x-model="driverSelection"
+            @change="switchDriver(driverSelection)"
+            style="background: #161b22; border: 1px solid #21262d;
+                   color: #e6edf3; border-radius: 8px; padding: 16px;
+                   font-size: 31px; min-height: 70px;">
+      <option value="">-- No driver --</option>
+      <template x-for="name in driverRoster" :key="name">
+        <option :value="name" x-text="name"></option>
+      </template>
+    </select>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 31px;">
+      <thead>
+        <tr style="color: #8b949e; border-bottom: 1px solid #21262d;">
+          <th style="text-align: left; padding: 12px 0;">Driver</th>
+          <th style="text-align: right; padding: 12px 0;">Time</th>
+          <th style="text-align: right; padding: 12px 0;">%</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="row in driverStats" :key="row.driver_name">
+          <tr style="border-bottom: 1px solid #161b22;">
+            <td style="padding: 14px 0; color: #e6edf3;" x-text="row.driver_name"></td>
+            <td style="padding: 14px 0; text-align: right; color: #8b949e;"
+                x-text="formatDuration(row.total_seconds)"></td>
+            <td style="padding: 14px 0; text-align: right; color: #8b949e;"
+                x-text="row.pct + '%'"></td>
           </tr>
-        </thead>
-        <tbody>
-          <template x-for="row in driverStats" :key="row.driver_name">
-            <tr class="border-b border-gray-800">
-              <td class="py-1 text-gray-100" x-text="row.driver_name"></td>
-              <td class="py-1 text-right text-gray-300"
-                  x-text="formatDuration(row.total_seconds)"></td>
-              <td class="py-1 text-right text-gray-300"
-                  x-text="row.pct + '%'"></td>
-            </tr>
-          </template>
-          <tr x-show="driverStats.length === 0">
-            <td colspan="3" class="py-2 text-center text-gray-500">No stints recorded yet</td>
-          </tr>
-        </tbody>
-      </table>
+        </template>
+        <tr x-show="driverStats.length === 0">
+          <td colspan="3" style="padding: 16px 0; text-align: center; color: #8b949e;">No stints recorded yet</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top: auto; display: flex; justify-content: flex-end;">
+      <button @click="showDriverModal = false"
+              style="background: #161b22; color: #8b949e; padding: 16px 32px; font-size: 35px;
+                     border: 1px solid #21262d; border-radius: 8px; cursor: pointer;">Close</button>
     </div>
   </div>
 
@@ -356,6 +361,8 @@
         speed: 0, imuTemp: '—', socTemp: '—',
         gpsBadge: 'NO FIX', gpsBadgeClass: 'bg-red-700',
         syncBadge: 'SYNC OFFLINE', syncBadgeClass: 'bg-red-700',
+        netBadge: 'NET OFFLINE', netBadgeClass: 'bg-red-700',
+        recBadge: 'NO REC', recBadgeClass: 'bg-gray-700',
         events: [],
         gx: 0, gy: 0, peakG: 1.0, peakGAt: 0,
         map: null, marker: null, breadcrumb: null, lastInteract: 0,
@@ -483,12 +490,16 @@
               this.gpsBadge = `3D · ${d.sats} sats · HDOP ${(d.hdop||0).toFixed(1)}`;
               this.gpsBadgeClass = 'bg-green-700';
             }
+            this.netBadge = d.sync_connected ? 'NET OK' : 'NET OFFLINE';
+            this.netBadgeClass = d.sync_connected ? 'bg-green-700' : 'bg-red-700';
             if (d.sync_connected) {
-              this.syncBadge = d.sync_backlog > 0 ? `SYNC ${d.sync_backlog} pending` : 'SYNC OK';
+              this.syncBadge = d.sync_backlog > 0 ? `SYNC ${d.sync_backlog}` : 'SYNC OK';
               this.syncBadgeClass = d.sync_backlog > 0 ? 'bg-yellow-600' : 'bg-green-700';
             } else {
-              this.syncBadge = 'SYNC OFFLINE'; this.syncBadgeClass = 'bg-red-700';
+              this.syncBadge = 'SYNC —'; this.syncBadgeClass = 'bg-gray-700';
             }
+            this.recBadge = d.recording_active ? 'REC' : 'NO REC';
+            this.recBadgeClass = d.recording_active ? 'bg-red-700' : 'bg-gray-700';
             this.activeDriver = d.active_driver;
             if (d.lat != null && d.lng != null) {
               const ll = [d.lat, d.lng];
@@ -581,7 +592,7 @@
           const py = cy - (this.gy / this.peakG) * r;
           ctx.fillStyle = '#1f6feb';
           ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI*2); ctx.fill();
-          ctx.fillStyle = '#8b949e'; ctx.font = '14px system-ui';
+          ctx.fillStyle = '#8b949e'; ctx.font = '27px system-ui';
           ctx.fillText(`±${this.peakG.toFixed(1)}g`, 10, 20);
           requestAnimationFrame(() => this.drawGauge());
         },

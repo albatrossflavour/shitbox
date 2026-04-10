@@ -811,6 +811,9 @@ class UnifiedEngine:
                         "sync_backlog": backlog,
                         "event_count_today": self.events_captured,
                         "active_driver": driver_state.get_active_driver(),
+                        "recording_active": bool(self._pending_post_capture)
+                            or (self.video_ring_buffer is not None and self.video_ring_buffer.is_saving)
+                            or (self.video_recorder is not None and self.video_recorder.is_recording),
                     })
                 except Exception as exc:
                     log.warning("dashboard_snapshot_update_failed", error=str(exc))
@@ -875,6 +878,7 @@ class UnifiedEngine:
         if self._dashboard is not None:
             try:
                 dashboard_push_event({
+                    "id": int(event.start_time * 1000),
                     "type": event.event_type.value.upper(),
                     "timestamp": datetime.fromtimestamp(
                         event.start_time, tz=timezone.utc

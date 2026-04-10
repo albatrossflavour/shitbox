@@ -342,6 +342,7 @@ class EventStorage:
                 continue
             dt = datetime.fromtimestamp(start_time, tz=timezone.utc)
             entry: dict = {
+                "id": int(start_time * 1000),
                 "type": str(meta.get("type", "unknown")).upper(),
                 "timestamp": dt.isoformat(),
                 "peak_g": meta.get("peak_value"),
