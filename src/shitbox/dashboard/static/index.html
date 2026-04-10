@@ -55,10 +55,20 @@
     <!-- Spacer -->
     <div style="flex: 1;"></div>
 
-    <!-- Modal action buttons + success msg -->
-    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-      <button class="badge" style="cursor: pointer; min-height: 28px;" @click="openNoteModal()">+ Note</button>
-      <button class="badge" style="cursor: pointer; min-height: 28px;" @click="openFuelModal()">+ Fuel</button>
+    <!-- Action buttons + success flash -->
+    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+      <button @click="openMap()"
+              style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
+                     color: #58a6ff; font-size: 20px; font-weight: 700;
+                     padding: 6px 14px; border-radius: 4px; min-height: 44px;">MAP</button>
+      <button @click="openNoteModal()"
+              style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
+                     color: #e6edf3; font-size: 20px; font-weight: 700;
+                     padding: 6px 14px; border-radius: 4px; min-height: 44px;">+ Note</button>
+      <button @click="openFuelModal()"
+              style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
+                     color: #e6edf3; font-size: 20px; font-weight: 700;
+                     padding: 6px 14px; border-radius: 4px; min-height: 44px;">+ Fuel</button>
       <span class="badge" x-show="successMsg" x-text="successMsg"
             style="background: #238636; color: #fff;"></span>
     </div>
@@ -88,20 +98,10 @@
       </div>
 
       <!-- Waypoint distance tile -->
-      <div class="card" style="flex-shrink: 0; padding: 8px;">
+      <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
         <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Next WP</div>
-        <div class="num" style="font-size: 20px;" x-text="waypointText"></div>
+        <div class="num" style="font-size: 24px;" x-text="waypointText"></div>
       </div>
-
-      <!-- MAP button -->
-      <button @click="openMap()"
-              class="card"
-              style="flex: 1; cursor: pointer; background: #161b22; border: 1px solid #30363d; color: #58a6ff;
-                     font-size: 22px; font-weight: 700; letter-spacing: 0.08em;
-                     display: flex; align-items: center; justify-content: center;
-                     min-height: 60px; border-radius: 4px;">
-        MAP
-      </button>
     </div>
   </main>
 
