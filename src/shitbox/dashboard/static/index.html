@@ -7,9 +7,8 @@
   <link rel="stylesheet" href="/static/vendor/tailwind.min.css">
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
   <style>
-    html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; cursor: none; }
-    body { margin: 0; padding: 0; width: 800px; height: 480px; overflow: hidden; transform-origin: top left; user-select: none; -webkit-user-select: none; }
-    * { cursor: none !important; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; width: 800px; height: 480px; overflow: hidden; background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    * { cursor: none !important; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
     .num { font-variant-numeric: tabular-nums; font-weight: 600; }
     .card { background: #161b22; border: 1px solid #21262d; }
     .badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-block; }
@@ -339,14 +338,17 @@
 
   <script src="/static/vendor/leaflet.js"></script>
   <script>
-    // Scale the fixed 800×480 layout to fill whatever screen the kiosk is running on.
-    // Uses independent X/Y scale so there are no black bars regardless of aspect ratio.
+    // Scale to fill the screen using the viewport meta tag rather than CSS transform.
+    // This is the correct approach for touchscreen kiosks -- the browser maps touch
+    // coordinates through its native viewport scaling, which software rendering handles
+    // correctly. CSS transform hit-testing breaks under --disable-gpu.
     (function () {
-      function scaleToFit() {
-        document.body.style.transform = 'scale(' + (window.innerWidth / 800) + ',' + (window.innerHeight / 480) + ')';
-      }
-      scaleToFit();
-      window.addEventListener('resize', scaleToFit);
+      var scale = window.screen.width / 800;
+      document.querySelector('meta[name="viewport"]').content =
+        'width=800, initial-scale=' + scale +
+        ', minimum-scale=' + scale +
+        ', maximum-scale=' + scale +
+        ', user-scalable=no';
     })();
   </script>
   <script src="/static/vendor/alpine.min.js" defer></script>
