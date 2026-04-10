@@ -1,13 +1,11 @@
 """Unit tests for BatchSyncService._readings_to_metrics().
 
 Tests cover lux metric emission and DS18B20 probe label generation.
-RED phase: all tests start as xfail and will be un-xfailed in Task 2b.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -37,7 +35,6 @@ def _ts() -> datetime:
     return datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
-@pytest.mark.xfail(reason="shitbox_lux not yet in _readings_to_metrics", strict=True)
 def test_lux_metric_emitted() -> None:
     """LIGHT reading with lux value produces a shitbox_lux metric tuple."""
     svc = _make_service()
@@ -66,7 +63,6 @@ def test_lux_none_produces_no_metric() -> None:
     assert "shitbox_lux" not in names
 
 
-@pytest.mark.xfail(reason="sensor_id field not yet on Reading", strict=True)
 def test_temp_exterior_probe_label() -> None:
     """TEMPERATURE reading with sensor_id 'exterior' gets a probe label."""
     svc = _make_service()
@@ -84,7 +80,6 @@ def test_temp_exterior_probe_label() -> None:
     assert temp_metrics[0][2] == 25.0
 
 
-@pytest.mark.xfail(reason="sensor_id field not yet on Reading", strict=True)
 def test_temp_engine_bay_probe_label() -> None:
     """TEMPERATURE reading with sensor_id 'engine_bay' gets a probe label."""
     svc = _make_service()

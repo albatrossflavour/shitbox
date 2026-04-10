@@ -364,8 +364,21 @@ class BatchSyncService:
 
             elif reading.sensor_type.value == "temp":
                 if reading.temp_celsius is not None:
+                    if reading.sensor_id:
+                        temp_labels = dict(labels)
+                        temp_labels["probe"] = reading.sensor_id
+                        metrics.append(
+                            ("shitbox_temp", temp_labels, reading.temp_celsius, timestamp_ms)
+                        )
+                    else:
+                        metrics.append(
+                            ("shitbox_temp", labels, reading.temp_celsius, timestamp_ms)
+                        )
+
+            elif reading.sensor_type.value == "light":
+                if reading.lux is not None:
                     metrics.append(
-                        ("shitbox_temp", labels, reading.temp_celsius, timestamp_ms)
+                        ("shitbox_lux", labels, reading.lux, timestamp_ms)
                     )
 
             elif reading.sensor_type.value == "power":
