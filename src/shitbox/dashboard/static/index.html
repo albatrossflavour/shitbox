@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/vendor/tailwind.min.css">
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
   <style>
-    body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; }
+    html, body { margin: 0; padding: 0; width: 800px; height: 480px; overflow: hidden; background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     .num { font-variant-numeric: tabular-nums; font-weight: 600; }
     .card { background: #161b22; border: 1px solid #21262d; }
     .badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-block; }
@@ -17,61 +17,135 @@
     .ev-ROUGH_ROAD { background: #8957e5; color: #fff; }
     .ev-MANUAL, .ev-BUTTON { background: #238636; color: #fff; }
     .ev-BOOT { background: #1f6feb; color: #fff; }
-    #map { background: #0d1117; }
+    #map { background: #0d1117; width: 100%; height: 100%; }
     .stale { color: #da3633; }
     .bg-red-700 { background: #b91c1c; color: #fff; }
     .bg-yellow-600 { background: #ca8a04; color: #000; }
     .bg-green-700 { background: #15803d; color: #fff; }
   </style>
 </head>
-<body x-data="dashboard()" x-init="init()">
+<body x-data="dashboard()" x-init="init()" style="display: flex; flex-direction: column; width: 800px; height: 480px; overflow: hidden;">
 
-  <!-- TOP BAR (h: 80px) -->
-  <header class="card flex items-center justify-between px-6" style="height: 80px">
-    <div>
+  <!-- TOP STRIP (h: 72px) -->
+  <header class="card flex items-center gap-3 px-4" style="height: 72px; flex-shrink: 0;">
+    <!-- Speed: dominant -->
+    <div class="num" style="font-size: 64px; line-height: 1; min-width: 120px; text-align: right;">
+      <span x-text="speed"></span>
+    </div>
+    <div class="text-gray-400" style="font-size: 13px; padding-top: 4px;">km/h</div>
+
+    <!-- Divider -->
+    <div style="width: 1px; height: 40px; background: #21262d; flex-shrink: 0;"></div>
+
+    <!-- Active driver -->
+    <div style="min-width: 100px; flex-shrink: 0;">
+      <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Driver</div>
+      <div class="cursor-pointer text-gray-100 hover:text-white font-semibold"
+           style="font-size: 15px;"
+           @click="openDriverModal()"
+           x-text="activeDriver || '---'"></div>
+    </div>
+
+    <!-- GPS + sync badges -->
+    <div style="display: flex; flex-direction: column; gap: 3px; flex-shrink: 0;">
       <span class="badge" :class="gpsBadgeClass" x-text="gpsBadge"></span>
+      <span class="badge" :class="syncBadgeClass" x-text="syncBadge"></span>
     </div>
-    <div class="num text-5xl"><span x-text="speed"></span> <span class="text-base text-gray-400">km/h</span></div>
-    <div class="text-sm text-gray-400">
-      Driver:
-      <span class="cursor-pointer text-gray-100 hover:text-white underline-offset-2 hover:underline"
-            @click="openDriverModal()"
-            x-text="activeDriver || '---'"></span>
-    </div>
-    <div style="display: flex; align-items: center; gap: 8px;">
-      <button class="badge" style="cursor: pointer;" @click="openNoteModal()">+ Note</button>
-      <button class="badge" style="cursor: pointer;" @click="openFuelModal()">+ Fuel</button>
+
+    <!-- Spacer -->
+    <div style="flex: 1;"></div>
+
+    <!-- Modal action buttons + success msg -->
+    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+      <button class="badge" style="cursor: pointer; min-height: 28px;" @click="openNoteModal()">+ Note</button>
+      <button class="badge" style="cursor: pointer; min-height: 28px;" @click="openFuelModal()">+ Fuel</button>
       <span class="badge" x-show="successMsg" x-text="successMsg"
             style="background: #238636; color: #fff;"></span>
-      <span class="badge" :class="syncBadgeClass" x-text="syncBadge"></span>
     </div>
   </header>
 
-  <!-- MAIN: G-gauge + temps + map -->
-  <main class="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
-    <section class="space-y-4">
-      <div class="card p-4 flex items-center justify-center" style="height: min(40vh,40vw)">
-        <canvas id="ggauge" width="400" height="400"></canvas>
+  <!-- MAIN CENTRE (fills remaining height between header and footer) -->
+  <main style="flex: 1; display: flex; overflow: hidden;">
+
+    <!-- Left: G-gauge -->
+    <div class="card" style="width: 360px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 4px;">
+      <canvas id="ggauge" width="350" height="260"></canvas>
+    </div>
+
+    <!-- Right: data tiles + MAP button -->
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 8px; overflow: hidden;">
+
+      <!-- Temp row -->
+      <div style="display: flex; gap: 6px; flex-shrink: 0;">
+        <div class="card" style="flex: 1; padding: 8px;">
+          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Cabin Temp</div>
+          <div class="num" style="font-size: 28px;"><span x-text="imuTemp"></span> <span class="text-gray-400" style="font-size: 14px;">&deg;C</span></div>
+        </div>
+        <div class="card" style="flex: 1; padding: 8px;">
+          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">SoC Temp</div>
+          <div class="num" style="font-size: 28px;"><span x-text="socTemp"></span> <span class="text-gray-400" style="font-size: 14px;">&deg;C</span></div>
+        </div>
       </div>
-      <div class="grid grid-cols-2 gap-4">
-        <div class="card p-4"><div class="text-sm text-gray-400">CABIN TEMP</div><div class="num text-4xl"><span x-text="imuTemp"></span> &deg;C</div></div>
-        <div class="card p-4"><div class="text-sm text-gray-400">SoC TEMP</div><div class="num text-4xl"><span x-text="socTemp"></span> &deg;C</div></div>
+
+      <!-- Waypoint distance tile -->
+      <div class="card" style="flex-shrink: 0; padding: 8px;">
+        <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Next WP</div>
+        <div class="num" style="font-size: 20px;" x-text="waypointText"></div>
       </div>
-    </section>
-    <section class="card overflow-hidden" style="height: 60vh">
-      <div id="map" style="height:100%; width:100%"></div>
-    </section>
+
+      <!-- MAP button -->
+      <button @click="openMap()"
+              class="card"
+              style="flex: 1; cursor: pointer; background: #161b22; border: 1px solid #30363d; color: #58a6ff;
+                     font-size: 22px; font-weight: 700; letter-spacing: 0.08em;
+                     display: flex; align-items: center; justify-content: center;
+                     min-height: 60px; border-radius: 4px;">
+        MAP
+      </button>
+    </div>
   </main>
 
-  <!-- BOTTOM EVENT STRIP (h: 88px) -->
-  <footer class="card flex items-center gap-3 px-4 overflow-x-auto" style="height: 88px">
-    <template x-for="ev in events" :key="ev.timestamp + ev.type">
-      <div class="badge" :class="'ev-' + ev.type">
-        <span x-text="ev.type"></span> &middot; <span x-text="ev.peak_g ? ev.peak_g.toFixed(1) + 'g' : ''"></span>
-      </div>
-    </template>
-    <div x-show="events.length === 0" class="text-sm text-gray-400">No events yet</div>
+  <!-- BOTTOM STRIP: 5-item event ticker (h: 120px) -->
+  <footer class="card" style="height: 120px; flex-shrink: 0; padding: 6px 10px; overflow: hidden;">
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <template x-for="ev in events" :key="ev.ts || ev.timestamp">
+        <div style="display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden;">
+          <span class="badge" :class="'ev-' + ev.type"
+                :style="`background:${EVENT_COLOURS[ev.type] || '#8b949e'}`"
+                x-text="ev.type"></span>
+          <span class="num text-gray-300" style="font-size: 13px;"
+                x-text="(ev.peak_g || 0).toFixed(1) + 'g'"></span>
+          <span class="text-gray-400" style="font-size: 12px;"
+                x-text="relativeTime(ev.ts || ev.timestamp)"></span>
+        </div>
+      </template>
+      <div x-show="events.length === 0" class="text-gray-400" style="font-size: 13px;">No events yet</div>
+    </div>
   </footer>
+
+  <!-- MAP overlay (z-index 100, reuses existing #map div + Leaflet instance) -->
+  <div x-show="showMap"
+       x-cloak
+       style="position: fixed; inset: 0; z-index: 100; background: #0d1117;"
+       @click.self="closeMap()">
+    <!-- Close button top-right so tap-to-dismiss on dark edges still works -->
+    <button @click="closeMap()"
+            style="position: absolute; top: 12px; right: 16px; z-index: 110;
+                   background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                   padding: 6px 14px; border-radius: 4px; font-size: 18px;
+                   cursor: pointer; font-weight: 700;">&times; Close</button>
+    <div id="map" style="position: absolute; inset: 0;"></div>
+  </div>
+
+  <!-- Alert overlay (z-index 150, above map overlay, below modals) -->
+  <div x-show="alertOverlay"
+       x-cloak
+       style="position: fixed; inset: 0; z-index: 150; display: flex; align-items: center; justify-content: center; pointer-events: none;"
+       :style="alertOverlay ? `background:${alertOverlay.colour}CC` : ''">
+    <div class="text-white font-bold"
+         style="font-size: 52px; text-align: center; padding: 24px; text-shadow: 0 2px 8px rgba(0,0,0,0.6);"
+         x-text="alertOverlay ? alertOverlay.message : ''"></div>
+  </div>
 
   <!-- Field Note modal -->
   <div x-show="showNoteModal" x-cloak
@@ -174,7 +248,8 @@
   <div x-show="showDriverModal"
        x-cloak
        @keydown.escape.window="showDriverModal = false"
-       class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+       class="fixed inset-0 flex items-center justify-center bg-black/70"
+       style="z-index: 1000;"
        @click.self="showDriverModal = false">
     <div class="bg-gray-900 border border-gray-700 rounded-lg p-6 w-full max-w-md">
       <div class="flex justify-between items-center mb-4">
@@ -250,12 +325,35 @@
         savingFuel: false,
         errorMsg: '',
         successMsg: '',
+        // Kiosk additions
+        showMap: false,
+        alertOverlay: null,
+        _alertTimer: null,
+        now: Date.now(),
+        waypointText: '-- km to --',
+        _waypoints: [
+          { name: "Port Douglas",        lat: -16.4838, lng: 145.4673 },
+          { name: "The Oasis Roadhouse", lat: -18.8797, lng: 144.5436 },
+          { name: "Aramac",              lat: -22.9667, lng: 145.2333 },
+          { name: "Toompine",            lat: -27.8500, lng: 144.4833 },
+          { name: "Louth",               lat: -30.5333, lng: 145.1167 },
+          { name: "Narrandera",          lat: -34.7475, lng: 146.5533 },
+          { name: "Dargo",               lat: -37.4975, lng: 147.2692 },
+          { name: "Melbourne",           lat: -37.8679, lng: 144.9743 },
+        ],
+        EVENT_COLOURS: {
+          HIGH_G: '#da3633', HARD_BRAKE: '#f85149', BIG_CORNER: '#d29922',
+          ROUGH_ROAD: '#8957e5', MANUAL: '#238636', BUTTON: '#238636',
+          BOOT: '#1f6feb',
+        },
         init() {
           this.initMap();
           this.openFast();
           this.openSlow();
           this.openEvents();
           requestAnimationFrame(() => this.drawGauge());
+          // Tick now every second so relativeTime() stays accurate (RESEARCH Pitfall 5)
+          setInterval(() => { this.now = Date.now(); }, 1000);
         },
         initMap() {
           this.map = L.map('map', { zoomControl: true, attributionControl: false }).setView([-25, 135], 5);
@@ -268,6 +366,26 @@
               this.map.panTo(this.marker.getLatLng());
             }
           }, 1000);
+        },
+        openMap() {
+          this.showMap = true;
+          this.$nextTick(() => {
+            if (this.map) this.map.invalidateSize();
+          });
+        },
+        closeMap() { this.showMap = false; },
+        showAlert(payload) {
+          if (this._alertTimer) { clearTimeout(this._alertTimer); this._alertTimer = null; }
+          const isSystem = payload.type === 'ALERT';
+          const colour = isSystem
+            ? '#da3633'
+            : (this.EVENT_COLOURS[payload.type] || '#8b949e');
+          const message = isSystem
+            ? payload.message
+            : `${payload.type} · ${(payload.peak_g || 0).toFixed(1)}g`;
+          this.alertOverlay = { message, colour, isSystem };
+          const duration = isSystem ? 10000 : 3000;
+          this._alertTimer = setTimeout(() => { this.alertOverlay = null; }, duration);
         },
         openFast() {
           const es = new EventSource('/sse/fast');
@@ -315,28 +433,55 @@
               pts.push(ll);
               if (pts.length > 300) pts.shift();
               this.breadcrumb.setLatLngs(pts);
+              this._updateWaypoint(d.lat, d.lng);
             }
           });
         },
         openEvents() {
-          const EVENT_COLOURS = {
-            HIGH_G: '#da3633', HARD_BRAKE: '#f85149', BIG_CORNER: '#d29922',
-            ROUGH_ROAD: '#8957e5', MANUAL: '#238636', BUTTON: '#238636',
-            BOOT: '#1f6feb',
-          };
           const es = new EventSource('/sse/events');
           es.addEventListener('event', (e) => {
             const ev = JSON.parse(e.data);
+            // ALERT events go to the overlay only — they are not rally events
+            if (ev.type === 'ALERT') {
+              this.showAlert(ev);
+              return;
+            }
             this.events.unshift(ev);
-            if (this.events.length > 10) this.events.pop();
+            if (this.events.length > 5) this.events.pop();
+            this.showAlert(ev);
             if (ev.lat != null && ev.lng != null) {
-              const col = EVENT_COLOURS[ev.type] || '#8b949e';
+              const col = this.EVENT_COLOURS[ev.type] || '#8b949e';
               const label = ev.peak_g ? `${ev.type} · ${ev.peak_g.toFixed(1)}g` : ev.type;
               L.circleMarker([ev.lat, ev.lng], { radius: 6, color: col, fillColor: col, fillOpacity: 0.85 })
                 .bindPopup(label)
                 .addTo(this.map);
             }
           });
+        },
+        _haversineKm(lat1, lon1, lat2, lon2) {
+          const R = 6371;
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLon = (lon2 - lon1) * Math.PI / 180;
+          const a = Math.sin(dLat/2)**2 +
+                    Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+          return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        },
+        _updateWaypoint(lat, lng) {
+          if (lat == null || lng == null) return;
+          let best = null, bestDist = Infinity;
+          for (const wp of this._waypoints) {
+            const d = this._haversineKm(lat, lng, wp.lat, wp.lng);
+            if (d < bestDist) { bestDist = d; best = wp; }
+          }
+          if (best) this.waypointText = `${Math.round(bestDist)} km to ${best.name}`;
+        },
+        relativeTime(ts) {
+          void this.now; // reference now so Alpine re-renders this when now ticks
+          const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+          if (diff < 0) return 'just now';
+          if (diff < 60) return `${diff}s ago`;
+          const m = Math.floor(diff / 60);
+          return m < 60 ? `${m}m ago` : `${Math.floor(m/60)}h ${m%60}m ago`;
         },
         drawGauge() {
           const c = document.getElementById('ggauge');
