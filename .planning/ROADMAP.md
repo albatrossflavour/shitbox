@@ -176,7 +176,10 @@ active driver, a scrolling event ticker, and visible alert overlays for critical
   3. The display shows the currently active driver, updated live from the SSE stream when the driver changes
   4. A high-G event, thermal alert, or undervoltage event triggers a visible full-screen alert overlay on the display
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+- [ ] 17-01-PLAN.md — Backend fixes: DS18B20 cabin temp fallback + thermal/undervoltage SSE alert bridge + Wave 0 tests
+- [ ] 17-02-PLAN.md — Kiosk 800x480 index.html rework: layout, overlays, 5-event ticker, waypoint haversine
 
 **UI hint**: yes
 
