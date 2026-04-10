@@ -343,7 +343,9 @@
     // coordinates through its native viewport scaling, which software rendering handles
     // correctly. CSS transform hit-testing breaks under --disable-gpu.
     (function () {
-      var scale = window.screen.width / 800;
+      // Read logical screen dimensions BEFORE changing viewport.
+      // screen.width is unreliable on rotated DSI displays -- use innerWidth/innerHeight.
+      var scale = Math.min(window.innerWidth / 800, window.innerHeight / 480);
       document.querySelector('meta[name="viewport"]').content =
         'width=800, initial-scale=' + scale +
         ', minimum-scale=' + scale +
