@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>shitbox</title>
   <link rel="stylesheet" href="/static/vendor/tailwind.min.css">
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
@@ -338,19 +338,15 @@
 
   <script src="/static/vendor/leaflet.js"></script>
   <script>
-    // Scale to fill the screen using the viewport meta tag rather than CSS transform.
-    // This is the correct approach for touchscreen kiosks -- the browser maps touch
-    // coordinates through its native viewport scaling, which software rendering handles
-    // correctly. CSS transform hit-testing breaks under --disable-gpu.
+    // Set page dimensions to match the actual screen.
+    // No transforms, no viewport tricks -- just make the layout the right size.
+    // innerWidth/innerHeight are rotation-aware; screen.width/height are not.
     (function () {
-      // Read logical screen dimensions BEFORE changing viewport.
-      // screen.width is unreliable on rotated DSI displays -- use innerWidth/innerHeight.
-      var scale = Math.min(window.innerWidth / 800, window.innerHeight / 480);
-      document.querySelector('meta[name="viewport"]').content =
-        'width=800, initial-scale=' + scale +
-        ', minimum-scale=' + scale +
-        ', maximum-scale=' + scale +
-        ', user-scalable=no';
+      var w = window.innerWidth, h = window.innerHeight;
+      document.documentElement.style.width  = w + 'px';
+      document.documentElement.style.height = h + 'px';
+      document.body.style.width  = w + 'px';
+      document.body.style.height = h + 'px';
     })();
   </script>
   <script src="/static/vendor/alpine.min.js" defer></script>
