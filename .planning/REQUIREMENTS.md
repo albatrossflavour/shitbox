@@ -4,10 +4,10 @@
 
 ### Driver Display (DISP)
 
-- [ ] **DISP-01**: User can view a fullscreen kiosk layout on the 7" touchscreen showing speed, G-force circle, temperatures, GPS status, and sync status
-- [ ] **DISP-02**: User can see a live event ticker scrolling recent events with event type and peak G value
+- [x] **DISP-01**: User can view a fullscreen kiosk layout on the 7" touchscreen showing speed, G-force circle, temperatures, GPS status, and sync status
+- [x] **DISP-02**: User can see a live event ticker scrolling recent events with event type and peak G value
 - [ ] **DISP-03**: Display shows the currently active driver, pulled live from driver tracking
-- [ ] **DISP-04**: Critical events (high G, thermal alerts, undervoltage) trigger visible alert overlays on the display
+- [x] **DISP-04**: Critical events (high G, thermal alerts, undervoltage) trigger visible alert overlays on the display
 
 ### Field Notes (NOTE)
 
@@ -78,10 +78,10 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| DISP-01 | Phase 17 | Pending |
-| DISP-02 | Phase 17 | Pending |
+| DISP-01 | Phase 17 | Complete |
+| DISP-02 | Phase 17 | Complete |
 | DISP-03 | Phase 17 | Pending |
-| DISP-04 | Phase 17 | Pending |
+| DISP-04 | Phase 17 | Complete |
 | NOTE-01 | Phase 12 | Complete |
 | NOTE-02 | Phase 12 | Complete |
 | NOTE-03 | Phase 18 | Pending |
