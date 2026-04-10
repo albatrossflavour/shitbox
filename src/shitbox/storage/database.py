@@ -13,7 +13,7 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 # Database schema version for migrations
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -203,6 +203,9 @@ class Database:
         if current_version < 8:
             self._migrate_to_v8(conn)
 
+        if current_version < 9:
+            self._migrate_to_v9(conn)
+
         if current_version < SCHEMA_VERSION:
             conn.execute(
                 "INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
@@ -352,6 +355,15 @@ class Database:
         conn.commit()
         log.info("migrated_to_v8", columns=["lux"])
 
+    def _migrate_to_v9(self, conn: sqlite3.Connection) -> None:
+        """Add sensor_id column for DS18B20 probe identification."""
+        try:
+            conn.execute("ALTER TABLE readings ADD COLUMN sensor_id TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        conn.commit()
+        log.info("migrated_to_v9", columns=["sensor_id"])
+
     def close(self) -> None:
         """Close database connection for current thread."""
         if hasattr(self._local, "conn") and self._local.conn:
@@ -399,7 +411,7 @@ class Database:
                     latitude, longitude, altitude_m, speed_kmh, heading_deg,
                     satellites, fix_quality,
                     accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z,
-                    temp_celsius,
+                    temp_celsius, sensor_id,
                     bus_voltage_v, current_ma, power_mw,
                     pressure_hpa, humidity_pct, env_temp_celsius,
                     gas_resistance_ohms,
@@ -407,7 +419,7 @@ class Database:
                     cpu_temp_celsius, cpu_percent, disk_percent, sync_backlog, throttle_flags
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 (
@@ -427,6 +439,7 @@ class Database:
                     reading.gyro_y,
                     reading.gyro_z,
                     reading.temp_celsius,
+                    reading.sensor_id,
                     reading.bus_voltage_v,
                     reading.current_ma,
                     reading.power_mw,
@@ -469,15 +482,16 @@ class Database:
                             latitude, longitude, altitude_m, speed_kmh, heading_deg,
                             satellites, fix_quality,
                             accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z,
-                            temp_celsius,
+                            temp_celsius, sensor_id,
                             bus_voltage_v, current_ma, power_mw,
                             pressure_hpa, humidity_pct, env_temp_celsius,
                             gas_resistance_ohms,
                             lux,
-                            cpu_temp_celsius, disk_percent, sync_backlog, throttle_flags
+                            cpu_temp_celsius, cpu_percent, disk_percent,
+                            sync_backlog, throttle_flags
                         ) VALUES (
                             ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
                         """,
                         (
@@ -497,6 +511,7 @@ class Database:
                             reading.gyro_y,
                             reading.gyro_z,
                             reading.temp_celsius,
+                            reading.sensor_id,
                             reading.bus_voltage_v,
                             reading.current_ma,
                             reading.power_mw,
@@ -506,6 +521,7 @@ class Database:
                             reading.gas_resistance_ohms,
                             reading.lux,
                             reading.cpu_temp_celsius,
+                            reading.cpu_percent,
                             reading.disk_percent,
                             reading.sync_backlog,
                             reading.throttle_flags,
@@ -719,6 +735,7 @@ class Database:
             gyro_y=row["gyro_y"],
             gyro_z=row["gyro_z"],
             temp_celsius=row["temp_celsius"],
+            sensor_id=row["sensor_id"] if "sensor_id" in keys else None,
             bus_voltage_v=row["bus_voltage_v"] if "bus_voltage_v" in keys else None,
             current_ma=row["current_ma"] if "current_ma" in keys else None,
             power_mw=row["power_mw"] if "power_mw" in keys else None,

@@ -102,7 +102,6 @@ def test_temp_engine_bay_probe_label() -> None:
     assert temp_metrics[0][2] == 80.0
 
 
-@pytest.mark.xfail(reason="sensor_id field not yet on Reading", strict=True)
 def test_temp_no_sensor_id_backward_compat() -> None:
     """TEMPERATURE reading with sensor_id=None emits metric without probe label."""
     svc = _make_service()

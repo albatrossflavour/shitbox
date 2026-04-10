@@ -242,6 +242,27 @@ def test_migration_v8_adds_lux_column(tmp_path):
             version = conn.execute(
                 "SELECT MAX(version) AS v FROM schema_version"
             ).fetchone()["v"]
-        assert version == 8, f"Expected schema_version 8, got {version}"
+        assert version >= 8, f"Expected schema_version >= 8, got {version}"
+    finally:
+        db.close()
+
+
+def test_migration_v9_adds_sensor_id_column(tmp_path):
+    """Fresh database contains sensor_id column in readings table at schema v9."""
+    db = Database(tmp_path / "test.db")
+    db.connect()
+    try:
+        with db.transaction() as conn:
+            cols = conn.execute("PRAGMA table_info(readings)").fetchall()
+            col_names = {c["name"] for c in cols}
+        assert "sensor_id" in col_names, (
+            f"Expected sensor_id column in readings. Got: {col_names}"
+        )
+
+        with db.transaction() as conn:
+            version = conn.execute(
+                "SELECT MAX(version) AS v FROM schema_version"
+            ).fetchone()["v"]
+        assert version >= 9, f"Expected schema_version >= 9, got {version}"
     finally:
         db.close()

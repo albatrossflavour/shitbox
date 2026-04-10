@@ -120,6 +120,7 @@ class Reading:
 
     # Temperature fields
     temp_celsius: Optional[float] = None
+    sensor_id: Optional[str] = None
 
     # Power fields (INA219)
     bus_voltage_v: Optional[float] = None
@@ -245,6 +246,7 @@ class Reading:
             return {
                 "ts": ts,
                 "temp": self.temp_celsius,
+                "sensor_id": self.sensor_id,
             }
         elif self.sensor_type == SensorType.POWER:
             return {

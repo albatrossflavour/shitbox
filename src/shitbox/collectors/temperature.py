@@ -12,11 +12,11 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-_SENSOR_NOT_READY_RETRY_SECONDS = 0.15  # DS18B20 needs up to 750ms to convert; retry after 150ms
-
 from shitbox.collectors.base import BaseCollector
 from shitbox.storage.models import Reading
 from shitbox.utils.logging import get_logger
+
+_SENSOR_NOT_READY_RETRY_SECONDS = 0.15  # DS18B20 needs up to 750ms to convert; retry after 150ms
 
 log = get_logger(__name__)
 
@@ -124,4 +124,5 @@ class DS18B20Collector(BaseCollector["DS18B20Reading"]):
         return Reading(
             sensor_type=SensorType.TEMPERATURE,
             temp_celsius=data.temp_celsius,
+            sensor_id=data.role,
         )
