@@ -7,8 +7,12 @@
   <link rel="stylesheet" href="/static/vendor/tailwind.min.css">
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
   <style>
-    html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { margin: 0; padding: 0; width: 800px; height: 480px; overflow: hidden; transform-origin: top left; }
+    html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; cursor: none; }
+    body { margin: 0; padding: 0; width: 800px; height: 480px; overflow: hidden; transform-origin: top left; user-select: none; -webkit-user-select: none; }
+    * { cursor: none !important; -webkit-tap-highlight-color: transparent; }
+    /* Instant tap response everywhere; Leaflet overrides this on its own container */
+    body * { touch-action: manipulation; }
+    button, select, input, textarea { touch-action: manipulation; }
     .num { font-variant-numeric: tabular-nums; font-weight: 600; }
     .card { background: #161b22; border: 1px solid #21262d; }
     .badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-block; }
