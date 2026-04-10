@@ -1,75 +1,45 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-09T01:37:24.456Z",
-  "phase": "10",
-  "phase_name": "live-dashboard-with-offline-map",
-  "phase_dir": ".planning/phases/10-live-dashboard-with-offline-map",
-  "plan": 5,
-  "task": 1,
-  "total_tasks": 1,
+  "timestamp": "2026-04-10T00:49:23.622Z",
+  "phase": "ad-hoc",
+  "phase_name": "hardware-stabilisation",
+  "phase_dir": null,
   "status": "paused",
   "completed_tasks": [
-    {"id": "10-00", "name": "RED test scaffolds", "status": "done", "commit": "02d6e2e"},
-    {"id": "10-01", "name": "Dashboard config + package + snapshot foundation", "status": "done", "commit": "dc6938c"},
-    {"id": "10-02", "name": "Offline tile downloader + vendor hashes", "status": "done", "commit": "668faf3"},
-    {"id": "10-03", "name": "FastAPI server, SSE, MBTiles tile handler, EventStorage.recent()", "status": "done", "commit": "c9af7b7"},
-    {"id": "10-04", "name": "Engine wiring + frontend (Alpine/Tailwind/Leaflet)", "status": "done", "commit": "df0326e"}
+    {"id": 1, "name": "Fix SensorType.LIGHT and lux storage", "status": "done", "detail": "Added LIGHT enum, lux field to Reading, schema v8 migration, fixed to_reading() in light.py"},
+    {"id": 2, "name": "BME680 retry loop", "status": "done", "detail": "Added 5-attempt retry with 1s delay to EnvironmentCollector.setup()"},
+    {"id": 3, "name": "BME680 debugging", "status": "done", "detail": "Confirmed hardware fine, root cause unknown. Power cycle resolved. Research note written to Brain at research/shitbox-bme680-i2c-issue.md"},
+    {"id": 4, "name": "ffmpeg CPU investigation", "status": "done", "detail": "MJPEG->libx264 continuous encode is root cause. Stream copy incompatible with filtergraph overlays. h264_v4l2m2m not available on Pi 5 RP1. Reverted to ultrafast temporarily."},
+    {"id": 5, "name": "Camera research and decision", "status": "done", "detail": "ELP USB1080P03-BH100 ordered. H.264 UVC, 117 HFOV, SC2210 sensor. Current ELP 16MP return initiated."}
   ],
   "remaining_tasks": [
-    {"id": "10-05", "name": "Manual Pi smoke test", "status": "blocked", "blocker": "IMU sampler talks to non-existent MPU6050 at 0x68; real hardware is LSM6DSOX at 0x6A. Dashboard renders fine but live IMU stream is meaningless until Phase 11 sampler rewrite lands."}
+    {"id": 6, "name": "Rsync latest code to Pi and restart service", "status": "not_started"},
+    {"id": 7, "name": "Camera swap", "status": "blocked", "detail": "Waiting for ELP USB1080P03-BH100. On arrival: v4l2-ctl --list-formats-ext to confirm H.264, update config camera_controls, switch ring_buffer encoder to stream copy (remove libx264 entirely)."},
+    {"id": 8, "name": "Update Brain with camera decision", "status": "not_started"}
   ],
   "blockers": [
-    {
-      "description": "IMU sampler hardcoded to MPU6050 @ 0x68; Pi 5 v2 build has LSM6DSOX @ 0x6A. Dashboard UI + SSE + tiles verified working, but live G-force/gyro stream is garbage (probably 0xFF reads parsed as ±32767).",
-      "type": "technical",
-      "workaround": "Phase 11 will rewrite src/shitbox/events/sampler.py for LSM6DSOX before Phase 10 smoke test resumes."
-    },
-    {
-      "description": "i2c bus hung once during testing with 'SDA stuck at low' at kernel uptime ~6599s. Daemon recovery path tries `sudo reboot` but systemd unit has NoNewPrivileges=true so sudo is denied — recovery path is effectively broken.",
-      "type": "technical",
-      "workaround": "Bus recovered after manual intervention. Needs proper fix: either DT-level bus recovery overlay (scl-gpios/sda-gpios) or systemd watchdog fallback instead of sudo reboot. Tracked as Phase 11 gap."
-    },
-    {
-      "description": "Pi daemon is also logging 'unable to open database file' for every tile request — MBTiles file not present on the Pi at configured dashboard.tiles_path. Not a bug, just needs tools/download_tiles run against the rally corridor and the .mbtiles copied to the Pi.",
-      "type": "human_action",
-      "workaround": "Run tools/download_tiles on Pi or laptop with an appropriate bbox, copy the output to the path in config/config.yaml."
-    }
+    {"description": "New camera not yet arrived", "type": "external", "workaround": "Running libx264 ultrafast. Pi on desk only, not in car."},
+    {"description": "Pi 5 RP1 has no H.264 hardware encoder via V4L2 M2M", "type": "technical", "workaround": "Stream copy once H.264 camera arrives. Permanently blocked without camera swap."}
   ],
   "human_actions_pending": [
-    {
-      "action": "Run 10-05 manual smoke test on Pi",
-      "context": "Must wait until Phase 11 delivers real LSM6DSOX sampler so live data stream is meaningful",
-      "blocking": true
-    },
-    {
-      "action": "Build corridor MBTiles file and deploy to Pi",
-      "context": "Tile handler is working, just has no database to read from",
-      "blocking": false
-    }
+    {"action": "Rsync uncommitted files to Pi and restart shitbox-telemetry", "context": "ring_buffer.py ultrafast, all sensor fixes need deploying", "blocking": false},
+    {"action": "Return current ELP 16MP to Amazon once new camera arrives", "context": "Return request submitted", "blocking": false},
+    {"action": "On new camera arrival: confirm H.264 with v4l2-ctl, update config, switch to stream copy", "context": "ELP USB1080P03-BH100 ordered", "blocking": false}
   ],
   "decisions": [
-    {
-      "decision": "Replaced sse-starlette EventSourceResponse with plain StreamingResponse",
-      "rationale": "Starlette 0.52 TestClient.stream fully drains infinite async generators before returning — made SSE tests unworkable. Switched to live-server tests via httpx against DashboardServer on ephemeral port.",
-      "phase": "10"
-    },
-    {
-      "decision": "Shipped Tailwind 2.2.19 CDN build instead of Tailwind 3",
-      "rationale": "Tailwind 3 has no CDN build. Plan explicitly permitted the v2 fallback.",
-      "phase": "10"
-    },
-    {
-      "decision": "Fixed Sydney z=10 tile coordinate bug (939 → 942)",
-      "rationale": "Plan text asserted (939,614) but standard OSM slippy formula produces (942,614). Tests updated to match the formula.",
-      "phase": "10"
-    },
-    {
-      "decision": "Pause Phase 10 at Wave 4 and open Phase 11 for v2 hardware migration",
-      "rationale": "Phase 10 dashboard rendering is verified working but live data is meaningless because the IMU sampler is still coded for the v1 MPU6050. Full v2 sensor migration (LSM6DSOX, LIS3MDL, DS18B20, new front cam, VEML7700, INA226, PM2.5) needed before Phase 10 smoke test can validate real telemetry.",
-      "phase": "10→11"
-    }
+    {"decision": "Keep libx264 ultrafast temporarily", "rationale": "No hardware encoder on Pi 5 RP1. New H.264 camera ordered. ultrafast reduces heat vs veryfast while waiting.", "phase": "ad-hoc"},
+    {"decision": "Replace ELP 16MP front camera with ELP USB1080P03-BH100", "rationale": "Current camera MJPEG-only forces continuous software encode causing thermal issues. New camera H.264 UVC enables stream copy.", "phase": "ad-hoc"},
+    {"decision": "Current ELP 16MP to become cabin PiP camera when new one arrives", "rationale": "Good sensor, wrong output format for continuous front recording. Fine for lower-duty PiP.", "phase": "ad-hoc"}
   ],
-  "uncommitted_files": [],
-  "next_action": "Run /gsd:discuss-phase 11 with the locked scope (see context_notes) to gather detailed requirements for v2 hardware migration before planning.",
-  "context_notes": "Phase 11 scope is already agreed. Must-haves: LSM6DSOX sampler rewrite (priority 1), new front cam udev + capture config (16MP 32e4:0298 replacing UGREEN 720p, priority 2), DS18B20 dual-probe 1-Wire collector for engine + outside with ROM ID labelling (priority 3), LIS3MDL magnetometer collector, delete collectors/temperature.py (MCP9808), config/pyproject cleanup incl. bme280→bme680 typo fix. Should-haves: VEML7700 ambient light collector, INA226 rewrite of power.py (keep enabled: false until shunt wired). Deferred-in-phase: DFRobot SEN0460 PM2.5 collector skeleton (enabled: false until hardware arrives). Explicitly unchanged: SSD1306 OLED, BME680, buzzer, USB speaker, cabin Brio 100, GPS, Phase 10 dashboard code. 4.7k pull-up for 1-Wire already present on Pi. Front cam fully replaced, not additive. DS18B20 probes label via ROM ID mapping in config (engine/outside). Phase 10 dashboard will consume real telemetry once Phase 11 collectors land. Broken daemon recovery path (sudo reboot under NoNewPrivileges) should be fixed within Phase 11 too — switch to systemd watchdog or DT bus recovery overlay."
+  "uncommitted_files": [
+    "config/config.yaml",
+    "src/shitbox/collectors/environment.py",
+    "src/shitbox/collectors/light.py",
+    "src/shitbox/storage/database.py",
+    "src/shitbox/storage/models.py",
+    "src/shitbox/capture/ring_buffer.py",
+    "tests/test_database.py"
+  ],
+  "next_action": "Rsync uncommitted files to Pi (192.168.1.173), restart shitbox-telemetry, confirm stable logs. Then update Brain shitbox project note with camera swap decision.",
+  "context_notes": "Pi 5 at 192.168.1.173. Service running. BME680 working after power cycle (cabin temp showing in UI). Load ~2.8 with ultrafast. Do NOT install in car until new camera arrives -- thermal risk. Brio 100 cabin camera still absent (pip_camera_absent in logs is expected). ring_buffer.py has libx264 ultrafast as temporary measure."
 }
