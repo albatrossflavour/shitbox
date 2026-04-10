@@ -9,11 +9,12 @@ Tests verify:
 
 import json
 from pathlib import Path
-from unittest.mock import call, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 from shitbox.storage.database import Database
+from shitbox.storage.models import Reading, SensorType
 from shitbox.sync.boot_recovery import BootRecoveryService, detect_unclean_shutdown
 
 
@@ -155,3 +156,49 @@ def test_full_recovery_flow(tmp_path):
     assert "end_time" in updated
 
     db2.close()
+
+
+# ---------------------------------------------------------------------------
+# DISP-01 / D-09: DS18B20 cabin temp fallback (Wave 0 RED — passes after Task 2)
+# ---------------------------------------------------------------------------
+
+
+def _make_minimal_engine():
+    """Build a minimal UnifiedEngine stub that can run _on_reading without hardware.
+
+    Uses __new__ to bypass __init__, then manually wires the fields that
+    _on_reading actually touches.  All hardware-touching attributes are left
+    absent (they are not accessed by _on_reading).
+    """
+    from shitbox.events.engine import UnifiedEngine
+
+    engine = UnifiedEngine.__new__(UnifiedEngine)
+    engine.database = MagicMock()
+    engine.telemetry_readings = 0
+    engine._cabin_temp_c = None
+    return engine
+
+
+def test_on_reading_temperature_updates_cabin_temp():
+    """DISP-01/D-09: DS18B20 TEMPERATURE readings must populate _cabin_temp_c.
+
+    This test is RED until Task 2 adds the SensorType.TEMPERATURE elif branch
+    in engine._on_reading.  It also verifies the existing ENVIRONMENT branch
+    is untouched (regression guard).
+    """
+    engine = _make_minimal_engine()
+
+    # --- DS18B20 branch (the new code this test is guarding) ---
+    ds_reading = Reading(sensor_type=SensorType.TEMPERATURE, temp_celsius=42.5)
+    engine._on_reading(ds_reading)
+    assert engine._cabin_temp_c == 42.5, (
+        "DS18B20 TEMPERATURE reading did not update _cabin_temp_c. "
+        "Add the elif SensorType.TEMPERATURE branch in engine._on_reading."
+    )
+
+    # --- ENVIRONMENT branch (regression guard — must still work) ---
+    env_reading = Reading(sensor_type=SensorType.ENVIRONMENT, env_temp_celsius=30.0)
+    engine._on_reading(env_reading)
+    assert engine._cabin_temp_c == 30.0, (
+        "ENVIRONMENT reading no longer updates _cabin_temp_c — regression in _on_reading."
+    )

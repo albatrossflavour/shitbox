@@ -8,6 +8,8 @@ hard failures so each implementation task can flip its test from red to green.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 
@@ -354,3 +356,62 @@ def test_sse_events_payload_has_lat_lng(mbtiles_fixture):
             break
 
     assert found, "pushed HIGH_G event with lat/lng not found in /sse/events stream"
+
+
+# ---------------------------------------------------------------------------
+# DISP-02 / D-07: Event ticker cap at 5 (Wave 0 RED — passes after Plan 17-02)
+# ---------------------------------------------------------------------------
+
+
+def test_event_ticker_max_five():
+    """DISP-02/D-07: the kiosk event ticker must cap the events array at 5 items, not 10.
+
+    This test is RED until Plan 17-02 changes `events.length > 10` to
+    `events.length > 5` in src/shitbox/dashboard/static/index.html.
+
+    Why: the 7" touchscreen has limited vertical space; 5 events fills the
+    ticker without scrolling.  The current value of 10 causes overflow.
+    """
+    from pathlib import Path
+
+    html_path = Path(__file__).parent.parent / "src" / "shitbox" / "dashboard" / "static" / "index.html"
+    assert html_path.exists(), f"index.html not found at {html_path}"
+    html = html_path.read_text(encoding="utf-8")
+
+    assert re.search(r"events\.length\s*>\s*5", html), (
+        "Expected `events.length > 5` in index.html — update the ticker cap from 10 to 5 (Plan 17-02, DISP-02/D-07)"
+    )
+    assert "events.length > 10" not in html, (
+        "Found `events.length > 10` in index.html — this should have been updated to > 5 (Plan 17-02, DISP-02/D-07)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# DISP-03: active_driver key present in /sse/slow payload
+# ---------------------------------------------------------------------------
+
+
+def test_sse_slow_has_active_driver_key(mbtiles_fixture):
+    """DISP-03: /sse/slow payload must include 'active_driver' key.
+
+    The kiosk top bar binds to this key via Alpine x-text to show who is
+    currently driving.  A missing key causes the top bar to show nothing.
+
+    This test extends the existing test_sse_slow_schema coverage.
+    """
+    import json as _json
+
+    from shitbox.dashboard.server import build_app
+
+    app = build_app(mbtiles_path=mbtiles_fixture)
+    srv, base = _start_live_server(app)
+    try:
+        lines = _read_sse_lines(base + "/sse/slow")
+    finally:
+        srv.stop()
+    data_line = next((line for line in lines if line.startswith("data:")), None)
+    assert data_line is not None, "no data lines received from /sse/slow"
+    payload = _json.loads(data_line[len("data:"):].strip())
+    assert "active_driver" in payload, (
+        f"'active_driver' key missing from /sse/slow payload. Got keys: {list(payload.keys())}"
+    )
