@@ -335,30 +335,73 @@ Fuel stops loaded via `fetch('/captures/fuel.json', { cache: 'no-cache' })` para
 existing events fetch. If the fetch fails or returns empty, the map renders normally without
 fuel pins (silent failure, no error message on the Map tab).
 
-### 6. Grafana Dashboard Tab (UI/UX pass)
+### 6. Grafana Dashboard Tab (redesign)
 
-Current state (from index.html lines 629-639): a bare `<iframe>` with no surrounding context,
-no loading state, no description.
+#### Website iframe fix
 
-Executor must assess the live Grafana URL
-(`https://grafana.shit-of-theseus.com/d/shitbox-telemetry?orgId=1&kiosk`) before implementing.
-The surrounding website presentation should be improved as follows:
+Switch iframe src from `shitbox-telemetry` to `shitbox-rally-command` (the better dashboard).
+Full updated src: `https://grafana.shit-of-theseus.com/d/shitbox-rally-command?orgId=1&kiosk`
 
+Additional website changes:
 - Add a `<p>` description above the iframe: "Live sensor data from the Shit of Theseus.
-  Updated every 30 seconds while the car is connected." Styled as `color: #8b949e`,
+  Updated every 30 seconds while the car is connected." Styled `color: #8b949e`,
   `font-size: 0.875rem`, `margin-bottom: 1rem`.
-- iframe height: increase from `80vh` to `85vh` on desktop, `70vh` on mobile.
-- Add a loading state: show a `<div id="grafana-loading">Loading dashboard...</div>`
-  (`color: #8b949e`, `text-align: center`, `padding: 3rem`) until the iframe fires its `load`
-  event, then hide the loading div and show the iframe.
-- "Open full Grafana dashboard" link: move above the iframe (not below), styled as a small
-  secondary link. Add `target="_blank" rel="noopener"` (already present). Font-size 0.8rem.
+- iframe height: increase from `80vh` to `90vh`. Remove mobile override — let it scroll.
+- Add a loading state: `<div id="grafana-loading">Loading dashboard...</div>`
+  (`color: #8b949e`, `text-align: center`, `padding: 3rem`) hidden on iframe `load` event.
+- "Open full Grafana dashboard →" link: move **above** the iframe, font-size 0.8rem.
 
-Grafana panel layout improvements: This is investigative. The executor must view the current
-dashboard, identify layout/kiosk issues (panel overflow, wrong time range, kiosk chrome),
-and propose + implement fixes via Grafana API or URL parameters. The v2.0 sensors to graph
-(per CONTEXT.md D-10): DS18B20 exterior temp, DS18B20 engine bay temp, VEML7700 ambient lux,
-LIS3MDL heading. INA226 excluded.
+#### Dashboard analysis (from JSON review)
+
+Two dashboards exist. `shitbox-telemetry` (old) has a broken "Barometric Pressure / Sync Backlog"
+panel mixing unrelated metrics, OSM light tiles, and no site colour alignment. Do not improve it —
+it is superseded.
+
+`shitbox-rally-command` (current, uid: `shitbox-rally-command`) is the target. It already uses
+dark CartoDB tiles and site badge colours. Changes required:
+
+**Panel grouping problems to fix:**
+- Row 2 stat strip (y=5) mixes system health (CPU %, Sync Backlog, Disk Free) with environment
+  (Cabin, Pressure, Humidity) and power (Power). Split into two logical stat rows:
+  - Row 1 (driving): Speed, G-Force gauge, Top Speed, Peak G, Altitude — keep as-is (y=0)
+  - Row 2 (system status): GPS fix, Sats, Throttle, CPU Temp, Disk Free, CPU % — consolidate
+  - Row 3 (environment stats): Cabin temp, Pressure, Humidity, Power — consolidate
+
+**Missing Prometheus metrics — requires batch_sync.py changes first:**
+
+`src/shitbox/sync/batch_sync.py` currently does NOT publish:
+- `shitbox_lux` — VEML7700 ambient light. Add alongside the `SensorType.LIGHT` block.
+  Use field `reading.lux`. Unit: lux.
+- DS18B20 probe labels — both probes write to `shitbox_temp` with no distinguishing label.
+  Add a `probe` label (values: `exterior`, `engine_bay`) using the sensor ID from
+  `TemperatureReading`. The temperature collector must pass the probe ID through so
+  batch_sync can label correctly. Until labeled, both probes cannot be shown separately.
+- `shitbox_mx`, `shitbox_my`, `shitbox_mz` or `shitbox_heading_mag` — LIS3MDL magnetometer.
+  Currently not published. Lower priority — add if collector data is available.
+
+**New/updated Grafana panels (after metric fixes):**
+
+In the "Environment & System" section (currently row y=30), add/update:
+
+1. **Temperatures panel** (id: 41, currently `shitbox_cpu_temp` + `shitbox_env_temp` + `shitbox_temp`):
+   After DS18B20 labeling is done, add two new series:
+   - `shitbox_temp{probe="exterior"}` legendFormat: "DS18B20 Exterior"
+   - `shitbox_temp{probe="engine_bay"}` legendFormat: "DS18B20 Engine Bay"
+   Colours: exterior = `#1f6feb` (blue), engine bay = `#d29922` (amber)
+
+2. **New Ambient Light panel** (add after Temperatures, w=8, h=7):
+   - Title: "Ambient Light"
+   - Query: `shitbox_lux`, legendFormat: "Lux"
+   - Type: timeseries, unit: `lux`, colour: `#d29922`
+   - gridPos: w=8, h=7, insert into "Environment & System" row
+
+3. **Cabin Air Quality** (id: 44, currently full-width w=24): reduce to w=16, move Ambient Light
+   panel alongside it at x=16.
+
+Dashboard JSON must be updated via Grafana HTTP API:
+`POST https://grafana.shit-of-theseus.com/api/dashboards/db`
+with `{"dashboard": {...}, "overwrite": true, "folderId": 0}`
+Requires Grafana API key (check 1Password under "Grafana" or "shit-of-theseus").
 
 ---
 
