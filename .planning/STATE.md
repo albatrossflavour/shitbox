@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: verifying
-stopped_at: Phase 17 plans complete — ready to execute
-last_updated: "2026-04-10T01:40:07.881Z"
-last_activity: 2026-04-09
+status: executing
+stopped_at: Phase 17 Plan 01 complete — executing 17-02
+last_updated: "2026-04-10T01:51:07.166Z"
+last_activity: 2026-04-10
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 9
   percent: 100
 ---
 
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 13 — driver-tracking
+**Current focus:** Phase 17 — driver-display
 
 ## Current Position
 
-Phase: 14
-Plan: Not started
-Status: Phase 13 complete — all plans done, human verification passed
-Last activity: 2026-04-09
+Phase: 17 (driver-display) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-04-10
 
 Progress: [██████████] 100% (v2.0, 4/4 plans in phase 12)
 
@@ -64,6 +64,8 @@ v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 - Plan 13-03: register_json_generator uses 2-arg form (name, fn) — capture_sync derives filename as {name}.json automatically
 - Plan 13-04: switchDriver() refreshes /api/driver/stats inline after POST — avoids stale modal table without requiring modal re-open
 - Plan 13-04: activeDriver SSE field is nullable — null maps to '---' in top bar via Alpine x-text || fallback
+- Plan 17-01: dashboard_push_event imported via try/except in thermal_monitor — mirrors buzzer/speaker pattern, graceful degradation when dashboard absent
+- Plan 17-01: elif SensorType.TEMPERATURE branch in _on_reading uses last-write wins — DS18B20 and BME680 can coexist without coordination
 
 ### Known Constraints for v2.0
 
@@ -79,9 +81,9 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-10T01:40:07.877Z
-Stopped at: Phase 17 plans complete — ready to execute
-Resume file: .planning/phases/17-driver-display/17-01-PLAN.md
+Last session: 2026-04-10T01:51:07.163Z
+Stopped at: Phase 17 Plan 01 complete — executing 17-02
+Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)
 

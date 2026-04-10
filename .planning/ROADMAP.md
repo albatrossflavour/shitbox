@@ -178,7 +178,7 @@ active driver, a scrolling event ticker, and visible alert overlays for critical
 
 **Plans**: 2 plans
 
-- [ ] 17-01-PLAN.md — Backend fixes: DS18B20 cabin temp fallback + thermal/undervoltage SSE alert bridge + Wave 0 tests
+- [x] 17-01-PLAN.md — Backend fixes: DS18B20 cabin temp fallback + thermal/undervoltage SSE alert bridge + Wave 0 tests
 - [ ] 17-02-PLAN.md — Kiosk 800x480 index.html rework: layout, overlays, 5-event ticker, waypoint haversine
 
 **UI hint**: yes
@@ -228,5 +228,5 @@ pipeline, with improved Grafana dashboards; the changes are deployed via the hom
 | 14. Sensor Calibration | v2.0 | TBD | Not started | — |
 | 15. Undervoltage and Monitoring | v2.0 | TBD | Not started | — |
 | 16. Video Capture Tuning | v2.0 | TBD | Not started | — |
-| 17. Driver Display | v2.0 | TBD | Not started | — |
+| 17. Driver Display | v2.0 | 1/2 | In Progress|  |
 | 18. Website Revamp | v2.0 | TBD | Not started | — |
