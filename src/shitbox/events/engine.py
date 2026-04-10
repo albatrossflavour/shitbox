@@ -768,6 +768,13 @@ class UnifiedEngine:
             self.telemetry_readings += 1
             if reading.sensor_type == SensorType.ENVIRONMENT and reading.env_temp_celsius is not None:
                 self._cabin_temp_c = reading.env_temp_celsius
+            elif (
+                reading.sensor_type == SensorType.TEMPERATURE
+                and reading.temp_celsius is not None
+            ):
+                # DS18B20 fallback — keeps the kiosk "cabin temp" tile populated until BME680
+                # is reliable (D-09, Phase 17). Last-write wins if both sensors fire.
+                self._cabin_temp_c = reading.temp_celsius
         except Exception as e:
             log.error("v2_collector_db_write_error", error=str(e))
 
