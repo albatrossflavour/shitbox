@@ -868,6 +868,25 @@ class UnifiedEngine:
         event.distance_from_start_km = self._distance_from_start_km
         event.distance_to_destination_km = self._distance_to_destination_km
 
+        # Push to dashboard SSE immediately — same moment as audio so the kiosk
+        # display updates in sync with the beep, not after the post-capture save.
+        # Uppercase the type to match EVENT_COLOURS keys and CSS classes in the UI.
+        if self._dashboard is not None:
+            try:
+                dashboard_push_event({
+                    "type": event.event_type.value.upper(),
+                    "timestamp": datetime.fromtimestamp(
+                        event.start_time, tz=timezone.utc
+                    ).isoformat(),
+                    "peak_g": float(event.peak_value),
+                    "duration_ms": int((event.end_time - event.start_time) * 1000),
+                    "speed_kmh": event.speed_kmh,
+                    "lat": event.lat,
+                    "lng": event.lng,
+                })
+            except Exception as exc:
+                log.warning("dashboard_event_push_failed", error=str(exc))
+
         # Start video recording/save for significant events
         video_path = None
         if event.event_type in self.VIDEO_CAPTURE_EVENTS:
@@ -1050,25 +1069,6 @@ class UnifiedEngine:
                         json_path=str(json_path),
                         has_video=video_path is not None,
                     )
-                    # Push into the dashboard SSE queue. Non-blocking; drops
-                    # on full so the capture path never waits on the dashboard.
-                    if self._dashboard is not None:
-                        try:
-                            dashboard_push_event({
-                                "type": event.event_type.value,
-                                "timestamp": datetime.fromtimestamp(
-                                    event.start_time, tz=timezone.utc
-                                ).isoformat(),
-                                "peak_g": float(event.peak_value),
-                                "duration_ms": int(
-                                    (event.end_time - event.start_time) * 1000
-                                ),
-                                "speed_kmh": event.speed_kmh,
-                                "lat": event.lat,
-                                "lng": event.lng,
-                            })
-                        except Exception as exc:
-                            log.warning("dashboard_event_push_failed", error=str(exc))
                     # Trigger immediate connectivity check and sync
                     if self.config.uplink_enabled:
                         connected = self.connection.check_connectivity()
