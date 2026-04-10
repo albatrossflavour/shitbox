@@ -638,6 +638,7 @@ class UnifiedEngine:
                     logbook_storage=self.logbook_storage,
                     driver_storage=self.driver_storage,
                     drivers=config.drivers or [],
+                    captures_path=Path(config.captures_dir) if config.captures_dir else None,
                 )
             except Exception as exc:
                 log.error("dashboard_init_failed", error=str(exc))

@@ -123,9 +123,10 @@
     </div>
   </main>
 
-  <!-- BOTTOM STRIP: 5-item event ticker (h: 120px) -->
-  <footer class="card" style="height: 120px; flex-shrink: 0; padding: 6px 10px; overflow: hidden;">
-    <div style="display: flex; flex-direction: column; gap: 4px;">
+  <!-- BOTTOM STRIP: 5-item event ticker + timelapse thumbnail (h: 120px) -->
+  <footer class="card" style="height: 120px; flex-shrink: 0; padding: 6px 10px; overflow: hidden; display: flex; gap: 8px;">
+    <!-- Event ticker -->
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
       <template x-for="ev in events" :key="ev.ts || ev.timestamp">
         <div style="display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden;">
           <span class="badge" :class="'ev-' + ev.type"
@@ -139,7 +140,27 @@
       </template>
       <div x-show="events.length === 0" class="text-gray-400" style="font-size: 13px;">No events yet</div>
     </div>
+    <!-- Timelapse thumbnail -->
+    <div x-show="timelapseUrl" style="flex-shrink: 0; width: 106px; height: 106px; cursor: pointer;"
+         @click="openTimelapse()">
+      <img :src="timelapseUrl" alt="timelapse"
+           style="width: 106px; height: 106px; object-fit: cover; border-radius: 4px; border: 1px solid #21262d;">
+    </div>
   </footer>
+
+  <!-- Timelapse fullscreen overlay (z-index 100, same level as map) -->
+  <div x-show="showTimelapse"
+       x-cloak
+       style="position: fixed; inset: 0; z-index: 100; background: #0d1117; display: flex; align-items: center; justify-content: center;"
+       @click="closeTimelapse()">
+    <button @click="closeTimelapse()"
+            style="position: absolute; top: 12px; right: 16px; z-index: 110;
+                   background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                   padding: 6px 14px; border-radius: 4px; font-size: 18px;
+                   cursor: pointer; font-weight: 700;">&times; Close</button>
+    <img :src="timelapseUrl" alt="timelapse"
+         style="max-width: 100%; max-height: 100%; object-fit: contain;">
+  </div>
 
   <!-- MAP overlay (z-index 100, reuses existing #map div + Leaflet instance) -->
   <div x-show="showMap"
@@ -345,6 +366,8 @@
         successMsg: '',
         // Kiosk additions
         showMap: false,
+        showTimelapse: false,
+        timelapseUrl: null,
         alertOverlay: null,
         _alertTimer: null,
         now: Date.now(),
@@ -373,6 +396,9 @@
           requestAnimationFrame(() => this.drawGauge());
           // Tick now every second so relativeTime() stays accurate (RESEARCH Pitfall 5)
           setInterval(() => { this.now = Date.now(); }, 1000);
+          // Poll for latest timelapse thumbnail every 30s (matches capture interval)
+          this.fetchTimelapse();
+          setInterval(() => this.fetchTimelapse(), 30000);
         },
         initMap() {
           this.map = L.map('map', { zoomControl: true, attributionControl: false }).setView([-25, 135], 5);
@@ -386,6 +412,17 @@
             }
           }, 1000);
         },
+        async fetchTimelapse() {
+          try {
+            const r = await fetch('/api/timelapse/latest');
+            if (r.ok) {
+              const d = await r.json();
+              if (d.url) this.timelapseUrl = d.url + '?t=' + Date.now();
+            }
+          } catch { /* dashboard may be running without captures mounted */ }
+        },
+        openTimelapse() { this.showTimelapse = true; },
+        closeTimelapse() { this.showTimelapse = false; },
         openMap() {
           this.showMap = true;
           this.$nextTick(() => {

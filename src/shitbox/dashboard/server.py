@@ -23,7 +23,7 @@ from typing import Callable, List, Optional
 import structlog
 import uvicorn
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from shitbox.dashboard import logbook as logbook_mod
@@ -41,6 +41,7 @@ def build_app(
     logbook_storage: Optional[object] = None,
     driver_storage: Optional[object] = None,
     drivers: Optional[List[str]] = None,
+    captures_path: Optional[Path] = None,
 ) -> FastAPI:
     """Construct the dashboard FastAPI app.
 
@@ -64,6 +65,26 @@ def build_app(
         if drivers:
             driver_mod.set_drivers_roster(drivers)
         app.include_router(driver_mod.router)
+
+    if captures_path is not None and captures_path.is_dir():
+        app.mount("/captures", StaticFiles(directory=str(captures_path)), name="captures")
+
+        timelapse_dir = captures_path / "timelapse"
+
+        @app.get("/api/timelapse/latest")
+        def timelapse_latest() -> JSONResponse:
+            """Return the URL of the most recent timelapse JPEG, or null if none."""
+            if not timelapse_dir.is_dir():
+                return JSONResponse({"url": None})
+            # Scan date subdirs newest-first, return first JPEG found
+            for date_dir in sorted(timelapse_dir.iterdir(), reverse=True):
+                if not date_dir.is_dir():
+                    continue
+                jpegs = sorted(date_dir.glob("timelapse_*.jpg"), reverse=True)
+                if jpegs:
+                    rel = jpegs[0].relative_to(captures_path)
+                    return JSONResponse({"url": f"/captures/{rel}"})
+            return JSONResponse({"url": None})
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -145,6 +166,7 @@ def build_dashboard_server(
     logbook_storage: Optional[object] = None,
     driver_storage: Optional[object] = None,
     drivers: Optional[List[str]] = None,
+    captures_path: Optional[Path] = None,
 ) -> DashboardServer:
     """Convenience factory used by UnifiedEngine wiring."""
     app = build_app(
@@ -153,5 +175,6 @@ def build_dashboard_server(
         logbook_storage=logbook_storage,
         driver_storage=driver_storage,
         drivers=drivers,
+        captures_path=captures_path,
     )
     return DashboardServer(host=host, port=port, app=app)
