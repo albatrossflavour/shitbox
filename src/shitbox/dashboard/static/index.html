@@ -97,10 +97,28 @@
         </div>
       </div>
 
-      <!-- Waypoint distance tile -->
-      <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
-        <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Next WP</div>
-        <div class="num" style="font-size: 24px;" x-text="waypointText"></div>
+      <!-- Waypoint distance + Bearing row -->
+      <div style="display: flex; gap: 6px; flex: 1;">
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Next WP</div>
+          <div class="num" style="font-size: 20px;" x-text="waypointText"></div>
+        </div>
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Bearing</div>
+          <div class="num" style="font-size: 20px;" x-text="bearingText"></div>
+        </div>
+      </div>
+
+      <!-- Current G + Time row -->
+      <div style="display: flex; gap: 6px; flex: 1;">
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Current G</div>
+          <div class="num" style="font-size: 28px;" x-text="(Math.hypot(gx, gy)).toFixed(2) + 'g'"></div>
+        </div>
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Time</div>
+          <div class="num" style="font-size: 28px;" x-text="new Date(now).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: false})"></div>
+        </div>
       </div>
     </div>
   </main>
@@ -331,6 +349,7 @@
         _alertTimer: null,
         now: Date.now(),
         waypointText: '-- km to --',
+        bearingText: '--',
         _waypoints: [
           { name: "Port Douglas",        lat: -16.4838, lng: 145.4673 },
           { name: "The Oasis Roadhouse", lat: -18.8797, lng: 144.5436 },
@@ -466,6 +485,17 @@
                     Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
           return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         },
+        _bearingDeg(lat1, lon1, lat2, lon2) {
+          const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+          const Δλ = (lon2 - lon1) * Math.PI / 180;
+          const y = Math.sin(Δλ) * Math.cos(φ2);
+          const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+          return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+        },
+        _cardinalPoint(deg) {
+          const pts = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+          return pts[Math.round(deg / 22.5) % 16];
+        },
         _updateWaypoint(lat, lng) {
           if (lat == null || lng == null) return;
           let best = null, bestDist = Infinity;
@@ -473,7 +503,11 @@
             const d = this._haversineKm(lat, lng, wp.lat, wp.lng);
             if (d < bestDist) { bestDist = d; best = wp; }
           }
-          if (best) this.waypointText = `${Math.round(bestDist)} km to ${best.name}`;
+          if (best) {
+            this.waypointText = `${Math.round(bestDist)} km to ${best.name}`;
+            const deg = this._bearingDeg(lat, lng, best.lat, best.lng);
+            this.bearingText = `${this._cardinalPoint(deg)} · ${Math.round(deg)}°`;
+          }
         },
         relativeTime(ts) {
           void this.now; // reference now so Alpine re-renders this when now ticks
