@@ -403,6 +403,7 @@ class EventStorage:
                     )
 
             entry: dict = {
+                "id": int(start_time * 1000),
                 "type": meta.get("type", "unknown").upper(),
                 "timestamp": dt.isoformat(),
                 "peak_g": meta.get("peak_value"),
