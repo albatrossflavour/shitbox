@@ -40,6 +40,7 @@ _snapshot: Dict[str, Any] = {
     "sync_backlog": 0,
     "event_count_today": 0,
     "active_driver": None,
+    "recording_active": False,
 }
 
 

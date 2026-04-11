@@ -145,6 +145,7 @@ async def sse_slow(request: Request) -> Response:
                             "sync_backlog": snap["sync_backlog"],
                             "event_count": snap["event_count_today"],
                             "active_driver": snap.get("active_driver"),
+                            "recording_active": snap.get("recording_active", False),
                         },
                         default=str,
                     ),
