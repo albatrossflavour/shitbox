@@ -42,6 +42,7 @@ def build_app(
     driver_storage: Optional[object] = None,
     drivers: Optional[List[str]] = None,
     captures_path: Optional[Path] = None,
+    sync_trigger: Optional[Callable[[], None]] = None,
 ) -> FastAPI:
     """Construct the dashboard FastAPI app.
 
@@ -57,11 +58,15 @@ def build_app(
 
     if logbook_storage is not None:
         logbook_mod.set_storage(logbook_storage)  # type: ignore[arg-type]
+        if sync_trigger is not None:
+            logbook_mod.set_sync_trigger(sync_trigger)
         app.include_router(logbook_mod.router)
 
     if driver_storage is not None:
         from shitbox.dashboard import driver as driver_mod
         driver_mod.set_storage(driver_storage)  # type: ignore[arg-type]
+        if sync_trigger is not None:
+            driver_mod.set_sync_trigger(sync_trigger)
         if drivers:
             driver_mod.set_drivers_roster(drivers)
         app.include_router(driver_mod.router)
@@ -92,7 +97,7 @@ def build_app(
         if index.is_file():
             @app.get("/")
             def root() -> FileResponse:
-                return FileResponse(str(index))
+                return FileResponse(str(index), headers={"Cache-Control": "no-cache"})
     else:
         log.warning("dashboard_static_dir_missing", path=str(STATIC_DIR))
 
@@ -167,6 +172,7 @@ def build_dashboard_server(
     driver_storage: Optional[object] = None,
     drivers: Optional[List[str]] = None,
     captures_path: Optional[Path] = None,
+    sync_trigger: Optional[Callable[[], None]] = None,
 ) -> DashboardServer:
     """Convenience factory used by UnifiedEngine wiring."""
     app = build_app(
@@ -176,5 +182,6 @@ def build_dashboard_server(
         driver_storage=driver_storage,
         drivers=drivers,
         captures_path=captures_path,
+        sync_trigger=sync_trigger,
     )
     return DashboardServer(host=host, port=port, app=app)

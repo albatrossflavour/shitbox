@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from shitbox.storage.logbook import LogbookStorage
 from shitbox.dashboard import gps_state
 from shitbox.dashboard.snapshot import read_snapshot
+from shitbox.storage.logbook import LogbookStorage
 
 router = APIRouter()
 _storage: Optional[LogbookStorage] = None
+_sync_trigger: Optional[Callable[[], None]] = None
 
 
 def set_storage(storage: LogbookStorage) -> None:
@@ -23,6 +24,12 @@ def set_storage(storage: LogbookStorage) -> None:
     """
     global _storage
     _storage = storage
+
+
+def set_sync_trigger(trigger: Callable[[], None]) -> None:
+    """Register a callable to request an immediate capture sync after mutations."""
+    global _sync_trigger
+    _sync_trigger = trigger
 
 
 def _require_storage() -> LogbookStorage:
@@ -45,15 +52,21 @@ class FuelRequest(BaseModel):
 @router.post("/api/notes", status_code=201)
 def create_note(payload: NoteRequest) -> dict:
     """Create a new field note with GPS position captured at call time."""
-    return _require_storage().create_note(payload.body, payload.event_id)
+    result = _require_storage().create_note(payload.body, payload.event_id)
+    if _sync_trigger is not None:
+        _sync_trigger()
+    return result
 
 
 @router.post("/api/fuel", status_code=201)
 def create_fuel(payload: FuelRequest) -> dict:
     """Log a refuelling stop with volume, optional cost, and optional odometer."""
-    return _require_storage().create_fuel_stop(
+    result = _require_storage().create_fuel_stop(
         payload.volume_litres, payload.cost_aud, payload.odometer_km
     )
+    if _sync_trigger is not None:
+        _sync_trigger()
+    return result
 
 
 @router.get("/api/fuel")
