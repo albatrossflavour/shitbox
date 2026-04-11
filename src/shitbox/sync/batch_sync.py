@@ -329,6 +329,15 @@ class BatchSyncService:
         except Exception as e:
             log.warning("summary_metrics_driver_error", error=str(e))
 
+        try:
+            driver_times = self.db.get_driver_time_seconds()
+            for name, seconds in driver_times.items():
+                dl = dict(labels)
+                dl["name"] = name
+                metrics.append(("shitbox_driver_time_seconds", dl, seconds, now_ms))
+        except Exception as e:
+            log.warning("summary_metrics_driver_times_error", error=str(e))
+
         if self._event_storage is not None:
             try:
                 counts = self._event_storage.count_events_by_type()

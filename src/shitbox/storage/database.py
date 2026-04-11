@@ -729,6 +729,21 @@ class Database:
         ).fetchone()
         return row["driver_name"] if row else None
 
+    def get_driver_time_seconds(self) -> dict:
+        """Return total drive time in seconds per driver, keyed by driver name."""
+        rows = self._get_connection().execute(
+            """
+            SELECT driver_name,
+                   SUM(CAST(
+                       (julianday(COALESCE(ended_at, datetime('now'))) -
+                        julianday(started_at)) * 86400
+                   AS INTEGER)) AS total_seconds
+            FROM driver_stints
+            GROUP BY driver_name
+            """
+        ).fetchall()
+        return {r["driver_name"]: float(r["total_seconds"] or 0) for r in rows}
+
     def get_latest_reading(self, sensor_type: SensorType) -> Optional[Reading]:
         """Get the most recent reading for a sensor type.
 
