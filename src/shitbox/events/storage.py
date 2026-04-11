@@ -6,7 +6,7 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from shitbox.events.detector import Event, EventType
 from shitbox.events.ring_buffer import IMUSample
@@ -357,6 +357,28 @@ class EventStorage:
             entries.append((start_time, entry))
         entries.sort(key=lambda pair: pair[0], reverse=True)
         return [e for _, e in entries[:n]]
+
+    def count_events_by_type(self) -> Dict[str, int]:
+        """Return event counts grouped by type across all stored events.
+
+        Scans JSON metadata files in base_dir. Missing or malformed files are skipped.
+        Returns an empty dict if no events are stored.
+        """
+        counts: Dict[str, int] = {}
+        if not self.base_dir.exists():
+            return counts
+        for day_dir in self.base_dir.iterdir():
+            if not day_dir.is_dir():
+                continue
+            for json_file in day_dir.glob("*.json"):
+                try:
+                    with open(json_file) as fh:
+                        meta = json.load(fh)
+                    event_type = meta.get("type", "unknown")
+                    counts[event_type] = counts.get(event_type, 0) + 1
+                except (OSError, json.JSONDecodeError):
+                    continue
+        return counts
 
     def generate_events_json(self, video_base_url: str = "/captures") -> Optional[Path]:
         """Generate events.json index in captures_dir for the website.

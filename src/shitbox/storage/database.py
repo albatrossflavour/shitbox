@@ -690,6 +690,45 @@ class Database:
         row = cursor.fetchone()
         return row["count"] if row else 0
 
+    def get_fuel_summary(self) -> dict:
+        """Return aggregate fuel stats: count, total_litres, efficiency_kml."""
+        conn = self._get_connection()
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt, COALESCE(SUM(volume_litres), 0) as total_litres "
+            "FROM fuel_stops"
+        ).fetchone()
+        count = row["cnt"]
+        total_litres = row["total_litres"]
+
+        odo_row = conn.execute(
+            "SELECT MAX(odometer_km) as hi, MIN(odometer_km) as lo "
+            "FROM fuel_stops WHERE odometer_km IS NOT NULL"
+        ).fetchone()
+        efficiency = 0.0
+        if (
+            odo_row
+            and odo_row["hi"] is not None
+            and odo_row["lo"] is not None
+            and total_litres > 0
+        ):
+            efficiency = round((odo_row["hi"] - odo_row["lo"]) / total_litres, 3)
+
+        return {"count": count, "total_litres": total_litres, "efficiency_kml": efficiency}
+
+    def get_notes_count(self) -> int:
+        """Return total number of field notes."""
+        row = self._get_connection().execute(
+            "SELECT COUNT(*) as cnt FROM notes"
+        ).fetchone()
+        return row["cnt"]
+
+    def get_active_driver_name(self) -> Optional[str]:
+        """Return the name of the currently active driver, or None."""
+        row = self._get_connection().execute(
+            "SELECT driver_name FROM driver_stints WHERE ended_at IS NULL LIMIT 1"
+        ).fetchone()
+        return row["driver_name"] if row else None
+
     def get_latest_reading(self, sensor_type: SensorType) -> Optional[Reading]:
         """Get the most recent reading for a sensor type.
 

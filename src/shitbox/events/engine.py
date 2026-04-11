@@ -502,7 +502,10 @@ class UnifiedEngine:
                 batch_size=config.prometheus_batch_size,
                 batch_interval_seconds=config.prometheus_batch_interval_seconds,
             )
-            self.batch_sync = BatchSyncService(prom_config, self.database, self.connection)
+            self.batch_sync = BatchSyncService(
+                prom_config, self.database, self.connection,
+                event_storage=self.event_storage,
+            )
 
         # Grafana annotator
         self.grafana: Optional[GrafanaAnnotator] = None
