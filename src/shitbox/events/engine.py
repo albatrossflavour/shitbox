@@ -1406,11 +1406,22 @@ class UnifiedEngine:
             "recovery_orphans_closed": (
                 self.boot_recovery.orphans_closed if self.boot_recovery else 0
             ),
-            # Trip tracking
+            # Trip tracking — progress is rally-leg only so the return-leg
+            # waypoints (drive home) don't pollute the status screen count.
+            # _reached_waypoints still tracks all crossings for announcement dedup.
             "odometer_km": round(self._odometer_km, 1),
             "daily_km": round(self._daily_km, 1),
-            "waypoints_reached": len(self._reached_waypoints),
-            "waypoints_total": len(self.config.route_waypoints),
+            **self._rally_waypoint_progress(),
+        }
+
+    def _rally_waypoint_progress(self) -> dict:
+        rally_indices = {
+            i for i, w in enumerate(self.config.route_waypoints)
+            if getattr(w, "leg", "rally") == "rally"
+        }
+        return {
+            "waypoints_reached": len(self._reached_waypoints & rally_indices),
+            "waypoints_total": len(rally_indices),
         }
 
     def _read_system_status(self) -> Optional[Reading]:
