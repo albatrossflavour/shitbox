@@ -173,7 +173,9 @@ async def sse_events(request: Request) -> Response:
                 except Exception as exc:
                     log.warning("dashboard_recent_provider_failed", error=str(exc))
                     seed = []
-                for ev in seed:
+                # Yield oldest-first so the frontend's unshift() leaves
+                # newest at the top of the list after the cap-and-pop cycle.
+                for ev in reversed(seed):
                     yield {"event": "event", "data": json.dumps(ev, default=str)}
             # Live: drain this client's queue
             while not await request.is_disconnected():

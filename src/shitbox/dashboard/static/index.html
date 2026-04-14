@@ -7,11 +7,11 @@
   <link rel="stylesheet" href="/static/vendor/tailwind.min.css">
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
   <style>
-    html, body { margin: 0; padding: 0; width: 800px; height: 480px; overflow: hidden; background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    html, body { margin: 0; padding: 0; width: 1024px; height: 600px; overflow: hidden; background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     * { cursor: none !important; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
     .num { font-variant-numeric: tabular-nums; font-weight: 600; }
     .card { background: #161b22; border: 1px solid #21262d; }
-    .badge { padding: 2px 8px; border-radius: 4px; font-size: 23px; font-weight: 600; display: inline-block; }
+    .badge { padding: 2px 8px; border-radius: 4px; font-size: 15px; font-weight: 600; display: inline-block; }
     .ev-HIGH_G { background: #da3633; color: #fff; }
     .ev-HARD_BRAKE { background: #f85149; color: #fff; }
     .ev-BIG_CORNER { background: #d29922; color: #000; }
@@ -24,23 +24,23 @@
     .bg-yellow-600 { background: #ca8a04; color: #000; }
     .bg-green-700 { background: #15803d; color: #fff; }
     .bg-gray-700 { background: #374151; color: #9ca3af; }
-  </style>
+</style>
 </head>
-<body x-data="dashboard()" x-init="init()" style="display: flex; flex-direction: column; width: 800px; height: 480px; overflow: hidden;">
+<body x-data="dashboard()" x-init="init()" style="display: flex; flex-direction: column; width: 1024px; height: 600px; overflow: hidden;">
 
-  <!-- TOP STRIP (h: 140px) — three equal columns -->
-  <header class="card" style="height: 140px; flex-shrink: 0; display: flex; padding: 0 32px; gap: 16px;">
+  <!-- TOP STRIP (h: 100px) — three equal columns -->
+  <header class="card" style="height: 100px; flex-shrink: 0; display: flex; padding: 0 24px; gap: 16px;">
 
     <!-- Col 1: Speed + driver (33%) -->
-    <div style="flex: 1; display: flex; align-items: center; gap: 16px; overflow: hidden;">
-      <div class="num" style="font-size: 125px; line-height: 1; width: 260px; flex-shrink: 0; text-align: right;">
+    <div style="flex: 1; display: flex; align-items: center; gap: 12px; overflow: hidden;">
+      <div class="num" style="font-size: 90px; line-height: 1; width: 180px; flex-shrink: 0; text-align: right;">
         <span x-text="speed"></span>
       </div>
       <div style="display: flex; flex-direction: column; justify-content: center; gap: 2px;">
-        <div class="text-gray-400" style="font-size: 26px;">km/h</div>
-        <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 8px;">Driver</div>
+        <div class="text-gray-400" style="font-size: 18px;">km/h</div>
+        <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Driver</div>
         <div class="cursor-pointer text-gray-100 hover:text-white font-semibold"
-             style="font-size: 29px;"
+             style="font-size: 20px;"
              @click="openDriverModal()"
              x-text="activeDriver || '---'"></div>
       </div>
@@ -60,16 +60,16 @@
     <div style="flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
       <button @click="openMap()"
               style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
-                     color: #58a6ff; font-size: 39px; font-weight: 700;
-                     padding: 6px 12px; border-radius: 4px; min-height: 44px;">MAP</button>
+                     color: #58a6ff; font-size: 28px; font-weight: 700;
+                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">MAP</button>
       <button @click="openNoteModal()"
               style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
-                     color: #e6edf3; font-size: 39px; font-weight: 700;
-                     padding: 6px 12px; border-radius: 4px; min-height: 44px;">Note</button>
+                     color: #e6edf3; font-size: 28px; font-weight: 700;
+                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">Note</button>
       <button @click="openFuelModal()"
               style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
-                     color: #e6edf3; font-size: 39px; font-weight: 700;
-                     padding: 6px 12px; border-radius: 4px; min-height: 44px;">Fuel</button>
+                     color: #e6edf3; font-size: 28px; font-weight: 700;
+                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">Fuel</button>
       <span class="badge" x-show="successMsg" x-text="successMsg"
             style="background: #238636; color: #fff;"></span>
     </div>
@@ -79,53 +79,53 @@
   <main style="flex: 1; display: flex; overflow: hidden;">
 
     <!-- Left: G-gauge -->
-    <div class="card" style="width: 360px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 4px;">
-      <canvas id="ggauge" width="350" height="260"></canvas>
+    <div class="card" style="width: 340px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 4px;">
+      <canvas id="ggauge" width="320" height="320"></canvas>
     </div>
 
     <!-- Right: data tiles + MAP button -->
     <div style="flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 8px; overflow: hidden;">
 
       <!-- Temp row -->
-      <div style="display: flex; gap: 6px; flex-shrink: 0;">
-        <div class="card" style="flex: 1; padding: 8px;">
-          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">Cabin Temp</div>
-          <div class="num" style="font-size: 55px;"><span x-text="imuTemp"></span> <span class="text-gray-400" style="font-size: 27px;">&deg;C</span></div>
+      <div style="display: flex; gap: 6px; flex: 1;">
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Cabin Temp</div>
+          <div class="num" style="font-size: 36px;"><span x-text="imuTemp"></span> <span class="text-gray-400" style="font-size: 22px;">&deg;C</span></div>
         </div>
-        <div class="card" style="flex: 1; padding: 8px;">
-          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">SoC Temp</div>
-          <div class="num" style="font-size: 55px;"><span x-text="socTemp"></span> <span class="text-gray-400" style="font-size: 27px;">&deg;C</span></div>
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">SoC Temp</div>
+          <div class="num" style="font-size: 36px;"><span x-text="socTemp"></span> <span class="text-gray-400" style="font-size: 22px;">&deg;C</span></div>
         </div>
       </div>
 
       <!-- Waypoint distance + Bearing row -->
       <div style="display: flex; gap: 6px; flex: 1;">
         <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
-          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">Next WP</div>
-          <div class="num" style="font-size: 39px;" x-text="waypointText"></div>
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Next WP</div>
+          <div class="num" style="font-size: 26px;" x-text="waypointText"></div>
         </div>
         <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
-          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">Bearing</div>
-          <div class="num" style="font-size: 39px;" x-text="bearingText"></div>
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Bearing</div>
+          <div class="num" style="font-size: 26px;" x-text="bearingText"></div>
         </div>
       </div>
 
       <!-- Current G + Time row -->
       <div style="display: flex; gap: 6px; flex: 1;">
         <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
-          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">Current G</div>
-          <div class="num" style="font-size: 55px;" x-text="(Math.hypot(gx, gy)).toFixed(2) + 'g'"></div>
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Current G</div>
+          <div class="num" style="font-size: 36px;" x-text="(Math.hypot(gx, gy)).toFixed(2) + 'g'"></div>
         </div>
         <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
-          <div class="text-gray-400" style="font-size: 20px; text-transform: uppercase; letter-spacing: 0.05em;">Time</div>
-          <div class="num" style="font-size: 55px;" x-text="new Date(now).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: false})"></div>
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Time</div>
+          <div class="num" style="font-size: 36px;" x-text="new Date(now).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: false})"></div>
         </div>
       </div>
     </div>
   </main>
 
-  <!-- BOTTOM STRIP: 4-item event ticker + timelapse thumbnail (h: 160px) -->
-  <footer class="card" style="height: 160px; flex-shrink: 0; padding: 6px 10px; overflow: hidden; display: flex; gap: 8px;">
+  <!-- BOTTOM STRIP: 5-item event ticker + timelapse thumbnail (h: 130px) -->
+  <footer class="card" style="height: 130px; flex-shrink: 0; padding: 6px 10px; overflow: hidden; display: flex; gap: 8px;">
     <!-- Event ticker -->
     <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
       <template x-for="ev in events" :key="ev.ts || ev.timestamp">
@@ -133,19 +133,19 @@
           <span class="badge" :class="'ev-' + ev.type"
                 :style="`background:${EVENT_COLOURS[ev.type] || '#8b949e'}`"
                 x-text="ev.type"></span>
-          <span class="num text-gray-300" style="font-size: 26px;"
+          <span class="num text-gray-300" style="font-size: 18px;"
                 x-text="(ev.peak_g || 0).toFixed(1) + 'g'"></span>
-          <span class="text-gray-400" style="font-size: 23px;"
+          <span class="text-gray-400" style="font-size: 15px;"
                 x-text="relativeTime(ev.ts || ev.timestamp)"></span>
         </div>
       </template>
-      <div x-show="events.length === 0" class="text-gray-400" style="font-size: 26px;">No events yet</div>
+      <div x-show="events.length === 0" class="text-gray-400" style="font-size: 18px;">No events yet</div>
     </div>
     <!-- Timelapse thumbnail -->
-    <div x-show="timelapseUrl" style="flex-shrink: 0; width: 106px; height: 106px; cursor: pointer;"
+    <div x-show="timelapseUrl" style="flex-shrink: 0; width: 90px; height: 90px; cursor: pointer;"
          @click="openTimelapse()">
       <img :src="timelapseUrl" alt="timelapse"
-           style="width: 106px; height: 106px; object-fit: cover; border-radius: 4px; border: 1px solid #21262d;">
+           style="width: 90px; height: 90px; object-fit: cover; border-radius: 4px; border: 1px solid #21262d;">
     </div>
   </footer>
 
@@ -483,12 +483,11 @@
             this.imuTemp = d.imu_temp != null ? Math.round(d.imu_temp) : '—';
             this.socTemp = d.soc_temp != null ? Math.round(d.soc_temp) : '—';
             if (d.fix_mode === 0) {
-              this.gpsBadge = 'NO FIX'; this.gpsBadgeClass = 'bg-red-700';
+              this.gpsBadge = 'GPS'; this.gpsBadgeClass = 'bg-red-700';
             } else if (d.fix_mode === 2) {
-              this.gpsBadge = `2D · ${d.sats} sats`; this.gpsBadgeClass = 'bg-yellow-600';
+              this.gpsBadge = 'GPS : 2D'; this.gpsBadgeClass = 'bg-yellow-600';
             } else {
-              this.gpsBadge = `3D · ${d.sats} sats · HDOP ${(d.hdop||0).toFixed(1)}`;
-              this.gpsBadgeClass = 'bg-green-700';
+              this.gpsBadge = 'GPS : 3D'; this.gpsBadgeClass = 'bg-green-700';
             }
             this.netBadge = d.sync_connected ? 'NET OK' : 'NET OFFLINE';
             this.netBadgeClass = d.sync_connected ? 'bg-green-700' : 'bg-red-700';
@@ -592,7 +591,7 @@
           const py = cy - (this.gy / this.peakG) * r;
           ctx.fillStyle = '#1f6feb';
           ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI*2); ctx.fill();
-          ctx.fillStyle = '#8b949e'; ctx.font = '27px system-ui';
+          ctx.fillStyle = '#8b949e'; ctx.font = '18px system-ui';
           ctx.fillText(`±${this.peakG.toFixed(1)}g`, 10, 20);
           requestAnimationFrame(() => this.drawGauge());
         },
