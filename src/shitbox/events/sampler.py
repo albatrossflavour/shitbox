@@ -170,6 +170,8 @@ class HighRateSampler:
 
             # Read sample
             try:
+                if self._lsm6dsox is None:
+                    raise OSError("sensor is None — I2C reinit failed")
                 sample = self._read_sample()
                 self.ring_buffer.append(sample)
                 self.samples_total += 1

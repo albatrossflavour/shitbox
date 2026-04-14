@@ -8,12 +8,15 @@ Graceful degradation: missing or unready probes log and skip the sample
 without taking the engine down (D-24).
 """
 
+import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from shitbox.collectors.base import BaseCollector
 from shitbox.storage.models import Reading
 from shitbox.utils.logging import get_logger
+
+_SENSOR_NOT_READY_RETRY_SECONDS = 0.15  # DS18B20 needs up to 750ms to convert; retry after 150ms
 
 log = get_logger(__name__)
 
@@ -91,6 +94,13 @@ class DS18B20Collector(BaseCollector["DS18B20Reading"]):
             try:
                 temp_c = sensor.get_temperature()
                 readings.append(DS18B20Reading(temp_celsius=temp_c, role=role))
+            except SensorNotReadyError:
+                time.sleep(_SENSOR_NOT_READY_RETRY_SECONDS)
+                try:
+                    temp_c = sensor.get_temperature()
+                    readings.append(DS18B20Reading(temp_celsius=temp_c, role=role))
+                except SensorNotReadyError as e:
+                    log.warning("ds18b20_read_error", role=role, error=str(e))
             except (OSError, Exception) as e:
                 log.warning("ds18b20_read_error", role=role, error=str(e))
         return readings if readings else None
@@ -114,4 +124,5 @@ class DS18B20Collector(BaseCollector["DS18B20Reading"]):
         return Reading(
             sensor_type=SensorType.TEMPERATURE,
             temp_celsius=data.temp_celsius,
+            sensor_id=data.role,
         )

@@ -7,7 +7,7 @@ dashboard integration. Graceful degradation per D-24.
 from typing import Optional
 
 from shitbox.collectors.base import BaseCollector
-from shitbox.storage.models import Reading
+from shitbox.storage.models import Reading, SensorType
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -16,10 +16,12 @@ log = get_logger(__name__)
 #   patch("shitbox.collectors.light.adafruit_veml7700")
 #   patch("shitbox.collectors.light.busio")
 try:
+    import board
     import adafruit_veml7700
     import busio
     _HAS_VEML = True
 except ImportError:
+    board = None  # type: ignore[assignment]
     adafruit_veml7700 = None  # type: ignore[assignment]
     busio = None  # type: ignore[assignment]
     _HAS_VEML = False
@@ -61,7 +63,7 @@ class VEML7700Collector(BaseCollector["VEML7700Reading"]):
             # busio.I2C is patched in tests; on the Pi, board.SCL/board.SDA
             # are the standard args but we call through busio to keep the
             # patch surface simple.
-            i2c = busio.I2C(1, 2)
+            i2c = busio.I2C(board.SCL, board.SDA)
             self._sensor = adafruit_veml7700.VEML7700(i2c)
             log.info("veml7700_sensor_init")
         except (OSError, ValueError, Exception) as e:
@@ -85,6 +87,4 @@ class VEML7700Collector(BaseCollector["VEML7700Reading"]):
 
     def to_reading(self, data: "VEML7700Reading") -> Reading:
         """Convert VEML7700Reading to a generic Reading for storage."""
-        return Reading(
-            sensor_type="light",  # type: ignore[arg-type]
-        )
+        return Reading.from_light(lux=data.lux, timestamp=self.now_utc())

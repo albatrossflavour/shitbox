@@ -177,3 +177,63 @@ def test_vcgencmd_not_found_graceful() -> None:
         result = service._read_throttled()
 
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# DISP-04 / D-05: Alert bridge — thermal and undervoltage push to SSE
+# (Wave 0 RED — passes after Task 3 wires dashboard_push_event call sites)
+# ---------------------------------------------------------------------------
+
+
+def test_thermal_warning_pushes_dashboard_alert() -> None:
+    """DISP-04/D-05: _check_thermal() at warning threshold must call dashboard_push_event.
+
+    This test is RED until Task 3 adds the dashboard_push_event import and call
+    site in the warning branch of thermal_monitor._check_thermal.
+    """
+    service = ThermalMonitorService()
+    with (
+        patch.object(service, "_read_sysfs_temp", return_value=72000),  # 72.0 °C — above 70 threshold
+        patch("shitbox.health.thermal_monitor.beep_thermal_warning"),
+        patch("shitbox.health.thermal_monitor.speak_thermal_warning"),
+        patch("shitbox.health.thermal_monitor.dashboard_push_event") as mock_push,
+    ):
+        service._check_thermal()
+
+    mock_push.assert_called_once()
+    event = mock_push.call_args[0][0]
+    assert event.get("type") == "ALERT", f"expected type='ALERT', got {event.get('type')!r}"
+    assert event.get("subtype") == "THERMAL_WARNING", (
+        f"expected subtype='THERMAL_WARNING', got {event.get('subtype')!r}"
+    )
+    assert "message" in event, "event payload missing 'message' key"
+    assert "72" in str(event["message"]), (
+        f"expected temperature value '72' in message, got {event['message']!r}"
+    )
+
+
+def test_undervoltage_pushes_dashboard_alert() -> None:
+    """DISP-04/D-05: _check_throttled() with bit 0 set must call dashboard_push_event.
+
+    This test is RED until Task 3 adds the dashboard_push_event call site in
+    the undervoltage branch of thermal_monitor._check_throttled.
+    """
+    service = ThermalMonitorService()
+    with (
+        patch.object(service, "_read_throttled", return_value=0x1),  # bit 0 = under_voltage
+        patch("shitbox.health.thermal_monitor.beep_under_voltage"),
+        patch("shitbox.health.thermal_monitor.speak_under_voltage"),
+        patch("shitbox.health.thermal_monitor.dashboard_push_event") as mock_push,
+    ):
+        service._check_throttled()
+
+    mock_push.assert_called_once()
+    event = mock_push.call_args[0][0]
+    assert event.get("type") == "ALERT", f"expected type='ALERT', got {event.get('type')!r}"
+    assert event.get("subtype") == "UNDERVOLTAGE", (
+        f"expected subtype='UNDERVOLTAGE', got {event.get('subtype')!r}"
+    )
+    assert "message" in event, "event payload missing 'message' key"
+    assert "UNDERVOLTAGE" in str(event["message"]), (
+        f"expected 'UNDERVOLTAGE' in message, got {event['message']!r}"
+    )

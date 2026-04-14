@@ -372,6 +372,7 @@ class Config:
     capture: CaptureConfig = field(default_factory=CaptureConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
+    drivers: List[str] = field(default_factory=list)
 
 
 def _dict_to_dataclass(cls: type, data: dict[str, Any]) -> Any:
@@ -516,4 +517,5 @@ def load_config(config_path: str | Path | None = None) -> Config:
             ),
         ),
         dashboard=_dict_to_dataclass(DashboardConfig, data.get("dashboard", {})),
+        drivers=data.get("drivers", []),
     )

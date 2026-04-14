@@ -2,69 +2,358 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>shitbox</title>
   <link rel="stylesheet" href="/static/vendor/tailwind.min.css">
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
   <style>
-    body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; }
+    html, body { margin: 0; padding: 0; width: 1024px; height: 600px; overflow: hidden; background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    * { cursor: none !important; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
     .num { font-variant-numeric: tabular-nums; font-weight: 600; }
     .card { background: #161b22; border: 1px solid #21262d; }
-    .badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-block; }
+    .badge { padding: 2px 8px; border-radius: 4px; font-size: 15px; font-weight: 600; display: inline-block; }
     .ev-HIGH_G { background: #da3633; color: #fff; }
     .ev-HARD_BRAKE { background: #f85149; color: #fff; }
     .ev-BIG_CORNER { background: #d29922; color: #000; }
     .ev-ROUGH_ROAD { background: #8957e5; color: #fff; }
     .ev-MANUAL, .ev-BUTTON { background: #238636; color: #fff; }
     .ev-BOOT { background: #1f6feb; color: #fff; }
-    #map { background: #0d1117; }
+    #map { background: #0d1117; width: 100%; height: 100%; }
     .stale { color: #da3633; }
     .bg-red-700 { background: #b91c1c; color: #fff; }
     .bg-yellow-600 { background: #ca8a04; color: #000; }
     .bg-green-700 { background: #15803d; color: #fff; }
-  </style>
+    .bg-gray-700 { background: #374151; color: #9ca3af; }
+</style>
 </head>
-<body x-data="dashboard()" x-init="init()">
+<body x-data="dashboard()" x-init="init()" style="display: flex; flex-direction: column; width: 1024px; height: 600px; overflow: hidden;">
 
-  <!-- TOP BAR (h: 80px) -->
-  <header class="card flex items-center justify-between px-6" style="height: 80px">
-    <div>
-      <span class="badge" :class="gpsBadgeClass" x-text="gpsBadge"></span>
+  <!-- TOP STRIP (h: 100px) — three equal columns -->
+  <header class="card" style="height: 100px; flex-shrink: 0; display: flex; padding: 0 24px; gap: 16px;">
+
+    <!-- Col 1: Speed + driver (33%) -->
+    <div style="flex: 1; display: flex; align-items: center; gap: 12px; overflow: hidden;">
+      <div class="num" style="font-size: 90px; line-height: 1; width: 180px; flex-shrink: 0; text-align: right;">
+        <span x-text="speed"></span>
+      </div>
+      <div style="display: flex; flex-direction: column; justify-content: center; gap: 2px;">
+        <div class="text-gray-400" style="font-size: 18px;">km/h</div>
+        <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">Driver</div>
+        <div class="cursor-pointer text-gray-100 hover:text-white font-semibold"
+             style="font-size: 20px;"
+             @click="openDriverModal()"
+             x-text="activeDriver || '---'"></div>
+      </div>
     </div>
-    <div class="num text-5xl"><span x-text="speed"></span> <span class="text-base text-gray-400">km/h</span></div>
-    <div class="text-sm text-gray-400">Driver: &mdash;</div>
-    <div>
-      <span class="badge" :class="syncBadgeClass" x-text="syncBadge"></span>
+
+    <!-- Col 2: Status badges 2×2 grid (33%) -->
+    <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <span class="badge" :class="gpsBadgeClass" x-text="gpsBadge"></span>
+        <span class="badge" :class="netBadgeClass" x-text="netBadge"></span>
+        <span class="badge" :class="syncBadgeClass" x-text="syncBadge"></span>
+        <span class="badge" :class="recBadgeClass" x-text="recBadge"></span>
+      </div>
+    </div>
+
+    <!-- Col 3: Action buttons (33%) -->
+    <div style="flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+      <button @click="openMap()"
+              style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
+                     color: #58a6ff; font-size: 28px; font-weight: 700;
+                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">MAP</button>
+      <button @click="openNoteModal()"
+              style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
+                     color: #e6edf3; font-size: 28px; font-weight: 700;
+                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">Note</button>
+      <button @click="openFuelModal()"
+              style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
+                     color: #e6edf3; font-size: 28px; font-weight: 700;
+                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">Fuel</button>
+      <span class="badge" x-show="successMsg" x-text="successMsg"
+            style="background: #238636; color: #fff;"></span>
     </div>
   </header>
 
-  <!-- MAIN: G-gauge + temps + map -->
-  <main class="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
-    <section class="space-y-4">
-      <div class="card p-4 flex items-center justify-center" style="height: min(40vh,40vw)">
-        <canvas id="ggauge" width="400" height="400"></canvas>
+  <!-- MAIN CENTRE (fills remaining height between header and footer) -->
+  <main style="flex: 1; display: flex; overflow: hidden;">
+
+    <!-- Left: G-gauge -->
+    <div class="card" style="width: 340px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 4px;">
+      <canvas id="ggauge" width="320" height="320"></canvas>
+    </div>
+
+    <!-- Right: data tiles + MAP button -->
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 8px; overflow: hidden;">
+
+      <!-- Temp row -->
+      <div style="display: flex; gap: 6px; flex: 1;">
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Cabin Temp</div>
+          <div class="num" style="font-size: 36px;"><span x-text="imuTemp"></span> <span class="text-gray-400" style="font-size: 22px;">&deg;C</span></div>
+        </div>
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">SoC Temp</div>
+          <div class="num" style="font-size: 36px;"><span x-text="socTemp"></span> <span class="text-gray-400" style="font-size: 22px;">&deg;C</span></div>
+        </div>
       </div>
-      <div class="grid grid-cols-2 gap-4">
-        <div class="card p-4"><div class="text-sm text-gray-400">CABIN TEMP</div><div class="num text-4xl"><span x-text="imuTemp"></span> &deg;C</div></div>
-        <div class="card p-4"><div class="text-sm text-gray-400">SoC TEMP</div><div class="num text-4xl"><span x-text="socTemp"></span> &deg;C</div></div>
+
+      <!-- Waypoint distance + Bearing row -->
+      <div style="display: flex; gap: 6px; flex: 1;">
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Next WP</div>
+          <div class="num" style="font-size: 26px;" x-text="waypointText"></div>
+        </div>
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Bearing</div>
+          <div class="num" style="font-size: 26px;" x-text="bearingText"></div>
+        </div>
       </div>
-    </section>
-    <section class="card overflow-hidden" style="height: 60vh">
-      <div id="map" style="height:100%; width:100%"></div>
-    </section>
+
+      <!-- Current G + Time row -->
+      <div style="display: flex; gap: 6px; flex: 1;">
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Current G</div>
+          <div class="num" style="font-size: 36px;" x-text="(Math.hypot(gx, gy)).toFixed(2) + 'g'"></div>
+        </div>
+        <div class="card" style="flex: 1; padding: 8px; display: flex; flex-direction: column; justify-content: center;">
+          <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Time</div>
+          <div class="num" style="font-size: 36px;" x-text="new Date(now).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: false})"></div>
+        </div>
+      </div>
+    </div>
   </main>
 
-  <!-- BOTTOM EVENT STRIP (h: 88px) -->
-  <footer class="card flex items-center gap-3 px-4 overflow-x-auto" style="height: 88px">
-    <template x-for="ev in events" :key="ev.timestamp + ev.type">
-      <div class="badge" :class="'ev-' + ev.type">
-        <span x-text="ev.type"></span> &middot; <span x-text="ev.peak_g ? ev.peak_g.toFixed(1) + 'g' : ''"></span>
-      </div>
-    </template>
-    <div x-show="events.length === 0" class="text-sm text-gray-400">No events yet</div>
+  <!-- BOTTOM STRIP: 5-item event ticker + timelapse thumbnail (h: 130px) -->
+  <footer class="card" style="height: 130px; flex-shrink: 0; padding: 6px 10px; overflow: hidden; display: flex; gap: 8px;">
+    <!-- Event ticker -->
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
+      <template x-for="ev in events" :key="ev.ts || ev.timestamp">
+        <div style="display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden;">
+          <span class="badge" :class="'ev-' + ev.type"
+                :style="`background:${EVENT_COLOURS[ev.type] || '#8b949e'}`"
+                x-text="ev.type"></span>
+          <span class="num text-gray-300" style="font-size: 18px;"
+                x-text="(ev.peak_g || 0).toFixed(1) + 'g'"></span>
+          <span class="text-gray-400" style="font-size: 15px;"
+                x-text="relativeTime(ev.ts || ev.timestamp)"></span>
+        </div>
+      </template>
+      <div x-show="events.length === 0" class="text-gray-400" style="font-size: 18px;">No events yet</div>
+    </div>
+    <!-- Timelapse thumbnail -->
+    <div x-show="timelapseUrl" style="flex-shrink: 0; width: 90px; height: 90px; cursor: pointer;"
+         @click="openTimelapse()">
+      <img :src="timelapseUrl" alt="timelapse"
+           style="width: 90px; height: 90px; object-fit: cover; border-radius: 4px; border: 1px solid #21262d;">
+    </div>
   </footer>
 
+  <!-- Timelapse fullscreen overlay (z-index 100, same level as map) -->
+  <div x-show="showTimelapse"
+       x-cloak
+       style="position: fixed; inset: 0; z-index: 100; background: #0d1117; display: flex; align-items: center; justify-content: center;"
+       @click="closeTimelapse()">
+    <button @click="closeTimelapse()"
+            style="position: absolute; top: 12px; right: 16px; z-index: 110;
+                   background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                   padding: 6px 14px; border-radius: 4px; font-size: 35px;
+                   cursor: pointer; font-weight: 700;">&times; Close</button>
+    <img :src="timelapseUrl" alt="timelapse"
+         style="max-width: 100%; max-height: 100%; object-fit: contain;">
+  </div>
+
+  <!-- MAP overlay (z-index 100, reuses existing #map div + Leaflet instance) -->
+  <div x-show="showMap"
+       x-cloak
+       style="position: fixed; inset: 0; z-index: 100; background: #0d1117;"
+       @click.self="closeMap()">
+    <!-- Close button top-right so tap-to-dismiss on dark edges still works -->
+    <button @click="closeMap()"
+            style="position: absolute; top: 12px; right: 16px; z-index: 110;
+                   background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                   padding: 6px 14px; border-radius: 4px; font-size: 35px;
+                   cursor: pointer; font-weight: 700;">&times; Close</button>
+    <div id="map" style="position: absolute; inset: 0;"></div>
+  </div>
+
+  <!-- Alert overlay (z-index 150, above map overlay, below modals) -->
+  <div x-show="alertOverlay"
+       x-cloak
+       style="position: fixed; inset: 0; z-index: 150; display: flex; align-items: center; justify-content: center; pointer-events: none;"
+       :style="alertOverlay ? `background:${alertOverlay.colour}CC` : ''">
+    <div class="text-white font-bold"
+         style="font-size: 101px; text-align: center; padding: 24px; text-shadow: 0 2px 8px rgba(0,0,0,0.6);"
+         x-text="alertOverlay ? alertOverlay.message : ''"></div>
+  </div>
+
+  <!-- Field Note modal (full screen) — x-if recreates element fresh, avoiding Alpine display-toggle -->
+  <template x-if="showNoteModal">
+  <div @keydown.escape.window="showNoteModal = false"
+       style="position: fixed; inset: 0; background: #0d1117; z-index: 1000;
+              display: grid; grid-template-rows: auto auto 1fr auto; padding: 48px; gap: 24px;
+              box-sizing: border-box;">
+
+    <!-- Title row + buttons -->
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <h2 style="font-size: 39px; font-weight: 600; margin: 0; color: #e6edf3;">Field Note</h2>
+      <div style="display: flex; gap: 16px;">
+        <button @click="showNoteModal = false"
+                style="background: #161b22; color: #8b949e; padding: 16px 32px; font-size: 35px;
+                       border: 1px solid #21262d; border-radius: 8px; cursor: pointer;">Close</button>
+        <button @click.prevent="saveNote()" :disabled="savingNote || !noteBody.trim()"
+                :style="(savingNote || !noteBody.trim())
+                  ? 'background: #21262d; color: #8b949e; cursor: not-allowed; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px;'
+                  : 'background: #1f6feb; color: #fff; cursor: pointer; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px; font-weight: 600;'"
+                x-text="savingNote ? 'Saving...' : 'Save Note'"></button>
+      </div>
+    </div>
+
+    <!-- Event pin -->
+    <select x-model="noteEventId" :disabled="events.length === 0"
+            style="background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                   border-radius: 8px; padding: 12px 16px; font-size: 26px; min-height: 60px;">
+      <option value="" x-text="events.length === 0 ? 'No recent events' : 'No event pin'"></option>
+      <template x-for="ev in events.slice(0, 10)" :key="ev.id">
+        <option :value="ev.id" x-text="(ev.type || 'EVENT') + ' @ ' + ev.timestamp"></option>
+      </template>
+    </select>
+
+    <!-- Textarea fills the 1fr row -->
+    <textarea x-model="noteBody" placeholder="What happened?"
+              style="width: 100%; height: 100%; background: #161b22; border: 1px solid #21262d;
+                     color: #e6edf3; border-radius: 8px; padding: 24px; box-sizing: border-box;
+                     font-size: 31px; font-family: inherit; resize: none;"></textarea>
+
+    <!-- Bottom row: GPS status + error -->
+    <div style="display: flex; align-items: center; gap: 24px; font-size: 26px; font-weight: 600;">
+      <span x-show="gpsHasFix" style="color: #8b949e;">Location captured (3D fix)</span>
+      <span x-show="!gpsHasFix && gpsStaleMinutes > 0" style="color: #ca8a04;"
+            x-text="'Location from ' + gpsStaleMinutes + ' minutes ago'"></span>
+      <span x-show="!gpsHasFix && gpsStaleMinutes === 0" style="color: #ca8a04;">No GPS fix available</span>
+      <span x-show="errorMsg" x-text="errorMsg" style="color: #da3633;"></span>
+    </div>
+  </div>
+  </template>
+
+  <!-- Fuel Stop modal (full screen) -->
+  <div x-show="showFuelModal" x-cloak
+       @keydown.escape.window="showFuelModal = false"
+       style="position: fixed; inset: 0; background: #0d1117; z-index: 1000;
+              display: flex; flex-direction: column; padding: 48px; gap: 32px;">
+
+    <h2 style="font-size: 39px; font-weight: 600; margin: 0; color: #e6edf3; flex-shrink: 0;">Fuel Stop</h2>
+
+    <!-- Litres + Cost side by side -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; flex-shrink: 0;">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <label style="font-size: 23px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em;">Litres</label>
+        <input type="number" step="0.1" min="0" x-model="fuelVolume" placeholder="0.0"
+               style="background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                      border-radius: 8px; padding: 20px; font-size: 39px; min-height: 90px;" />
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <label style="font-size: 23px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em;">Cost (AUD)</label>
+        <input type="number" step="0.01" min="0" x-model="fuelCost" placeholder="0.00"
+               style="background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                      border-radius: 8px; padding: 20px; font-size: 39px; min-height: 90px;" />
+      </div>
+    </div>
+
+    <!-- Odometer full width -->
+    <div style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0;">
+      <label style="font-size: 23px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em;">Odometer (km) — optional</label>
+      <input type="number" step="1" min="0" x-model="fuelOdo" placeholder="0"
+             style="background: #161b22; border: 1px solid #21262d; color: #e6edf3;
+                    border-radius: 8px; padding: 20px; font-size: 39px; min-height: 90px;" />
+    </div>
+
+    <!-- GPS status + error + buttons -->
+    <div style="margin-top: auto; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
+      <div style="font-size: 26px; font-weight: 600;">
+        <span x-show="gpsHasFix" style="color: #8b949e;">Location captured (3D fix)</span>
+        <span x-show="!gpsHasFix && gpsStaleMinutes > 0" style="color: #ca8a04;"
+              x-text="'Location from ' + gpsStaleMinutes + ' minutes ago'"></span>
+        <span x-show="!gpsHasFix && gpsStaleMinutes === 0" style="color: #ca8a04;">No GPS fix available</span>
+        <span x-show="errorMsg" x-text="errorMsg" style="color: #da3633; margin-left: 16px;"></span>
+      </div>
+      <div style="display: flex; gap: 16px;">
+        <button @click="showFuelModal = false"
+                style="background: #161b22; color: #8b949e; padding: 16px 32px; font-size: 35px;
+                       border: 1px solid #21262d; border-radius: 8px; cursor: pointer;">Close</button>
+        <button @click.prevent="saveFuel()" :disabled="savingFuel || !(parseFloat(fuelVolume) > 0)"
+                :style="(savingFuel || !(parseFloat(fuelVolume) > 0))
+                  ? 'background: #21262d; color: #8b949e; cursor: not-allowed; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px;'
+                  : 'background: #1f6feb; color: #fff; cursor: pointer; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px; font-weight: 600;'"
+                x-text="savingFuel ? 'Saving...' : 'Log Fuel Stop'"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Driver stats modal (full screen) -->
+  <div x-show="showDriverModal"
+       x-cloak
+       @keydown.escape.window="showDriverModal = false"
+       style="position: fixed; inset: 0; background: #0d1117; z-index: 1000;
+              display: flex; flex-direction: column; padding: 48px; gap: 24px;">
+
+    <h2 style="font-size: 39px; font-weight: 600; margin: 0; color: #e6edf3;">Driver</h2>
+
+    <select x-model="driverSelection"
+            @change="switchDriver(driverSelection)"
+            style="background: #161b22; border: 1px solid #21262d;
+                   color: #e6edf3; border-radius: 8px; padding: 16px;
+                   font-size: 31px; min-height: 70px;">
+      <option value="">-- No driver --</option>
+      <template x-for="name in driverRoster" :key="name">
+        <option :value="name" x-text="name"></option>
+      </template>
+    </select>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 31px;">
+      <thead>
+        <tr style="color: #8b949e; border-bottom: 1px solid #21262d;">
+          <th style="text-align: left; padding: 12px 0;">Driver</th>
+          <th style="text-align: right; padding: 12px 0;">Time</th>
+          <th style="text-align: right; padding: 12px 0;">%</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="row in driverStats" :key="row.driver_name">
+          <tr style="border-bottom: 1px solid #161b22;">
+            <td style="padding: 14px 0; color: #e6edf3;" x-text="row.driver_name"></td>
+            <td style="padding: 14px 0; text-align: right; color: #8b949e;"
+                x-text="formatDuration(row.total_seconds)"></td>
+            <td style="padding: 14px 0; text-align: right; color: #8b949e;"
+                x-text="row.pct + '%'"></td>
+          </tr>
+        </template>
+        <tr x-show="driverStats.length === 0">
+          <td colspan="3" style="padding: 16px 0; text-align: center; color: #8b949e;">No stints recorded yet</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top: auto; display: flex; justify-content: flex-end;">
+      <button @click="showDriverModal = false"
+              style="background: #161b22; color: #8b949e; padding: 16px 32px; font-size: 35px;
+                     border: 1px solid #21262d; border-radius: 8px; cursor: pointer;">Close</button>
+    </div>
+  </div>
+
   <script src="/static/vendor/leaflet.js"></script>
+  <script>
+    // Set page dimensions to match the actual screen.
+    // No transforms, no viewport tricks -- just make the layout the right size.
+    // innerWidth/innerHeight are rotation-aware; screen.width/height are not.
+    (function () {
+      var w = window.innerWidth, h = window.innerHeight;
+      document.documentElement.style.width  = w + 'px';
+      document.documentElement.style.height = h + 'px';
+      document.body.style.width  = w + 'px';
+      document.body.style.height = h + 'px';
+    })();
+  </script>
   <script src="/static/vendor/alpine.min.js" defer></script>
   <script>
     function dashboard() {
@@ -72,15 +361,64 @@
         speed: 0, imuTemp: '—', socTemp: '—',
         gpsBadge: 'NO FIX', gpsBadgeClass: 'bg-red-700',
         syncBadge: 'SYNC OFFLINE', syncBadgeClass: 'bg-red-700',
+        netBadge: 'NET OFFLINE', netBadgeClass: 'bg-red-700',
+        recBadge: 'NO REC', recBadgeClass: 'bg-gray-700',
         events: [],
         gx: 0, gy: 0, peakG: 1.0, peakGAt: 0,
         map: null, marker: null, breadcrumb: null, lastInteract: 0,
+        activeDriver: null,
+        showDriverModal: false,
+        driverStats: [],
+        driverRoster: [],
+        driverSelection: '',
+        showNoteModal: false,
+        showFuelModal: false,
+        noteBody: '',
+        noteEventId: '',
+        fuelVolume: '',
+        fuelCost: '',
+        fuelOdo: '',
+        gpsStaleMinutes: 0,
+        gpsHasFix: true,
+        savingNote: false,
+        savingFuel: false,
+        errorMsg: '',
+        successMsg: '',
+        // Kiosk additions
+        showMap: false,
+        showTimelapse: false,
+        timelapseUrl: null,
+        alertOverlay: null,
+        _alertTimer: null,
+        now: Date.now(),
+        waypointText: '-- km to --',
+        bearingText: '--',
+        _waypoints: [
+          { name: "Port Douglas",        lat: -16.4838, lng: 145.4673 },
+          { name: "The Oasis Roadhouse", lat: -18.8797, lng: 144.5436 },
+          { name: "Aramac",              lat: -22.9667, lng: 145.2333 },
+          { name: "Toompine",            lat: -27.8500, lng: 144.4833 },
+          { name: "Louth",               lat: -30.5333, lng: 145.1167 },
+          { name: "Narrandera",          lat: -34.7475, lng: 146.5533 },
+          { name: "Dargo",               lat: -37.4975, lng: 147.2692 },
+          { name: "Melbourne",           lat: -37.8679, lng: 144.9743 },
+        ],
+        EVENT_COLOURS: {
+          HIGH_G: '#da3633', HARD_BRAKE: '#f85149', BIG_CORNER: '#d29922',
+          ROUGH_ROAD: '#8957e5', MANUAL: '#238636', BUTTON: '#238636',
+          BOOT: '#1f6feb',
+        },
         init() {
           this.initMap();
           this.openFast();
           this.openSlow();
           this.openEvents();
           requestAnimationFrame(() => this.drawGauge());
+          // Tick now every second so relativeTime() stays accurate (RESEARCH Pitfall 5)
+          setInterval(() => { this.now = Date.now(); }, 1000);
+          // Poll for latest timelapse thumbnail every 30s (matches capture interval)
+          this.fetchTimelapse();
+          setInterval(() => this.fetchTimelapse(), 30000);
         },
         initMap() {
           this.map = L.map('map', { zoomControl: true, attributionControl: false }).setView([-25, 135], 5);
@@ -93,6 +431,37 @@
               this.map.panTo(this.marker.getLatLng());
             }
           }, 1000);
+        },
+        async fetchTimelapse() {
+          try {
+            const r = await fetch('/api/timelapse/latest');
+            if (r.ok) {
+              const d = await r.json();
+              if (d.url) this.timelapseUrl = d.url + '?t=' + Date.now();
+            }
+          } catch { /* dashboard may be running without captures mounted */ }
+        },
+        openTimelapse() { this.showTimelapse = true; },
+        closeTimelapse() { this.showTimelapse = false; },
+        openMap() {
+          this.showMap = true;
+          this.$nextTick(() => {
+            if (this.map) this.map.invalidateSize();
+          });
+        },
+        closeMap() { this.showMap = false; },
+        showAlert(payload) {
+          if (this._alertTimer) { clearTimeout(this._alertTimer); this._alertTimer = null; }
+          const isSystem = payload.type === 'ALERT';
+          const colour = isSystem
+            ? '#da3633'
+            : (this.EVENT_COLOURS[payload.type] || '#8b949e');
+          const message = isSystem
+            ? payload.message
+            : `${payload.type} · ${(payload.peak_g || 0).toFixed(1)}g`;
+          this.alertOverlay = { message, colour, isSystem };
+          const duration = isSystem ? 10000 : 3000;
+          this._alertTimer = setTimeout(() => { this.alertOverlay = null; }, duration);
         },
         openFast() {
           const es = new EventSource('/sse/fast');
@@ -114,19 +483,23 @@
             this.imuTemp = d.imu_temp != null ? Math.round(d.imu_temp) : '—';
             this.socTemp = d.soc_temp != null ? Math.round(d.soc_temp) : '—';
             if (d.fix_mode === 0) {
-              this.gpsBadge = 'NO FIX'; this.gpsBadgeClass = 'bg-red-700';
+              this.gpsBadge = 'GPS'; this.gpsBadgeClass = 'bg-red-700';
             } else if (d.fix_mode === 2) {
-              this.gpsBadge = `2D · ${d.sats} sats`; this.gpsBadgeClass = 'bg-yellow-600';
+              this.gpsBadge = 'GPS : 2D'; this.gpsBadgeClass = 'bg-yellow-600';
             } else {
-              this.gpsBadge = `3D · ${d.sats} sats · HDOP ${(d.hdop||0).toFixed(1)}`;
-              this.gpsBadgeClass = 'bg-green-700';
+              this.gpsBadge = 'GPS : 3D'; this.gpsBadgeClass = 'bg-green-700';
             }
+            this.netBadge = d.sync_connected ? 'NET OK' : 'NET OFFLINE';
+            this.netBadgeClass = d.sync_connected ? 'bg-green-700' : 'bg-red-700';
             if (d.sync_connected) {
-              this.syncBadge = d.sync_backlog > 0 ? `SYNC ${d.sync_backlog} pending` : 'SYNC OK';
+              this.syncBadge = d.sync_backlog > 0 ? `SYNC ${d.sync_backlog}` : 'SYNC OK';
               this.syncBadgeClass = d.sync_backlog > 0 ? 'bg-yellow-600' : 'bg-green-700';
             } else {
-              this.syncBadge = 'SYNC OFFLINE'; this.syncBadgeClass = 'bg-red-700';
+              this.syncBadge = 'SYNC —'; this.syncBadgeClass = 'bg-gray-700';
             }
+            this.recBadge = d.recording_active ? 'REC' : 'NO REC';
+            this.recBadgeClass = d.recording_active ? 'bg-red-700' : 'bg-gray-700';
+            this.activeDriver = d.active_driver;
             if (d.lat != null && d.lng != null) {
               const ll = [d.lat, d.lng];
               if (!this.marker) {
@@ -139,28 +512,70 @@
               pts.push(ll);
               if (pts.length > 300) pts.shift();
               this.breadcrumb.setLatLngs(pts);
+              this._updateWaypoint(d.lat, d.lng);
             }
           });
         },
         openEvents() {
-          const EVENT_COLOURS = {
-            HIGH_G: '#da3633', HARD_BRAKE: '#f85149', BIG_CORNER: '#d29922',
-            ROUGH_ROAD: '#8957e5', MANUAL: '#238636', BUTTON: '#238636',
-            BOOT: '#1f6feb',
-          };
           const es = new EventSource('/sse/events');
           es.addEventListener('event', (e) => {
             const ev = JSON.parse(e.data);
+            // ALERT events go to the overlay only — they are not rally events
+            if (ev.type === 'ALERT') {
+              this.showAlert(ev);
+              return;
+            }
             this.events.unshift(ev);
-            if (this.events.length > 10) this.events.pop();
+            if (this.events.length > 5) this.events.pop();
+            this.showAlert(ev);
             if (ev.lat != null && ev.lng != null) {
-              const col = EVENT_COLOURS[ev.type] || '#8b949e';
+              const col = this.EVENT_COLOURS[ev.type] || '#8b949e';
               const label = ev.peak_g ? `${ev.type} · ${ev.peak_g.toFixed(1)}g` : ev.type;
               L.circleMarker([ev.lat, ev.lng], { radius: 6, color: col, fillColor: col, fillOpacity: 0.85 })
                 .bindPopup(label)
                 .addTo(this.map);
             }
           });
+        },
+        _haversineKm(lat1, lon1, lat2, lon2) {
+          const R = 6371;
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLon = (lon2 - lon1) * Math.PI / 180;
+          const a = Math.sin(dLat/2)**2 +
+                    Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+          return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        },
+        _bearingDeg(lat1, lon1, lat2, lon2) {
+          const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+          const Δλ = (lon2 - lon1) * Math.PI / 180;
+          const y = Math.sin(Δλ) * Math.cos(φ2);
+          const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+          return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+        },
+        _cardinalPoint(deg) {
+          const pts = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+          return pts[Math.round(deg / 22.5) % 16];
+        },
+        _updateWaypoint(lat, lng) {
+          if (lat == null || lng == null) return;
+          let best = null, bestDist = Infinity;
+          for (const wp of this._waypoints) {
+            const d = this._haversineKm(lat, lng, wp.lat, wp.lng);
+            if (d < bestDist) { bestDist = d; best = wp; }
+          }
+          if (best) {
+            this.waypointText = `${Math.round(bestDist)} km to ${best.name}`;
+            const deg = this._bearingDeg(lat, lng, best.lat, best.lng);
+            this.bearingText = `${this._cardinalPoint(deg)} · ${Math.round(deg)}°`;
+          }
+        },
+        relativeTime(ts) {
+          void this.now; // reference now so Alpine re-renders this when now ticks
+          const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+          if (diff < 0) return 'just now';
+          if (diff < 60) return `${diff}s ago`;
+          const m = Math.floor(diff / 60);
+          return m < 60 ? `${m}m ago` : `${Math.floor(m/60)}h ${m%60}m ago`;
         },
         drawGauge() {
           const c = document.getElementById('ggauge');
@@ -176,9 +591,116 @@
           const py = cy - (this.gy / this.peakG) * r;
           ctx.fillStyle = '#1f6feb';
           ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI*2); ctx.fill();
-          ctx.fillStyle = '#8b949e'; ctx.font = '14px system-ui';
+          ctx.fillStyle = '#8b949e'; ctx.font = '18px system-ui';
           ctx.fillText(`±${this.peakG.toFixed(1)}g`, 10, 20);
           requestAnimationFrame(() => this.drawGauge());
+        },
+        async fetchGpsStatus() {
+          try {
+            const r = await fetch('/api/logbook/gps');
+            const data = await r.json();
+            this.gpsHasFix = data.has_fix;
+            this.gpsStaleMinutes = data.stale_seconds != null
+              ? Math.max(1, Math.round(data.stale_seconds / 60)) : 0;
+          } catch { this.gpsHasFix = false; this.gpsStaleMinutes = 0; }
+        },
+        async openNoteModal() {
+          this.errorMsg = '';
+          this.noteBody = '';
+          this.noteEventId = '';
+          await this.fetchGpsStatus();
+          this.showNoteModal = true;
+        },
+        async openFuelModal() {
+          this.errorMsg = '';
+          this.fuelVolume = '';
+          this.fuelCost = '';
+          this.fuelOdo = '';
+          await this.fetchGpsStatus();
+          this.showFuelModal = true;
+        },
+        async saveNote() {
+          if (!this.noteBody.trim()) return;
+          this.savingNote = true;
+          this.errorMsg = '';
+          try {
+            const body = { body: this.noteBody };
+            if (this.noteEventId) body.event_id = parseInt(this.noteEventId, 10);
+            const r = await fetch('/api/notes', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(body)
+            });
+            if (!r.ok) throw new Error('save failed');
+            this.showNoteModal = false;
+            this.flashSuccess('Note saved');
+          } catch {
+            this.errorMsg = 'Could not save — try again';
+          } finally { this.savingNote = false; }
+        },
+        async saveFuel() {
+          const vol = parseFloat(this.fuelVolume);
+          if (!(vol > 0)) return;
+          this.savingFuel = true;
+          this.errorMsg = '';
+          try {
+            const body = { volume_litres: vol };
+            if (this.fuelCost) body.cost_aud = parseFloat(this.fuelCost);
+            if (this.fuelOdo) body.odometer_km = parseFloat(this.fuelOdo);
+            const r = await fetch('/api/fuel', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(body)
+            });
+            if (!r.ok) throw new Error('save failed');
+            this.showFuelModal = false;
+            this.flashSuccess('Fuel stop logged');
+          } catch {
+            this.errorMsg = 'Could not save — try again';
+          } finally { this.savingFuel = false; }
+        },
+        async openDriverModal() {
+          try {
+            const r = await fetch('/api/driver/stats');
+            if (r.ok) {
+              const data = await r.json();
+              this.driverStats = data.drivers || [];
+              this.driverRoster = data.roster || [];
+              this.driverSelection = data.active_driver || '';
+            }
+          } catch (e) { console.error('driver stats fetch failed', e); }
+          this.showDriverModal = true;
+        },
+        async switchDriver(name) {
+          try {
+            const r = await fetch('/api/driver', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({name: name}),
+            });
+            if (r.ok) {
+              const data = await r.json();
+              this.activeDriver = data.driver_name;
+              // Refresh stats so the modal reflects the new stint
+              const s = await fetch('/api/driver/stats');
+              if (s.ok) {
+                const sd = await s.json();
+                this.driverStats = sd.drivers || [];
+              }
+            } else {
+              console.warn('driver switch rejected', r.status);
+            }
+          } catch (e) { console.error('driver switch failed', e); }
+        },
+        formatDuration(seconds) {
+          if (!seconds || seconds <= 0) return '0m';
+          const h = Math.floor(seconds / 3600);
+          const m = Math.floor((seconds % 3600) / 60);
+          return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        },
+        flashSuccess(msg) {
+          this.successMsg = msg;
+          setTimeout(() => { this.successMsg = ''; }, 3000);
         },
       };
     }

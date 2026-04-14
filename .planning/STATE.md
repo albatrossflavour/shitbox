@@ -1,16 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.0
-milestone_name: Rally Ready
-status: ready_to_plan
-stopped_at: Roadmap created — 7 phases defined (12-18), 28 requirements mapped
-last_updated: "2026-04-09"
-last_activity: 2026-04-09
+milestone_name: — Rally Ready
+status: executing
+stopped_at: Completed 18-02-PLAN.md
+last_updated: "2026-04-10T23:41:57.091Z"
+last_activity: 2026-04-10
 progress:
   total_phases: 7
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 3
+  total_plans: 14
+  completed_plans: 12
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +22,16 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** v2.0 Rally Ready — Phase 12 ready to plan
+**Current focus:** Phase 17 — driver-display
 
 ## Current Position
 
-Phase: 12 of 18 (Schema Foundation and Logbook API)
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-04-09 — v2.0 roadmap created, 28 requirements mapped across phases 12-18
+Phase: 18
+Plan: Not started
+Status: Ready to execute
+Last activity: 2026-04-10
 
-Progress: [░░░░░░░░░░] 0% (v2.0)
+Progress: [██████████] 100% (v2.0, 4/4 plans in phase 12)
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
@@ -50,6 +51,21 @@ v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 - All new v2.0 tables (notes, fuel_stops, driver_stints, calibration) go into telemetry.db — no separate databases
 - Touchscreen OSK deferred — USB keyboard required (Wayland/Chromium OSK unreliable on Pi 5)
 - Cost data hard exclusion: fuel cost must never appear in sync payloads or on the website
+- Plan 12-01: cost_aud stored in fuel_stops (nullable) but excluded from sync payloads at API layer (plan 12-02)
+- Plan 12-01: no indexes added on notes/fuel_stops — low-write tables, add later if query patterns demand
+- Plan 12-02: snapshot_fn injected into LogbookStorage for testability without hardware dependency
+- Plan 12-02: generate_fuel_json enforces cost_aud exclusion at SQL SELECT level, not post-processing (D-10)
+- Plan 12-04: LogbookStorage registered unconditionally in UnifiedEngine.__init__ — cheap, REST-only, idempotent; generators guarded on capture_sync not None
+- Plan 12-04: gps_state.update_last_known_position co-located with existing lat/lng not-None guard in _record_telemetry
+- Plan 13-01: Wave 0 test stubs use pytest.skip inside fixtures (not pytest.mark.xfail) — explicit skip reasons, clean collection
+- Plan 13-01: v6 migration test assertions relaxed from == 6 to >= 6 after SCHEMA_VERSION bumped to 7
+- Plan 13-03: SSE test drives async generator directly via asyncio.run() — Starlette TestClient portal.call() blocks on infinite generators, making HTTP-transport testing impossible
+- Plan 13-03: sse.py migrated to EventSourceResponse + threading.Lock — required for correct slot management in mixed sync/async context
+- Plan 13-03: register_json_generator uses 2-arg form (name, fn) — capture_sync derives filename as {name}.json automatically
+- Plan 13-04: switchDriver() refreshes /api/driver/stats inline after POST — avoids stale modal table without requiring modal re-open
+- Plan 13-04: activeDriver SSE field is nullable — null maps to '---' in top bar via Alpine x-text || fallback
+- Plan 17-01: dashboard_push_event imported via try/except in thermal_monitor — mirrors buzzer/speaker pattern, graceful degradation when dashboard absent
+- Plan 17-01: elif SensorType.TEMPERATURE branch in _on_reading uses last-write wins — DS18B20 and BME680 can coexist without coordination
 
 ### Known Constraints for v2.0
 
@@ -65,6 +81,38 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-09
-Stopped at: v2.0 roadmap created. Run /gsd:plan-phase 12 to start.
+Last session: 2026-04-10T23:41:57.089Z
+Stopped at: Completed 18-02-PLAN.md
 Resume file: None
+
+## Out-of-Band Hardware Work (2026-04-10)
+
+Post-phase-13 session — hardware issues discovered and partially resolved during UAT.
+
+### Hardware changes made
+
+- **PSU replaced**: Official Raspberry Pi 5 PSU installed after full power brownout
+- **I2C driver replaced**: Switched from i2c_designware (Pi 5 RP1 chip, buggy clock-stretch handling) to i2c-gpio bit-bang driver. config.txt change: `#dtparam=i2c_arm=on` disabled, `dtoverlay=i2c-gpio,bus=1,i2c_gpio_sda=2,i2c_gpio_scl=3` added. All sensors confirmed present on bit-bang bus 1 via i2cdetect.
+- **Display boot race**: Still intermittent. DSI-1 entry removed from cmdline.txt previously but race returned. Suspect `display_auto_detect=1` in config.txt probing absent DSI-1. Next step: set `display_auto_detect=0`.
+
+### Sensors confirmed on bit-bang i2c-1 (i2cdetect -y 1)
+
+- 0x10 — VEML7700
+- 0x1c — LIS3MDL
+- 0x3c — OLED
+- 0x40 — INA226
+- 0x6a — LSM6DSOX
+- 0x77 — BME680 (present on bus but failing to init at daemon startup — timing issue, needs retry on setup or delayed init)
+
+### Code fixes committed (ae7676f, branch gsd/phase-13-driver-tracking)
+
+1. **sampler.py**: Added `if self._lsm6dsox is None: raise OSError(...)` guard before read — routes None sensor into existing OSError recovery path instead of flooding log at 100Hz with AttributeError
+2. **temperature.py**: Added `SensorNotReadyError` retry (150ms sleep, one retry) — DS18B20 needs up to 750ms to convert at 12-bit, 1Hz polling was occasionally catching it mid-conversion
+3. **light.py**: Fixed VEML7700 using hardcoded `busio.I2C(1, 2)` — changed to `board.SCL/board.SDA` to work with bit-bang bus. Added `board` import alongside `busio`.
+
+### Outstanding issues
+
+- **BME680 (0x77) not initialising**: Physically present (confirmed i2cdetect), but daemon logs `No I2C device at address: 0x77` at startup. Likely a boot timing issue — sensor not ready when daemon starts. Fix options: add retry loop in EnvironmentCollector.setup(), or add a startup delay. Dashboard shows `--` for CABIN TEMP as a result.
+- **CPU temp 70.5°C at idle**: Hitting warning threshold. May need airflow improvement.
+- **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
+- **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.

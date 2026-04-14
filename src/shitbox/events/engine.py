@@ -27,6 +27,7 @@ from shitbox.collectors.light import VEML7700Collector
 from shitbox.collectors.particulate import SEN0460Collector
 from shitbox.collectors.power import INA226Collector
 from shitbox.collectors.temperature import DS18B20Collector
+from shitbox.dashboard import driver_state, gps_state
 from shitbox.dashboard.server import DashboardServer, build_dashboard_server
 from shitbox.dashboard.snapshot import update_snapshot
 from shitbox.dashboard.sse import push_event as dashboard_push_event
@@ -38,6 +39,8 @@ from shitbox.events.storage import EventStorage
 from shitbox.health.health_collector import HealthCollector
 from shitbox.health.thermal_monitor import ThermalMonitorService
 from shitbox.storage.database import Database
+from shitbox.storage.driver import DriverStorage
+from shitbox.storage.logbook import LogbookStorage
 from shitbox.storage.models import Reading, SensorType
 from shitbox.sync.batch_sync import BatchSyncService
 from shitbox.sync.boot_recovery import BootRecoveryService, detect_unclean_shutdown
@@ -224,6 +227,9 @@ class EngineConfig:
     dashboard_port: int = 8080
     dashboard_mbtiles_path: str = "/var/lib/shitbox/tiles/rally.mbtiles"
 
+    # Driver roster (from config.drivers)
+    drivers: list = field(default_factory=list)
+
     @classmethod
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
         """Create EngineConfig from the existing YAML config structure."""
@@ -345,6 +351,8 @@ class EngineConfig:
             dashboard_host=config.dashboard.host,
             dashboard_port=config.dashboard.port,
             dashboard_mbtiles_path=config.dashboard.mbtiles_path,
+            # Driver roster
+            drivers=config.drivers,
         )
 
 
@@ -494,7 +502,10 @@ class UnifiedEngine:
                 batch_size=config.prometheus_batch_size,
                 batch_interval_seconds=config.prometheus_batch_interval_seconds,
             )
-            self.batch_sync = BatchSyncService(prom_config, self.database, self.connection)
+            self.batch_sync = BatchSyncService(
+                prom_config, self.database, self.connection,
+                event_storage=self.event_storage,
+            )
 
         # Grafana annotator
         self.grafana: Optional[GrafanaAnnotator] = None
@@ -536,6 +547,20 @@ class UnifiedEngine:
                 config.captures_dir,
                 self.event_storage,
                 self.timelapse_compiler,
+            )
+
+        # Logbook storage (notes + fuel stops) — REST-only, no thread
+        self.logbook_storage = LogbookStorage(self.database)
+        if self.capture_sync is not None:
+            self.capture_sync.register_json_generator("notes", self.logbook_storage.generate_notes_json)
+            self.capture_sync.register_json_generator("fuel", self.logbook_storage.generate_fuel_json)
+
+        # Driver storage — REST-only, idempotent (same pattern as LogbookStorage)
+        self.driver_storage = DriverStorage(self.database)
+        if self.capture_sync is not None:
+            self.capture_sync.register_json_generator(
+                "driver-stats",
+                self.driver_storage.get_driver_stats_payload,
             )
 
         # Thermal monitor
@@ -613,6 +638,11 @@ class UnifiedEngine:
                     port=config.dashboard_port,
                     mbtiles_path=Path(config.dashboard_mbtiles_path),
                     recent_events_provider=lambda n: self.event_storage.recent(n),
+                    logbook_storage=self.logbook_storage,
+                    driver_storage=self.driver_storage,
+                    drivers=config.drivers or [],
+                    captures_path=Path(config.captures_dir) if config.captures_dir else None,
+                    sync_trigger=self.capture_sync.trigger_sync if self.capture_sync else None,
                 )
             except Exception as exc:
                 log.error("dashboard_init_failed", error=str(exc))
@@ -743,6 +773,13 @@ class UnifiedEngine:
             self.telemetry_readings += 1
             if reading.sensor_type == SensorType.ENVIRONMENT and reading.env_temp_celsius is not None:
                 self._cabin_temp_c = reading.env_temp_celsius
+            elif (
+                reading.sensor_type == SensorType.TEMPERATURE
+                and reading.temp_celsius is not None
+            ):
+                # DS18B20 fallback — keeps the kiosk "cabin temp" tile populated until BME680
+                # is reliable (D-09, Phase 17). Last-write wins if both sensors fire.
+                self._cabin_temp_c = reading.temp_celsius
         except Exception as e:
             log.error("v2_collector_db_write_error", error=str(e))
 
@@ -777,6 +814,10 @@ class UnifiedEngine:
                         "sync_connected": getattr(self.connection, "is_connected", False),
                         "sync_backlog": backlog,
                         "event_count_today": self.events_captured,
+                        "active_driver": driver_state.get_active_driver(),
+                        "recording_active": bool(self._pending_post_capture)
+                            or (self.video_ring_buffer is not None and self.video_ring_buffer.is_saving)
+                            or (self.video_recorder is not None and self.video_recorder.is_recording),
                     })
                 except Exception as exc:
                     log.warning("dashboard_snapshot_update_failed", error=str(exc))
@@ -834,6 +875,26 @@ class UnifiedEngine:
         event.location_name = self._current_location_name
         event.distance_from_start_km = self._distance_from_start_km
         event.distance_to_destination_km = self._distance_to_destination_km
+
+        # Push to dashboard SSE immediately — same moment as audio so the kiosk
+        # display updates in sync with the beep, not after the post-capture save.
+        # Uppercase the type to match EVENT_COLOURS keys and CSS classes in the UI.
+        if self._dashboard is not None:
+            try:
+                dashboard_push_event({
+                    "id": int(event.start_time * 1000),
+                    "type": event.event_type.value.upper(),
+                    "timestamp": datetime.fromtimestamp(
+                        event.start_time, tz=timezone.utc
+                    ).isoformat(),
+                    "peak_g": float(event.peak_value),
+                    "duration_ms": int((event.end_time - event.start_time) * 1000),
+                    "speed_kmh": event.speed_kmh,
+                    "lat": event.lat,
+                    "lng": event.lng,
+                })
+            except Exception as exc:
+                log.warning("dashboard_event_push_failed", error=str(exc))
 
         # Start video recording/save for significant events
         video_path = None
@@ -1001,7 +1062,9 @@ class UnifiedEngine:
                 # Save to disk
                 try:
                     json_path, _ = self.event_storage.save_event(
-                        event, video_path=video_path
+                        event,
+                        video_path=video_path,
+                        driver_name=driver_state.get_active_driver(),
                     )
                     self.events_captured += 1
                     # Store json_path so late video callbacks can
@@ -1015,25 +1078,6 @@ class UnifiedEngine:
                         json_path=str(json_path),
                         has_video=video_path is not None,
                     )
-                    # Push into the dashboard SSE queue. Non-blocking; drops
-                    # on full so the capture path never waits on the dashboard.
-                    if self._dashboard is not None:
-                        try:
-                            dashboard_push_event({
-                                "type": event.event_type.value,
-                                "timestamp": datetime.fromtimestamp(
-                                    event.start_time, tz=timezone.utc
-                                ).isoformat(),
-                                "peak_g": float(event.peak_value),
-                                "duration_ms": int(
-                                    (event.end_time - event.start_time) * 1000
-                                ),
-                                "speed_kmh": event.speed_kmh,
-                                "lat": event.lat,
-                                "lng": event.lng,
-                            })
-                        except Exception as exc:
-                            log.warning("dashboard_event_push_failed", error=str(exc))
                     # Trigger immediate connectivity check and sync
                     if self.config.uplink_enabled:
                         connected = self.connection.check_connectivity()
@@ -1438,6 +1482,7 @@ class UnifiedEngine:
                 self._current_satellites = gps_reading.satellites
                 # Resolve location name from coordinates
                 if gps_reading.latitude is not None and gps_reading.longitude is not None:
+                    gps_state.update_last_known_position(gps_reading.latitude, gps_reading.longitude)
                     self._resolve_location(gps_reading.latitude, gps_reading.longitude)
                     self._distance_from_start_km = self._haversine_km(
                         self.config.rally_start_lat, self.config.rally_start_lon,
@@ -1986,7 +2031,10 @@ class UnifiedEngine:
         # Save any pending events
         for pending in self._pending_post_capture.values():
             try:
-                self.event_storage.save_event(pending["event"])
+                self.event_storage.save_event(
+                    pending["event"],
+                    driver_name=driver_state.get_active_driver(),
+                )
             except Exception as e:
                 log.error("event_save_error_on_shutdown", error=str(e))
 

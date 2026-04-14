@@ -41,6 +41,15 @@ except ImportError:
     def speak_under_voltage() -> None:  # type: ignore[misc]
         pass
 
+
+try:
+    from shitbox.dashboard.sse import push_event as dashboard_push_event
+except ImportError:
+
+    def dashboard_push_event(event: dict) -> None:  # type: ignore[misc]
+        pass
+
+
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -240,6 +249,12 @@ class ThermalMonitorService:
             )
             beep_thermal_warning()
             speak_thermal_warning()
+            dashboard_push_event({
+                "type": "ALERT",
+                "subtype": "THERMAL_WARNING",
+                "message": f"THERMAL WARNING: {round(temp, 1)}°C",
+                "ts": time.time(),
+            })
             self._warning_armed = False
 
         # Warning recovery (re-arm)
@@ -258,6 +273,12 @@ class ThermalMonitorService:
             )
             beep_thermal_critical()
             speak_thermal_critical()
+            dashboard_push_event({
+                "type": "ALERT",
+                "subtype": "THERMAL_CRITICAL",
+                "message": f"THERMAL CRITICAL: {round(temp, 1)}°C",
+                "ts": time.time(),
+            })
             self._critical_armed = False
 
         # Critical recovery (silent re-arm only)
@@ -287,3 +308,9 @@ class ThermalMonitorService:
         if decoded["current"].get("under_voltage"):
             beep_under_voltage()
             speak_under_voltage()
+            dashboard_push_event({
+                "type": "ALERT",
+                "subtype": "UNDERVOLTAGE",
+                "message": "UNDERVOLTAGE DETECTED",
+                "ts": time.time(),
+            })

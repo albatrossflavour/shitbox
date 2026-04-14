@@ -31,12 +31,12 @@ Full archive: `.planning/milestones/v1.0-ROADMAP.md`
 **Milestone Goal:** Turn the telemetry system into a full rally companion — driver display,
 field logging, public engagement features, and confirmed hardware reliability before race day.
 
-- [ ] **Phase 12: Schema Foundation and Logbook API** - New DB tables, notes and fuel endpoints, sync pipeline extension
-- [ ] **Phase 13: Driver Tracking** - Active driver interface, stint tracking, event attribution
+- [x] **Phase 12: Schema Foundation and Logbook API** - New DB tables, notes and fuel endpoints, sync pipeline extension (completed 2026-04-09)
+- [x] **Phase 13: Driver Tracking** - Active driver interface, stint tracking, event attribution (completed 2026-04-09)
 - [ ] **Phase 14: Sensor Calibration** - All sensors validated and calibrated; event thresholds re-confirmed
 - [ ] **Phase 15: Undervoltage and Monitoring** - Undervoltage fix confirmed, monitoring gaps closed, critical events visible
 - [ ] **Phase 16: Video Capture Tuning** - Camera modes empirically listed; optimal settings confirmed
-- [ ] **Phase 17: Driver Display** - Fullscreen 7" kiosk productionised with live data, alerts, and active driver
+- [x] **Phase 17: Driver Display** - Fullscreen 7" kiosk productionised with live data, alerts, and active driver (completed 2026-04-10)
 - [ ] **Phase 18: Website Revamp** - Notes, fuel, and driver data integrated; Grafana improved
 
 ## Phase Details
@@ -59,7 +59,12 @@ cost fields) alongside events.
   4. System calculates and returns fuel efficiency (km/L) per stop and a running cumulative average in the fuel API response
   5. The events.json sync payload includes notes and fuel stop data; the fuel cost field is absent from the payload
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+- [x] 12-01-PLAN.md — Schema v6 migration + Wave 0 test scaffolds
+- [x] 12-02-PLAN.md — LogbookStorage, gps_state helper, FastAPI logbook router
+- [x] 12-03-PLAN.md — CaptureSyncService JSON generator registry
+- [x] 12-04-PLAN.md — Engine wiring + dashboard modals (UI)
 
 **UI hint**: yes
 
@@ -83,7 +88,12 @@ on the SSE stream for other consumers (display, dashboard).
   4. Each event in the database records the driver who was active at the time of the event
   5. The Pi UI shows current driver, total time per driver, and percentage breakdown for the rally so far
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+- [x] 13-01-PLAN.md — Wave 0 test scaffolds + schema v7 migration (driver_stints)
+- [x] 13-02-PLAN.md — DriverStorage, driver_state, FastAPI router, config roster
+- [x] 13-03-PLAN.md — Engine wiring: event attribution, SSE broadcast, sync generator
+- [x] 13-04-PLAN.md — Dashboard UI: top-bar dropdown and stats modal
 
 **UI hint**: yes
 
@@ -166,7 +176,10 @@ active driver, a scrolling event ticker, and visible alert overlays for critical
   3. The display shows the currently active driver, updated live from the SSE stream when the driver changes
   4. A high-G event, thermal alert, or undervoltage event triggers a visible full-screen alert overlay on the display
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+- [x] 17-01-PLAN.md — Backend fixes: DS18B20 cabin temp fallback + thermal/undervoltage SSE alert bridge + Wave 0 tests
+- [ ] 17-02-PLAN.md — Kiosk 800x480 index.html rework: layout, overlays, 5-event ticker, waypoint haversine
 
 **UI hint**: yes
 
@@ -189,7 +202,14 @@ pipeline, with improved Grafana dashboards; the changes are deployed via the hom
   4. A driver stats page shows per-driver driving time, percentage, and event attribution
   5. Grafana graph layouts are improved and the iframe kiosk display issues are resolved
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+
+- [x] 18-01-PLAN.md — batch_sync metric fixes: shitbox_lux + DS18B20 probe labels + schema v9
+- [x] 18-02-PLAN.md — Website: notes feed, current driver card, drivers tab, note badges
+- [ ] 18-03-PLAN.md — Website: fuel map pins, Grafana iframe fix, nginx cache headers
+- [ ] 18-04-PLAN.md — Grafana dashboard API update: Ambient Light panel + DS18B20 series
 
 **UI hint**: yes
 
@@ -210,10 +230,10 @@ pipeline, with improved Grafana dashboards; the changes are deployed via the hom
 | 9. Sync Reliability | v1.0 | — | Dropped | 2026-02-28 |
 | 10. Live Dashboard with Offline Map | v1.0 | 7/7 | Complete | 2026-04-09 |
 | 11. V2 Hardware Migration | v1.0 | 5/5 | Complete | 2026-04-09 |
-| 12. Schema Foundation and Logbook API | v2.0 | TBD | Not started | — |
-| 13. Driver Tracking | v2.0 | TBD | Not started | — |
+| 12. Schema Foundation and Logbook API | v2.0 | 4/4 | Complete    | 2026-04-09 |
+| 13. Driver Tracking | v2.0 | 4/4 | Complete    | 2026-04-09 |
 | 14. Sensor Calibration | v2.0 | TBD | Not started | — |
 | 15. Undervoltage and Monitoring | v2.0 | TBD | Not started | — |
 | 16. Video Capture Tuning | v2.0 | TBD | Not started | — |
-| 17. Driver Display | v2.0 | TBD | Not started | — |
-| 18. Website Revamp | v2.0 | TBD | Not started | — |
+| 17. Driver Display | v2.0 | 1/2 | Complete    | 2026-04-10 |
+| 18. Website Revamp | v2.0 | 2/4 | In Progress|  |

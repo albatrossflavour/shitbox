@@ -62,6 +62,7 @@ def _make_vrb(tmp_path: Path) -> VideoRingBuffer:
     vrb._audio_available = True
     vrb._video_encoder = ["-c:v", "libx264", "-preset", "ultrafast", "-g", "30"]
     vrb._save_counter = 0
+    vrb._active_saves = 0
     vrb._lock = threading.Lock()
     vrb._intro_ts = None
 

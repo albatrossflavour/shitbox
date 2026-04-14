@@ -4,28 +4,28 @@
 
 ### Driver Display (DISP)
 
-- [ ] **DISP-01**: User can view a fullscreen kiosk layout on the 7" touchscreen showing speed, G-force circle, temperatures, GPS status, and sync status
-- [ ] **DISP-02**: User can see a live event ticker scrolling recent events with event type and peak G value
+- [x] **DISP-01**: User can view a fullscreen kiosk layout on the 7" touchscreen showing speed, G-force circle, temperatures, GPS status, and sync status
+- [x] **DISP-02**: User can see a live event ticker scrolling recent events with event type and peak G value
 - [ ] **DISP-03**: Display shows the currently active driver, pulled live from driver tracking
-- [ ] **DISP-04**: Critical events (high G, thermal alerts, undervoltage) trigger visible alert overlays on the display
+- [x] **DISP-04**: Critical events (high G, thermal alerts, undervoltage) trigger visible alert overlays on the display
 
 ### Field Notes (NOTE)
 
-- [ ] **NOTE-01**: User can compose a field note from the Pi UI using a keyboard, with DTS and GPS location auto-captured
-- [ ] **NOTE-02**: User can optionally pin a field note to an existing event
+- [x] **NOTE-01**: User can compose a field note from the Pi UI using a keyboard, with DTS and GPS location auto-captured
+- [x] **NOTE-02**: User can optionally pin a field note to an existing event
 - [ ] **NOTE-03**: Field notes sync to shit-of-theseus.com and display in a blog/notes section
 
 ### Refueling Log (FUEL)
 
-- [ ] **FUEL-01**: User can log a fuel stop with volume and location from the Pi UI
-- [ ] **FUEL-02**: System calculates and tracks fuel efficiency (km/L) per stop and as a running cumulative average
+- [x] **FUEL-01**: User can log a fuel stop with volume and location from the Pi UI
+- [x] **FUEL-02**: System calculates and tracks fuel efficiency (km/L) per stop and as a running cumulative average
 - [ ] **FUEL-03**: Fuel stop locations and efficiency data sync to the website map; cost data never syncs
 
 ### Driver Tracking (DRVR)
 
-- [ ] **DRVR-01**: User can set and change the active driver from the Pi UI
-- [ ] **DRVR-02**: System tracks driving time and calculates percentage per driver across the rally
-- [ ] **DRVR-03**: Driver is attributed to events — who was driving when an event occurred
+- [x] **DRVR-01**: User can set and change the active driver from the Pi UI
+- [x] **DRVR-02**: System tracks driving time and calculates percentage per driver across the rally
+- [x] **DRVR-03**: Driver is attributed to events — who was driving when an event occurred
 - [ ] **DRVR-04**: Website shows a "who's in charge" widget on the homepage with current driver and running percentages
 - [ ] **DRVR-05**: Website shows per-driver stats including driving time, percentage, and event attribution
 
@@ -78,19 +78,19 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| DISP-01 | Phase 17 | Pending |
-| DISP-02 | Phase 17 | Pending |
+| DISP-01 | Phase 17 | Complete |
+| DISP-02 | Phase 17 | Complete |
 | DISP-03 | Phase 17 | Pending |
-| DISP-04 | Phase 17 | Pending |
-| NOTE-01 | Phase 12 | Pending |
-| NOTE-02 | Phase 12 | Pending |
+| DISP-04 | Phase 17 | Complete |
+| NOTE-01 | Phase 12 | Complete |
+| NOTE-02 | Phase 12 | Complete |
 | NOTE-03 | Phase 18 | Pending |
-| FUEL-01 | Phase 12 | Pending |
-| FUEL-02 | Phase 12 | Pending |
+| FUEL-01 | Phase 12 | Complete |
+| FUEL-02 | Phase 12 | Complete |
 | FUEL-03 | Phase 18 | Pending |
-| DRVR-01 | Phase 13 | Pending |
-| DRVR-02 | Phase 13 | Pending |
-| DRVR-03 | Phase 13 | Pending |
+| DRVR-01 | Phase 13 | Complete |
+| DRVR-02 | Phase 13 | Complete |
+| DRVR-03 | Phase 13 | Complete |
 | DRVR-04 | Phase 18 | Pending |
 | DRVR-05 | Phase 18 | Pending |
 | WEB-01 | Phase 18 | Pending |

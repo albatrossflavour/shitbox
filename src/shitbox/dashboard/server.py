@@ -23,9 +23,10 @@ from typing import Callable, List, Optional
 import structlog
 import uvicorn
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from shitbox.dashboard import logbook as logbook_mod
 from shitbox.dashboard import sse as sse_mod
 from shitbox.dashboard.tiles import make_router as make_tiles_router
 
@@ -37,6 +38,11 @@ STATIC_DIR = Path(__file__).parent / "static"
 def build_app(
     mbtiles_path: Path,
     recent_events_provider: Optional[Callable[[int], List[dict]]] = None,
+    logbook_storage: Optional[object] = None,
+    driver_storage: Optional[object] = None,
+    drivers: Optional[List[str]] = None,
+    captures_path: Optional[Path] = None,
+    sync_trigger: Optional[Callable[[], None]] = None,
 ) -> FastAPI:
     """Construct the dashboard FastAPI app.
 
@@ -50,13 +56,48 @@ def build_app(
     if recent_events_provider is not None:
         sse_mod.set_recent_events_provider(recent_events_provider)
 
+    if logbook_storage is not None:
+        logbook_mod.set_storage(logbook_storage)  # type: ignore[arg-type]
+        if sync_trigger is not None:
+            logbook_mod.set_sync_trigger(sync_trigger)
+        app.include_router(logbook_mod.router)
+
+    if driver_storage is not None:
+        from shitbox.dashboard import driver as driver_mod
+        driver_mod.set_storage(driver_storage)  # type: ignore[arg-type]
+        if sync_trigger is not None:
+            driver_mod.set_sync_trigger(sync_trigger)
+        if drivers:
+            driver_mod.set_drivers_roster(drivers)
+        app.include_router(driver_mod.router)
+
+    if captures_path is not None and captures_path.is_dir():
+        app.mount("/captures", StaticFiles(directory=str(captures_path)), name="captures")
+
+        timelapse_dir = captures_path / "timelapse"
+
+        @app.get("/api/timelapse/latest")
+        def timelapse_latest() -> JSONResponse:
+            """Return the URL of the most recent timelapse JPEG, or null if none."""
+            if not timelapse_dir.is_dir():
+                return JSONResponse({"url": None})
+            # Scan date subdirs newest-first, return first JPEG found
+            for date_dir in sorted(timelapse_dir.iterdir(), reverse=True):
+                if not date_dir.is_dir():
+                    continue
+                jpegs = sorted(date_dir.glob("timelapse_*.jpg"), reverse=True)
+                if jpegs:
+                    rel = jpegs[0].relative_to(captures_path)
+                    return JSONResponse({"url": f"/captures/{rel}"})
+            return JSONResponse({"url": None})
+
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
         index = STATIC_DIR / "index.html"
         if index.is_file():
             @app.get("/")
             def root() -> FileResponse:
-                return FileResponse(str(index))
+                return FileResponse(str(index), headers={"Cache-Control": "no-cache"})
     else:
         log.warning("dashboard_static_dir_missing", path=str(STATIC_DIR))
 
@@ -127,10 +168,20 @@ def build_dashboard_server(
     port: int,
     mbtiles_path: Path,
     recent_events_provider: Optional[Callable[[int], List[dict]]] = None,
+    logbook_storage: Optional[object] = None,
+    driver_storage: Optional[object] = None,
+    drivers: Optional[List[str]] = None,
+    captures_path: Optional[Path] = None,
+    sync_trigger: Optional[Callable[[], None]] = None,
 ) -> DashboardServer:
     """Convenience factory used by UnifiedEngine wiring."""
     app = build_app(
         mbtiles_path=mbtiles_path,
         recent_events_provider=recent_events_provider,
+        logbook_storage=logbook_storage,
+        driver_storage=driver_storage,
+        drivers=drivers,
+        captures_path=captures_path,
+        sync_trigger=sync_trigger,
     )
     return DashboardServer(host=host, port=port, app=app)

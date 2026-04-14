@@ -13,7 +13,7 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 # Database schema version for migrations
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 9
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS readings (
     humidity_pct REAL,
     env_temp_celsius REAL,
     gas_resistance_ohms REAL,
+
+    -- Light fields (VEML7700)
+    lux REAL,
 
     -- System fields (Pi health)
     cpu_temp_celsius REAL,
@@ -93,6 +96,29 @@ CREATE TABLE IF NOT EXISTS sync_cursors (
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY,
     applied_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp_utc TEXT NOT NULL,
+    body TEXT NOT NULL,
+    event_id INTEGER,
+    lat REAL,
+    lng REAL,
+    gps_stale BOOLEAN NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS fuel_stops (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp_utc TEXT NOT NULL,
+    volume_litres REAL NOT NULL,
+    cost_aud REAL,
+    lat REAL,
+    lng REAL,
+    gps_stale BOOLEAN NOT NULL DEFAULT 0,
+    odometer_km REAL,
+    created_at TEXT DEFAULT (datetime('now'))
 );
 
 -- Indexes for efficient queries
@@ -167,6 +193,18 @@ class Database:
 
         if current_version < 5:
             self._migrate_to_v5(conn)
+
+        if current_version < 6:
+            self._migrate_to_v6(conn)
+
+        if current_version < 7:
+            self._migrate_to_v7(conn)
+
+        if current_version < 8:
+            self._migrate_to_v8(conn)
+
+        if current_version < 9:
+            self._migrate_to_v9(conn)
 
         if current_version < SCHEMA_VERSION:
             conn.execute(
@@ -251,6 +289,81 @@ class Database:
         conn.commit()
         log.info("migrated_to_v5", columns=["cpu_percent"])
 
+    def _migrate_to_v6(self, conn: sqlite3.Connection) -> None:
+        """Add notes and fuel_stops tables for Phase 12 logbook feature."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp_utc TEXT NOT NULL,
+                body TEXT NOT NULL,
+                event_id INTEGER,
+                lat REAL,
+                lng REAL,
+                gps_stale BOOLEAN NOT NULL DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS fuel_stops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp_utc TEXT NOT NULL,
+                volume_litres REAL NOT NULL,
+                cost_aud REAL,
+                lat REAL,
+                lng REAL,
+                gps_stale BOOLEAN NOT NULL DEFAULT 0,
+                odometer_km REAL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.commit()
+        log.info("migrated_to_v6", tables=["notes", "fuel_stops"])
+
+    def _migrate_to_v7(self, conn: sqlite3.Connection) -> None:
+        """Add driver_stints table for Phase 13 driver tracking.
+
+        Note: there is no SQL events table in this project — events are stored
+        as JSON files by EventStorage.save_event(). Driver attribution for
+        events is handled via a driver_name kwarg on save_event() (see plan 03),
+        not a column on any SQL table. Per D-04 interpretation confirmed in
+        13-RESEARCH.md "Critical Note: Events Table Interpretation".
+        """
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS driver_stints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                driver_name TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.commit()
+        log.info("migrated_to_v7", tables=["driver_stints"])
+
+    def _migrate_to_v8(self, conn: sqlite3.Connection) -> None:
+        """Add lux column for VEML7700 ambient light sensor."""
+        try:
+            conn.execute("ALTER TABLE readings ADD COLUMN lux REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        conn.commit()
+        log.info("migrated_to_v8", columns=["lux"])
+
+    def _migrate_to_v9(self, conn: sqlite3.Connection) -> None:
+        """Add sensor_id column for DS18B20 probe identification."""
+        try:
+            conn.execute("ALTER TABLE readings ADD COLUMN sensor_id TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        conn.commit()
+        log.info("migrated_to_v9", columns=["sensor_id"])
+
     def close(self) -> None:
         """Close database connection for current thread."""
         if hasattr(self._local, "conn") and self._local.conn:
@@ -298,14 +411,15 @@ class Database:
                     latitude, longitude, altitude_m, speed_kmh, heading_deg,
                     satellites, fix_quality,
                     accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z,
-                    temp_celsius,
+                    temp_celsius, sensor_id,
                     bus_voltage_v, current_ma, power_mw,
                     pressure_hpa, humidity_pct, env_temp_celsius,
                     gas_resistance_ohms,
+                    lux,
                     cpu_temp_celsius, cpu_percent, disk_percent, sync_backlog, throttle_flags
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 (
@@ -325,6 +439,7 @@ class Database:
                     reading.gyro_y,
                     reading.gyro_z,
                     reading.temp_celsius,
+                    reading.sensor_id,
                     reading.bus_voltage_v,
                     reading.current_ma,
                     reading.power_mw,
@@ -332,6 +447,7 @@ class Database:
                     reading.humidity_pct,
                     reading.env_temp_celsius,
                     reading.gas_resistance_ohms,
+                    reading.lux,
                     reading.cpu_temp_celsius,
                     reading.cpu_percent,
                     reading.disk_percent,
@@ -366,14 +482,16 @@ class Database:
                             latitude, longitude, altitude_m, speed_kmh, heading_deg,
                             satellites, fix_quality,
                             accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z,
-                            temp_celsius,
+                            temp_celsius, sensor_id,
                             bus_voltage_v, current_ma, power_mw,
                             pressure_hpa, humidity_pct, env_temp_celsius,
                             gas_resistance_ohms,
-                            cpu_temp_celsius, disk_percent, sync_backlog, throttle_flags
+                            lux,
+                            cpu_temp_celsius, cpu_percent, disk_percent,
+                            sync_backlog, throttle_flags
                         ) VALUES (
                             ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
                         """,
                         (
@@ -393,6 +511,7 @@ class Database:
                             reading.gyro_y,
                             reading.gyro_z,
                             reading.temp_celsius,
+                            reading.sensor_id,
                             reading.bus_voltage_v,
                             reading.current_ma,
                             reading.power_mw,
@@ -400,7 +519,9 @@ class Database:
                             reading.humidity_pct,
                             reading.env_temp_celsius,
                             reading.gas_resistance_ohms,
+                            reading.lux,
                             reading.cpu_temp_celsius,
+                            reading.cpu_percent,
                             reading.disk_percent,
                             reading.sync_backlog,
                             reading.throttle_flags,
@@ -569,6 +690,60 @@ class Database:
         row = cursor.fetchone()
         return row["count"] if row else 0
 
+    def get_fuel_summary(self) -> dict:
+        """Return aggregate fuel stats: count, total_litres, efficiency_kml."""
+        conn = self._get_connection()
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt, COALESCE(SUM(volume_litres), 0) as total_litres "
+            "FROM fuel_stops"
+        ).fetchone()
+        count = row["cnt"]
+        total_litres = row["total_litres"]
+
+        odo_row = conn.execute(
+            "SELECT MAX(odometer_km) as hi, MIN(odometer_km) as lo "
+            "FROM fuel_stops WHERE odometer_km IS NOT NULL"
+        ).fetchone()
+        efficiency = 0.0
+        if (
+            odo_row
+            and odo_row["hi"] is not None
+            and odo_row["lo"] is not None
+            and total_litres > 0
+        ):
+            efficiency = round((odo_row["hi"] - odo_row["lo"]) / total_litres, 3)
+
+        return {"count": count, "total_litres": total_litres, "efficiency_kml": efficiency}
+
+    def get_notes_count(self) -> int:
+        """Return total number of field notes."""
+        row = self._get_connection().execute(
+            "SELECT COUNT(*) as cnt FROM notes"
+        ).fetchone()
+        return row["cnt"]
+
+    def get_active_driver_name(self) -> Optional[str]:
+        """Return the name of the currently active driver, or None."""
+        row = self._get_connection().execute(
+            "SELECT driver_name FROM driver_stints WHERE ended_at IS NULL LIMIT 1"
+        ).fetchone()
+        return row["driver_name"] if row else None
+
+    def get_driver_time_seconds(self) -> dict:
+        """Return total drive time in seconds per driver, keyed by driver name."""
+        rows = self._get_connection().execute(
+            """
+            SELECT driver_name,
+                   SUM(CAST(
+                       (julianday(COALESCE(ended_at, datetime('now'))) -
+                        julianday(started_at)) * 86400
+                   AS INTEGER)) AS total_seconds
+            FROM driver_stints
+            GROUP BY driver_name
+            """
+        ).fetchall()
+        return {r["driver_name"]: float(r["total_seconds"] or 0) for r in rows}
+
     def get_latest_reading(self, sensor_type: SensorType) -> Optional[Reading]:
         """Get the most recent reading for a sensor type.
 
@@ -614,6 +789,7 @@ class Database:
             gyro_y=row["gyro_y"],
             gyro_z=row["gyro_z"],
             temp_celsius=row["temp_celsius"],
+            sensor_id=row["sensor_id"] if "sensor_id" in keys else None,
             bus_voltage_v=row["bus_voltage_v"] if "bus_voltage_v" in keys else None,
             current_ma=row["current_ma"] if "current_ma" in keys else None,
             power_mw=row["power_mw"] if "power_mw" in keys else None,
@@ -628,6 +804,7 @@ class Database:
             disk_percent=row["disk_percent"] if "disk_percent" in keys else None,
             sync_backlog=row["sync_backlog"] if "sync_backlog" in keys else None,
             throttle_flags=row["throttle_flags"] if "throttle_flags" in keys else None,
+            lux=row["lux"] if "lux" in keys else None,
         )
 
     def get_trip_state(self, key: str) -> Optional[float]:

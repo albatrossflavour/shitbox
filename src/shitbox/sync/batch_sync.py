@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from shitbox.events.storage import EventStorage
 from shitbox.storage.database import Database
 from shitbox.storage.models import Reading
 from shitbox.sync.connection import ConnectionMonitor
@@ -51,6 +52,7 @@ class BatchSyncService:
         config: PrometheusConfig,
         database: Database,
         connection_monitor: ConnectionMonitor,
+        event_storage: Optional[EventStorage] = None,
     ):
         """Initialise batch sync service.
 
@@ -62,6 +64,7 @@ class BatchSyncService:
         self.config = config
         self.db = database
         self.connection = connection_monitor
+        self._event_storage = event_storage
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -122,6 +125,11 @@ class BatchSyncService:
                 self._total_failed += 1
                 self._last_error = str(e)
                 log.error("batch_sync_error", error=str(e))
+
+            try:
+                self._sync_summary()
+            except Exception as e:
+                log.warning("summary_sync_error", error=str(e))
 
     def _log_sync_state(self) -> None:
         """Log full sync state for debugging."""
@@ -283,6 +291,96 @@ class BatchSyncService:
             log.error("batch_sync_send_failed", error=str(e))
             raise
 
+    def _build_summary_metrics(self) -> List[Tuple[str, dict, float, int]]:
+        """Build current-state rally summary gauge metrics.
+
+        Returns list of (metric_name, labels, value, timestamp_ms).
+        These are pushed each sync cycle as point-in-time gauges — no cursor.
+        """
+        metrics: List[Tuple[str, dict, float, int]] = []
+        labels: dict = {"car": "shitbox", "job": "shitbox-mqtt-exporter"}
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+
+        try:
+            fuel = self.db.get_fuel_summary()
+            metrics.append(("shitbox_fuel_stops_total", labels, float(fuel["count"]), now_ms))
+            metrics.append(
+                ("shitbox_fuel_litres_total", labels, float(fuel["total_litres"]), now_ms)
+            )
+            if fuel["efficiency_kml"] > 0:
+                metrics.append(
+                    ("shitbox_fuel_efficiency_kml", labels, fuel["efficiency_kml"], now_ms)
+                )
+        except Exception as e:
+            log.warning("summary_metrics_fuel_error", error=str(e))
+
+        try:
+            notes_count = self.db.get_notes_count()
+            metrics.append(("shitbox_notes_total", labels, float(notes_count), now_ms))
+        except Exception as e:
+            log.warning("summary_metrics_notes_error", error=str(e))
+
+        try:
+            driver = self.db.get_active_driver_name()
+            if driver:
+                driver_labels = dict(labels)
+                driver_labels["name"] = driver
+                metrics.append(("shitbox_active_driver", driver_labels, 1.0, now_ms))
+        except Exception as e:
+            log.warning("summary_metrics_driver_error", error=str(e))
+
+        try:
+            driver_times = self.db.get_driver_time_seconds()
+            for name, seconds in driver_times.items():
+                dl = dict(labels)
+                dl["name"] = name
+                metrics.append(("shitbox_driver_time_seconds", dl, seconds, now_ms))
+        except Exception as e:
+            log.warning("summary_metrics_driver_times_error", error=str(e))
+
+        if self._event_storage is not None:
+            try:
+                counts = self._event_storage.count_events_by_type()
+                for event_type, count in counts.items():
+                    event_labels = dict(labels)
+                    event_labels["type"] = event_type
+                    metrics.append(
+                        ("shitbox_events_total", event_labels, float(count), now_ms)
+                    )
+            except Exception as e:
+                log.warning("summary_metrics_events_error", error=str(e))
+
+        return metrics
+
+    def _sync_summary(self) -> None:
+        """Push rally summary gauges to Prometheus."""
+        metrics = self._build_summary_metrics()
+        if not metrics:
+            return
+
+        data = encode_remote_write(metrics)
+        try:
+            response = requests.post(
+                self.config.remote_write_url,
+                data=data,
+                headers={
+                    "Content-Type": "application/x-protobuf",
+                    "Content-Encoding": "snappy",
+                    "X-Prometheus-Remote-Write-Version": "0.1.0",
+                },
+                timeout=30,
+            )
+            if response.status_code in (200, 204):
+                log.info("summary_sync_complete", metrics_count=len(metrics))
+            else:
+                log.warning(
+                    "summary_sync_http_error",
+                    status_code=response.status_code,
+                    response_text=response.text[:200],
+                )
+        except requests.RequestException as e:
+            log.warning("summary_sync_request_error", error=str(e))
+
     def _readings_to_metrics(
         self, readings: List[Reading]
     ) -> List[Tuple[str, dict, float, int]]:
@@ -364,8 +462,21 @@ class BatchSyncService:
 
             elif reading.sensor_type.value == "temp":
                 if reading.temp_celsius is not None:
+                    if reading.sensor_id:
+                        temp_labels = dict(labels)
+                        temp_labels["probe"] = reading.sensor_id
+                        metrics.append(
+                            ("shitbox_temp", temp_labels, reading.temp_celsius, timestamp_ms)
+                        )
+                    else:
+                        metrics.append(
+                            ("shitbox_temp", labels, reading.temp_celsius, timestamp_ms)
+                        )
+
+            elif reading.sensor_type.value == "light":
+                if reading.lux is not None:
                     metrics.append(
-                        ("shitbox_temp", labels, reading.temp_celsius, timestamp_ms)
+                        ("shitbox_lux", labels, reading.lux, timestamp_ms)
                     )
 
             elif reading.sensor_type.value == "power":

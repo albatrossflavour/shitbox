@@ -12,7 +12,7 @@ app:
 
 sensors:
   gps:
-    enabled: true
+    enabled: false
     host: localhost # gpsd host
     port: 2947 # gpsd port
     sample_rate_hz: 1
@@ -230,3 +230,8 @@ capture:
     model_path: /var/lib/shitbox/tts/en_GB-northern_english_male-medium.onnx
     distance_announce_interval_km: 50
     volume: 90
+
+# Driver roster for Phase 13 driver tracking. Change this file to change the roster.
+drivers:
+  - Tony
+  - Steve

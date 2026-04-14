@@ -42,9 +42,12 @@ def test_reads_lux() -> None:
         mock_lib.VEML7700.return_value = mock_sensor
         with patch("shitbox.collectors.light.busio") as mock_busio:
             mock_busio.I2C.return_value = MagicMock()
-            collector = VEML7700Collector(config=config)
-            collector.setup()
-            reading = collector.collect()
+            with patch("shitbox.collectors.light.board") as mock_board:
+                mock_board.SCL = MagicMock()
+                mock_board.SDA = MagicMock()
+                collector = VEML7700Collector(config=config)
+                collector.setup()
+                reading = collector.collect()
 
     assert reading is not None, "Expected a Reading, got None"
     assert reading.value == pytest.approx(12345.6, rel=1e-4), (  # type: ignore[attr-defined]

@@ -6,7 +6,7 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from shitbox.events.detector import Event, EventType
 from shitbox.events.ring_buffer import IMUSample
@@ -74,13 +74,18 @@ class EventStorage:
         return f"{event.event_type.value}_{time_str}_{self._event_counter:03d}"
 
     def save_event(
-        self, event: Event, video_path: Optional[Path] = None
+        self,
+        event: Event,
+        video_path: Optional[Path] = None,
+        *,
+        driver_name: Optional[str] = None,
     ) -> tuple[Path, Path]:
         """Save an event to disk.
 
         Args:
             event: The event to save.
             video_path: Path to the associated video capture, if any.
+            driver_name: Active driver name at time of event, if known.
 
         Returns:
             Tuple of (json_path, csv_path).
@@ -97,6 +102,8 @@ class EventStorage:
         metadata["saved_at"] = datetime.now(timezone.utc).isoformat()
         if video_path:
             metadata["video_path"] = str(video_path)
+        if driver_name is not None:
+            metadata["driver_name"] = driver_name
 
         with open(json_path, "w") as f:
             json.dump(metadata, f, indent=2)
@@ -335,6 +342,7 @@ class EventStorage:
                 continue
             dt = datetime.fromtimestamp(start_time, tz=timezone.utc)
             entry: dict = {
+                "id": int(start_time * 1000),
                 "type": str(meta.get("type", "unknown")).upper(),
                 "timestamp": dt.isoformat(),
                 "peak_g": meta.get("peak_value"),
@@ -349,6 +357,28 @@ class EventStorage:
             entries.append((start_time, entry))
         entries.sort(key=lambda pair: pair[0], reverse=True)
         return [e for _, e in entries[:n]]
+
+    def count_events_by_type(self) -> Dict[str, int]:
+        """Return event counts grouped by type across all stored events.
+
+        Scans JSON metadata files in base_dir. Missing or malformed files are skipped.
+        Returns an empty dict if no events are stored.
+        """
+        counts: Dict[str, int] = {}
+        if not self.base_dir.exists():
+            return counts
+        for day_dir in self.base_dir.iterdir():
+            if not day_dir.is_dir():
+                continue
+            for json_file in day_dir.glob("*.json"):
+                try:
+                    with open(json_file) as fh:
+                        meta = json.load(fh)
+                    event_type = meta.get("type", "unknown")
+                    counts[event_type] = counts.get(event_type, 0) + 1
+                except (OSError, json.JSONDecodeError):
+                    continue
+        return counts
 
     def generate_events_json(self, video_base_url: str = "/captures") -> Optional[Path]:
         """Generate events.json index in captures_dir for the website.
@@ -395,6 +425,7 @@ class EventStorage:
                     )
 
             entry: dict = {
+                "id": int(start_time * 1000),
                 "type": meta.get("type", "unknown").upper(),
                 "timestamp": dt.isoformat(),
                 "peak_g": meta.get("peak_value"),

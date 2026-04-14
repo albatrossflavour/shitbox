@@ -40,8 +40,8 @@ Never lose telemetry data or video — the system must survive thousands of kilo
 - DISP-01: Driver display productionised on 7" touchscreen (speed, G-force, map, temps, event ticker, alerts)
 - NOTE-01: Field notes entry from Pi (freeform or pinned to event, auto DTS + GPS, syncs to website)
 - FUEL-01: Refueling log (volume, location per stop, efficiency tracking, location + efficiency on website)
-- DRVR-01: Driver tracking — who's driving interface, time/percentage per driver, event attribution
-- DRVR-02: Website "who's in charge" widget and driver stats page
+- ✓ DRVR-01: Driver tracking — who's driving interface, time/percentage per driver, event attribution — Validated in Phase 13: driver-tracking
+- ✓ DRVR-02: Dashboard driver switcher, stats modal, SSE live-update, event attribution — Validated in Phase 13: driver-tracking
 - WEB-01: Website revamp — improved Grafana graphs, integrate blog/refuel/driver data streams
 - VID-01: ELP 4K video capture tuning — calibrate settings for actual mounted camera
 - CAL-01: Sensor calibration — validate all sensors stationary + in-motion
@@ -131,4 +131,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-09 — v2.0 Rally Ready milestone started.*
+*Last updated: 2026-04-10 — Phase 17 complete: kiosk-first 800x480 driver display shipped.*

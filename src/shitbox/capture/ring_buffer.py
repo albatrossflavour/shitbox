@@ -93,6 +93,7 @@ class VideoRingBuffer:
         self._audio_available = bool(audio_device)  # False when no device configured
         self._video_encoder = ["-c:v", "libx264", "-preset", "ultrafast", "-g", "30"]
         self._save_counter = 0
+        self._active_saves = 0
         self._lock = threading.Lock()
         self._intro_ts: Optional[Path] = None
         self._last_timelapse_segment: Optional[Path] = None
@@ -145,6 +146,12 @@ class VideoRingBuffer:
         if self._process is None:
             return False
         return self._process.poll() is None
+
+    @property
+    def is_saving(self) -> bool:
+        """True while any save-event thread is active (copying segments or concatenating)."""
+        with self._lock:
+            return self._active_saves > 0
 
     @property
     def intro_duration_seconds(self) -> float:
@@ -844,6 +851,7 @@ class VideoRingBuffer:
         with self._lock:
             self._save_counter += 1
             save_id = self._save_counter
+            self._active_saves += 1
 
         tmp_dir = self.buffer_dir / f"save_{save_id}"
         tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -945,6 +953,8 @@ class VideoRingBuffer:
             if callback:
                 callback(None, 0.0)
         finally:
+            with self._lock:
+                self._active_saves -= 1
             # 5. Clean up temp copies
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
