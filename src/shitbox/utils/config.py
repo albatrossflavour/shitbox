@@ -15,6 +15,7 @@ class WaypointConfig:
     day: int = 1
     lat: float = 0.0
     lon: float = 0.0
+    leg: str = "rally"  # "rally" counts toward progress; "return" is nav-only (e.g. drive home)
 
 
 @dataclass

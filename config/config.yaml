@@ -55,6 +55,49 @@ sensors:
           day: 7
           lat: -37.8679
           lon: 144.9743
+        # Return leg — drive home after rally. `leg: return` keeps these out of
+        # the rally progress count on status screens but still drives tile
+        # corridor generation and waypoint-reached announcements.
+        - name: "Goulburn"
+          day: 8
+          lat: -34.7537
+          lon: 149.7179
+          leg: return
+        - name: "Camden"
+          day: 8
+          lat: -34.0545
+          lon: 150.6953
+          leg: return
+        - name: "Newcastle"
+          day: 9
+          lat: -32.9283
+          lon: 151.7817
+          leg: return
+        - name: "Coffs Harbour"
+          day: 9
+          lat: -30.2963
+          lon: 153.1157
+          leg: return
+        - name: "Brisbane"
+          day: 10
+          lat: -27.4705
+          lon: 153.0260
+          leg: return
+        - name: "Rockhampton"
+          day: 10
+          lat: -23.3791
+          lon: 150.5100
+          leg: return
+        - name: "Mackay"
+          day: 11
+          lat: -21.1425
+          lon: 149.1821
+          leg: return
+        - name: "Port Douglas (home)"
+          day: 11
+          lat: -16.4838
+          lon: 145.4673
+          leg: return
 
   lsm6dsox: # LSM6DSOX accel+gyro at 0x6A (replaces MPU6050)
     enabled: true
@@ -182,7 +225,7 @@ dashboard:
 
 capture:
   enabled: true
-  buzzer_enabled: true
+  buzzer_enabled: true  # PiicoDev piezo buzzer at fixed I2C 0x5C
   gpio_pin: 17
   debounce_ms: 50
   pre_capture_seconds: 15
