@@ -74,7 +74,7 @@ class SEN0460Collector(BaseCollector["SEN0460Reading"]):
                 bus, address=self._address
             )
             log.info("sen0460_sensor_init")
-        except (OSError, Exception) as e:
+        except Exception as e:
             log.warning("sen0460_sensor_init_failed", error=str(e))
             self._sensor = None
 
@@ -85,7 +85,7 @@ class SEN0460Collector(BaseCollector["SEN0460Reading"]):
         try:
             pm25 = self._sensor.read_particle_concentration("PM2.5")
             return SEN0460Reading(pm25_ug_m3=float(pm25))
-        except (OSError, Exception) as e:
+        except Exception as e:
             log.warning("sen0460_read_error", error=str(e))
             return None
 

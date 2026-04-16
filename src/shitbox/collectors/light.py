@@ -77,7 +77,7 @@ class VEML7700Collector(BaseCollector["VEML7700Reading"]):
         try:
             lux = self._sensor.lux
             return VEML7700Reading(lux=float(lux))
-        except (OSError, Exception) as e:
+        except Exception as e:
             log.warning("veml7700_read_error", error=str(e))
             return None
 

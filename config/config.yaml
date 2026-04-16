@@ -12,7 +12,7 @@ app:
 
 sensors:
   gps:
-    enabled: false
+    enabled: true
     host: localhost # gpsd host
     port: 2947 # gpsd port
     sample_rate_hz: 1

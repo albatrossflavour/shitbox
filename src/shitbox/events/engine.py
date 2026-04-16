@@ -9,6 +9,7 @@ Low-rate path (1 Hz):
 - GPS, IMU snapshot, temperature → SQLite → MQTT → Prometheus batch sync
 """
 
+import json
 import shutil
 import signal
 import threading
@@ -653,6 +654,7 @@ class UnifiedEngine:
         self._running = False
         self._telemetry_thread: Optional[threading.Thread] = None
         self._pending_post_capture: dict = {}
+        self._pending_lock = threading.Lock()
         self._event_json_paths: dict[int, Path] = {}
         self._event_video_paths: dict[int, Path] = {}
         self._event_paths_lock = threading.Lock()
@@ -824,7 +826,7 @@ class UnifiedEngine:
                         "sync_backlog": backlog,
                         "event_count_today": self.events_captured,
                         "active_driver": driver_state.get_active_driver(),
-                        "recording_active": bool(self._pending_post_capture)
+                        "recording_active": self._has_pending_captures()
                             or (self.video_ring_buffer is not None and self.video_ring_buffer.is_saving)
                             or (self.video_recorder is not None and self.video_recorder.is_recording),
                     })
@@ -853,6 +855,10 @@ class UnifiedEngine:
     # Timelapse gap watchdog: alert if 3x interval passes with no capture
     TIMELAPSE_GAP_FACTOR = 3
 
+    def _has_pending_captures(self) -> bool:
+        with self._pending_lock:
+            return bool(self._pending_post_capture)
+
     def _on_event(self, event: Event) -> None:
         """Called when an event is detected."""
         # Suppress events while a capture is already in progress.
@@ -860,20 +866,26 @@ class UnifiedEngine:
         # (e.g. hard brake → high G → hard brake) produce one video, not many.
         # Manual captures also extend rather than starting overlapping saves.
         # Boot events always go through (only fires once).
-        if self._pending_post_capture and event.event_type != EventType.BOOT:
-            # Extend the post-capture window of the most recent pending event
-            extension = self.config.detector.post_event_seconds
-            for pending in self._pending_post_capture.values():
-                new_until = time.monotonic() + extension
-                if new_until > pending["capture_until"]:
-                    pending["capture_until"] = new_until
+        with self._pending_lock:
+            if self._pending_post_capture and event.event_type != EventType.BOOT:
+                # Extend the post-capture window of the most recent pending event
+                extension = self.config.detector.post_event_seconds
+                for pending in self._pending_post_capture.values():
+                    new_until = time.monotonic() + extension
+                    if new_until > pending["capture_until"]:
+                        pending["capture_until"] = new_until
+                pending_count = len(self._pending_post_capture)
+                is_suppressed = True
+            else:
+                is_suppressed = False
+        if is_suppressed:
             if event.event_type == EventType.MANUAL_CAPTURE:
                 buzzer.beep_capture_busy()
             log.info(
                 "event_suppressed_capture_active",
                 suppressed_type=event.event_type.value,
                 peak_g=round(event.peak_value, 2),
-                pending_count=len(self._pending_post_capture),
+                pending_count=pending_count,
             )
             return
 
@@ -937,16 +949,18 @@ class UnifiedEngine:
 
         # Schedule post-event capture
         post_capture_until = time.monotonic() + self.config.detector.post_event_seconds
-        self._pending_post_capture[id(event)] = {
-            "event": event,
-            "capture_until": post_capture_until,
-            "video_path": video_path,
-        }
+        with self._pending_lock:
+            self._pending_post_capture[id(event)] = {
+                "event": event,
+                "capture_until": post_capture_until,
+                "video_path": video_path,
+            }
+            pending_count = len(self._pending_post_capture)
         log.info(
             "event_queued_for_save",
             event_type=event.event_type.value,
             event_id=id(event),
-            pending_count=len(self._pending_post_capture),
+            pending_count=pending_count,
             save_after_seconds=self.config.detector.post_event_seconds,
         )
 
@@ -955,7 +969,6 @@ class UnifiedEngine:
             event_payload = event.to_dict()
             topic = f"{self.config.mqtt_topic_prefix}/event"
             try:
-                import json
                 self.mqtt._publish(topic, json.dumps(event_payload))
             except Exception as e:
                 log.error("mqtt_event_publish_error", error=str(e))
@@ -1043,7 +1056,10 @@ class UnifiedEngine:
         now = time.monotonic()
         completed = []
 
-        for event_id, pending in self._pending_post_capture.items():
+        with self._pending_lock:
+            pending_snapshot = list(self._pending_post_capture.items())
+
+        for event_id, pending in pending_snapshot:
             if now >= pending["capture_until"]:
                 event = pending["event"]
                 wait_seconds = now - pending["capture_until"]
@@ -1108,8 +1124,10 @@ class UnifiedEngine:
 
                 completed.append(event_id)
 
-        for event_id in completed:
-            del self._pending_post_capture[event_id]
+        if completed:
+            with self._pending_lock:
+                for event_id in completed:
+                    self._pending_post_capture.pop(event_id, None)
 
     def _find_capture_video(self, event: Event) -> Optional[Path]:
         """Find the most recent video capture matching an event."""
@@ -2034,7 +2052,9 @@ class UnifiedEngine:
             self._telemetry_thread.join(timeout=2.0)
 
         # Save any pending events
-        for pending in self._pending_post_capture.values():
+        with self._pending_lock:
+            pending_shutdown = list(self._pending_post_capture.values())
+        for pending in pending_shutdown:
             try:
                 self.event_storage.save_event(
                     pending["event"],

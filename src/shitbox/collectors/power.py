@@ -69,7 +69,7 @@ class INA226Collector(BaseCollector["INA226Reading"]):
             bus = smbus2.SMBus(self._i2c_bus)
             self._sensor = INA226(bus, address=self._address, shunt_ohms=self._shunt_ohms)
             log.info("ina226_sensor_init")
-        except (OSError, Exception) as e:
+        except Exception as e:
             log.warning("ina226_sensor_init_failed", error=str(e))
             self._sensor = None
 
@@ -80,7 +80,7 @@ class INA226Collector(BaseCollector["INA226Reading"]):
         try:
             voltage_v, current_a = self._sensor.read()
             return INA226Reading(voltage_v=voltage_v, current_a=current_a)
-        except (OSError, Exception) as e:
+        except Exception as e:
             log.warning("ina226_read_error", error=str(e))
             return None
 

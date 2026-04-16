@@ -101,7 +101,7 @@ class DS18B20Collector(BaseCollector["DS18B20Reading"]):
                     readings.append(DS18B20Reading(temp_celsius=temp_c, role=role))
                 except SensorNotReadyError as e:
                     log.warning("ds18b20_read_error", role=role, error=str(e))
-            except (OSError, Exception) as e:
+            except Exception as e:
                 log.warning("ds18b20_read_error", role=role, error=str(e))
         return readings if readings else None
 

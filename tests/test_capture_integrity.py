@@ -398,6 +398,7 @@ def test_boot_save_skipped_no_segments(tmp_path: Path) -> None:
 
     # Engine state
     engine._pending_post_capture = {}
+    engine._pending_lock = threading.Lock()
     engine._event_json_paths = {}
     engine._event_video_paths = {}
     engine._current_lat = None
@@ -407,6 +408,7 @@ def test_boot_save_skipped_no_segments(tmp_path: Path) -> None:
     engine._distance_from_start_km = None
     engine._distance_to_destination_km = None
     engine.mqtt = None
+    engine._dashboard = None
 
     # video_ring_buffer reports only 1 segment (not enough)
     mock_vrb = MagicMock()
@@ -449,7 +451,14 @@ def test_post_event_empty_segments_logged(tmp_path: Path) -> None:
     pre_segment_copy.write_bytes(b"x" * 20_000)
 
     # Pre-event copy returns 1 segment; post-event copy returns nothing
-    def _copy_side_effect(dest_dir: Path, phase: str, min_mtime: Optional[float] = None):
+    def _copy_side_effect(
+        dest_dir: Path,
+        phase: str,
+        min_mtime: Optional[float] = None,
+        stream: str = "front",
+    ):
+        if stream == "cabin":
+            return []
         if phase == "pre":
             return [pre_segment_copy]
         return []
@@ -492,7 +501,14 @@ def test_partial_save_pre_only(tmp_path: Path) -> None:
     _write_segment(buf_dir, "seg_000.ts")
     _write_segment(buf_dir, "seg_001.ts")
 
-    def _copy_side_effect(dest_dir: Path, phase: str, min_mtime: Optional[float] = None):
+    def _copy_side_effect(
+        dest_dir: Path,
+        phase: str,
+        min_mtime: Optional[float] = None,
+        stream: str = "front",
+    ):
+        if stream == "cabin":
+            return []
         if phase == "pre":
             return [pre_segment_copy]
         return []
