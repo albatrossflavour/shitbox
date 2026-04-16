@@ -44,6 +44,7 @@ from shitbox.storage.database import Database
 from shitbox.storage.driver import DriverStorage
 from shitbox.storage.logbook import LogbookStorage
 from shitbox.storage.models import Reading, SensorType
+from shitbox.storage.route import RouteStorage
 from shitbox.sync.batch_sync import BatchSyncService
 from shitbox.sync.boot_recovery import BootRecoveryService, detect_unclean_shutdown
 from shitbox.sync.capture_sync import CaptureSyncService
@@ -563,6 +564,14 @@ class UnifiedEngine:
             self.capture_sync.register_json_generator(
                 "driver-stats",
                 self.driver_storage.get_driver_stats_payload,
+            )
+
+        # Route storage -- REST-less, GPS polyline generator
+        self.route_storage = RouteStorage(self.database)
+        if self.capture_sync is not None:
+            self.capture_sync.register_json_generator(
+                "route",
+                self.route_storage.generate_route_json,
             )
 
         # Thermal monitor
