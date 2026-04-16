@@ -227,7 +227,7 @@ anchors the site through all three modes.
 
 **Depends on**: Phase 18 (notes, fuel, driver data in sync payload)
 
-**Requirements**: TBD (to be defined in discuss-phase)
+**Requirements**: NARR-01, NARR-02, NARR-03, NARR-04, NARR-05, NARR-06, NARR-07, NARR-08, NARR-08b, NARR-09, NARR-10
 
 **Success Criteria** (what must be TRUE):
 
@@ -242,7 +242,21 @@ anchors the site through all three modes.
   6. Drivers tab and cross-rally totals fold into /about
   7. Grafana remains one click from the homepage
 
-**Plans**: TBD
+**Plans**: 12 plans
+
+Plans:
+- [ ] 19-01-PLAN.md — Pi-side RouteStorage + Douglas-Peucker + engine wiring (TDD)
+- [ ] 19-02-PLAN.md — agenda.json authoring + nginx no-cache + SPA fetch plumbing
+- [ ] 19-03-PLAN.md — SPA router + detectMode() mode detection
+- [ ] 19-04-PLAN.md — Site-wide day-nav progress bar component
+- [ ] 19-05-PLAN.md — Day-page scaffold + agenda context + day stats
+- [ ] 19-06-PLAN.md — Timeline spine merge algorithm + per-kind cards
+- [ ] 19-07-PLAN.md — Day-page map with full-rally backdrop + day slice
+- [ ] 19-08-PLAN.md — Before-mode homepage (countdown + itinerary)
+- [ ] 19-09-PLAN.md — Live-mode homepage (today-as-homepage + refresh loop)
+- [ ] 19-10-PLAN.md — Archive-mode homepage (overview + linear day grid)
+- [ ] 19-11-PLAN.md — Nav shrink + tab purge + /about consolidation
+- [ ] 19-12-PLAN.md — REQUIREMENTS.md traceability + Brain update + rollback drill
 
 **UI hint**: yes
 
