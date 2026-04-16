@@ -71,3 +71,21 @@ def test_generator_failure_does_not_abort_sync(tmp_path: Path) -> None:
     assert good_file.exists(), "good.json should be written"
     assert json.loads(good_file.read_text()) == [{"ok": True}]
     assert not bad_file.exists(), "bad.json must not be written when generator fails"
+
+
+def test_route_generator_registers_and_writes(tmp_path: Path) -> None:
+    """route generator writes route.json with expected top-level shape."""
+    svc = _make_service(tmp_path)
+    payload = {
+        "generated_at": "2026-05-01T10:00:00+00:00",
+        "tolerance_m": 10.0,
+        "days": {"2026-05-01": {"point_count": 2, "points": [[-16.0, 145.0], [-16.01, 145.01]]}},
+    }
+    svc.register_json_generator("route", lambda: payload)
+    svc._run_json_generators()
+    route_file = tmp_path / "route.json"
+    assert route_file.exists()
+    parsed = json.loads(route_file.read_text())
+    assert "generated_at" in parsed
+    assert "days" in parsed
+    assert "2026-05-01" in parsed["days"]
