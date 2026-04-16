@@ -37,7 +37,7 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [ ] **Phase 15: Undervoltage and Monitoring** - Undervoltage fix confirmed, monitoring gaps closed, critical events visible
 - [ ] **Phase 16: Video Capture Tuning** - Camera modes empirically listed; optimal settings confirmed
 - [x] **Phase 17: Driver Display** - Fullscreen 7" kiosk productionised with live data, alerts, and active driver (completed 2026-04-10)
-- [ ] **Phase 18: Website Revamp** - Notes, fuel, and driver data integrated; Grafana improved
+- [x] **Phase 18: Website Revamp** - Notes, fuel, and driver data integrated; Grafana improved (completed 2026-04-11)
 
 ## Phase Details
 
@@ -202,14 +202,15 @@ pipeline, with improved Grafana dashboards; the changes are deployed via the hom
   4. A driver stats page shows per-driver driving time, percentage, and event attribution
   5. Grafana graph layouts are improved and the iframe kiosk display issues are resolved
 
-**Plans**: 4 plans
+**Plans**: 5 plans
 
 Plans:
 
 - [x] 18-01-PLAN.md — batch_sync metric fixes: shitbox_lux + DS18B20 probe labels + schema v9
 - [x] 18-02-PLAN.md — Website: notes feed, current driver card, drivers tab, note badges
-- [ ] 18-03-PLAN.md — Website: fuel map pins, Grafana iframe fix, nginx cache headers
-- [ ] 18-04-PLAN.md — Grafana dashboard API update: Ambient Light panel + DS18B20 series
+- [x] 18-03-PLAN.md — Website: fuel map pins, Grafana iframe fix, nginx cache headers
+- [x] 18-04-PLAN.md — Grafana dashboard API update: Ambient Light panel + DS18B20 series
+- [x] 18-05-PLAN.md — Rally summary metrics in Prometheus + RALLY SUMMARY dashboard row
 
 **UI hint**: yes
 
@@ -236,4 +237,4 @@ Plans:
 | 15. Undervoltage and Monitoring | v2.0 | TBD | Not started | — |
 | 16. Video Capture Tuning | v2.0 | TBD | Not started | — |
 | 17. Driver Display | v2.0 | 1/2 | Complete    | 2026-04-10 |
-| 18. Website Revamp | v2.0 | 2/4 | In Progress|  |
+| 18. Website Revamp | v2.0 | 5/5 | Complete    | 2026-04-11 |
