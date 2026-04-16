@@ -38,6 +38,8 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [ ] **Phase 16: Video Capture Tuning** - Camera modes empirically listed; optimal settings confirmed
 - [x] **Phase 17: Driver Display** - Fullscreen 7" kiosk productionised with live data, alerts, and active driver (completed 2026-04-10)
 - [x] **Phase 18: Website Revamp** - Notes, fuel, and driver data integrated; Grafana improved (completed 2026-04-11)
+- [ ] **Phase 19: Website Narrative Rebuild** - Day-centric IA with before/live/archive modes, timeline spine, progress-bar day nav
+- [ ] **Phase 20: Physical Integration** - Mount the build; 3D-printed enclosures, cable looms, dash fitting
 
 ## Phase Details
 
@@ -216,6 +218,66 @@ Plans:
 
 ---
 
+### Phase 19: Website Narrative Rebuild
+
+**Goal**: Transform the public website from a collection of disjointed tabs into a day-centric
+rally scrapbook with before/live/archive modes. Day becomes the primary UX pivot; events,
+notes, and fuel stops interleave onto a per-day timeline spine. Progress-bar day navigator
+anchors the site through all three modes.
+
+**Depends on**: Phase 18 (notes, fuel, driver data in sync payload)
+
+**Requirements**: TBD (to be defined in discuss-phase)
+
+**Success Criteria** (what must be TRUE):
+
+  1. Homepage detects and renders three modes: before (countdown + agenda preview), live
+     (today as homepage, auto-refresh), archive (rally overview + day grid)
+  2. Day pages exist at /day/YYYY-MM-DD with a timeline spine that interleaves events, notes,
+     and fuel stops in chronological order
+  3. Day pages pre-load agenda context (camping, meals, route description) before telemetry
+  4. A single progress-bar day navigator appears site-wide in all three modes
+  5. Videos, Timelapse, and standalone Map tabs are removed; their content lives inside
+     day pages
+  6. Drivers tab and cross-rally totals fold into /about
+  7. Grafana remains one click from the homepage
+
+**Plans**: TBD
+
+**UI hint**: yes
+
+**Source**: .planning/notes/2026-04-16-website-v2-ia-redesign.md
+
+---
+
+### Phase 20: Physical Integration
+
+**Goal**: Move v2 hardware from bench pile to install-ready. Mount the Pi 5 + hat stack in
+the car, design and 3D-print enclosures for the main board and sensors, route a proper cable
+loom, and fit the 7" driver display on VESA mount. Target: nothing flapping, nothing dupont,
+everything servicable.
+
+**Depends on**: v2 hardware phases complete (Phase 11 done; Phases 14, 15, 16 can inform
+sensor placement but are not hard blockers)
+
+**Requirements**: TBD (to be defined in discuss-phase)
+
+**Success Criteria** (what must be TRUE):
+
+  1. Main Pi + hat stack housed in a 3D-printed enclosure with airflow
+  2. All sensors mounted in their intended locations (cabin, engine bay, exterior)
+  3. Cable loom routed cleanly — no loose dupont jumpers, no floating breadboards
+  4. 7" driver display mounted on VESA arm in driver sightline
+  5. PM2.5 sensor housed with air intake
+  6. Power distribution from car battery via fused circuit, not breadboard power
+  7. Full system boots and runs in-car for a multi-hour shake-down drive without failure
+
+**Plans**: TBD
+
+**UI hint**: no
+
+---
+
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
@@ -238,3 +300,5 @@ Plans:
 | 16. Video Capture Tuning | v2.0 | TBD | Not started | — |
 | 17. Driver Display | v2.0 | 1/2 | Complete    | 2026-04-10 |
 | 18. Website Revamp | v2.0 | 5/5 | Complete    | 2026-04-11 |
+| 19. Website Narrative Rebuild | v2.0 | TBD | Not started | — |
+| 20. Physical Integration | v2.0 | TBD | Not started | — |
