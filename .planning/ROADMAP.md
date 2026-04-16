@@ -250,9 +250,9 @@ Plans:
 - [x] 19-03-PLAN.md — SPA router + detectMode() mode detection
 - [x] 19-04-PLAN.md — Site-wide day-nav progress bar component
 - [x] 19-05-PLAN.md — Day-page scaffold + agenda context + day stats
-- [ ] 19-06-PLAN.md — Timeline spine merge algorithm + per-kind cards
-- [ ] 19-07-PLAN.md — Day-page map with full-rally backdrop + day slice
-- [ ] 19-08-PLAN.md — Before-mode homepage (countdown + itinerary)
+- [x] 19-06-PLAN.md — Timeline spine merge algorithm + per-kind cards
+- [x] 19-07-PLAN.md — Day-page map with full-rally backdrop + day slice
+- [x] 19-08-PLAN.md — Before-mode homepage (countdown + itinerary)
 - [ ] 19-09-PLAN.md — Live-mode homepage (today-as-homepage + refresh loop)
 - [ ] 19-10-PLAN.md — Archive-mode homepage (overview + linear day grid)
 - [ ] 19-11-PLAN.md — Nav shrink + tab purge + /about consolidation
@@ -314,5 +314,5 @@ sensor placement but are not hard blockers)
 | 16. Video Capture Tuning | v2.0 | TBD | Not started | — |
 | 17. Driver Display | v2.0 | 1/2 | Complete    | 2026-04-10 |
 | 18. Website Revamp | v2.0 | 5/5 | Complete    | 2026-04-11 |
-| 19. Website Narrative Rebuild | v2.0 | 5/12 | In Progress|  |
+| 19. Website Narrative Rebuild | v2.0 | 8/12 | In Progress|  |
 | 20. Physical Integration | v2.0 | TBD | Not started | — |
