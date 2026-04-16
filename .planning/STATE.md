@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: executing
-stopped_at: Completed 19-05-PLAN.md
-last_updated: "2026-04-16T13:04:13.524Z"
+stopped_at: Completed 19-06-PLAN.md
+last_updated: "2026-04-16T13:26:50.423Z"
 last_activity: 2026-04-16
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 27
-  completed_plans: 20
-  percent: 74
+  completed_plans: 21
+  percent: 78
 ---
 
 # Project State
@@ -27,7 +27,7 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 ## Current Position
 
 Phase: 19 (website-narrative-rebuild) — EXECUTING
-Plan: 6 of 12
+Plan: 7 of 12
 Status: Ready to execute
 Last activity: 2026-04-16
 
@@ -76,6 +76,8 @@ v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 - Plan 19-04: UTC Date object used in _formatShortDate -- calendar date field not a timestamp, prevents midnight-crossing TZ shifts
 - Plan 19-04: future day-nav segments rendered as <span> not <a> -- pointer-events:none on <a> still focusable; <span> is inert and semantically correct
 - Plan 19-04: highlightDayISO arg takes priority over today-comparison in renderDayNav -- explicit day-page highlight overrides calendar check
+- Plan 19-06: stage bookends derived from first/last event of the day -- GPS motion transitions deferred as a future extension point (comment in buildSpine)
+- Plan 19-06: PII guard comment in _spineFuelCard names cost_aud/price_aud explicitly to make the exclusion auditable -- comment is the mitigation trail (T-19-06-02)
 
 ### Known Constraints for v2.0
 
@@ -91,8 +93,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-16T13:04:13.520Z
-Stopped at: Completed 19-05-PLAN.md
+Last session: 2026-04-16T13:26:50.419Z
+Stopped at: Completed 19-06-PLAN.md
 Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)
