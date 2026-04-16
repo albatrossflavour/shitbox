@@ -245,7 +245,7 @@ capture:
   video_buffer:
     enabled: true
     device: /dev/camera-front # ELP 4K IMX317 (front-facing, D-13)
-    input_format: mjpeg
+    input_format: h264
     resolution: 1920x1080
     fps: 30
     buffer_dir: /var/lib/shitbox/video_buffer
