@@ -1079,11 +1079,20 @@ If any of A1-A7 prove wrong, the fix is contained to its section; none reshape t
 | Douglas-Peucker | MEDIUM | Algorithm textbook; tolerance-to-size budget is an empirical risk |
 | Web-side tests | MEDIUM | No JS test harness exists; manual verification is the only path |
 
-### Open Questions Passed to Planner
-1. Route.json size budget — confirm tolerance bump strategy if 10 m × full-rally > 1 MB
-2. Freshness signal field — confirm `route.json.generated_at` vs alternative
-3. Archive-mode thumbnails — fall-back chain acceptable, or push timelapse-poster generation into scope?
-4. Agenda meal timezone handling — confirm Australia/Sydney regardless of physical location
+### Open Questions (RESOLVED)
+1. Route.json size budget — **RESOLVED**: Plan 19-01 asserts `<1 MB` at 10 m tolerance via
+   `tests/storage/test_route_storage.py::test_route_json_under_size_budget`. If the assertion
+   fails at full-rally scale, bump tolerance to 15 m (documented fallback) and retest.
+2. Freshness signal field — **RESOLVED**: `route.json.generated_at` (ISO-8601 UTC). Consumed
+   by `detectMode(agenda, routeGeneratedAt)` in Plan 19-03. Falls back to
+   `events.json[0].timestamp` if route fetch fails.
+3. Archive-mode thumbnails — **RESOLVED**: fall-back chain
+   `/captures/<date>/hero.jpg → /captures/<date>/timelapse-poster.jpg → text placeholder`
+   (Plan 19-10). Timelapse-poster generation stays out of scope for Phase 19.
+4. Agenda meal timezone handling — **RESOLVED**: all agenda timestamps are
+   `Australia/Sydney`. The site renders without conversion; minor UX drift when the car is
+   in western QLD is accepted (narrative marker, not a scheduling primitive). Matches the
+   `TIMEZONE` constant already in the SPA.
 
 ### Ready for Planning
 Research complete. Planner can now create PLAN.md files with confidence that:
