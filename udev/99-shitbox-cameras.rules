@@ -8,8 +8,8 @@
 # ATTR{index}=="0" ensures only the primary capture interface is matched
 # (cameras often expose multiple video nodes for metadata/controls).
 
-# Front camera (UGREEN) — /dev/camera-front
-SUBSYSTEM=="video4linux", ATTR{index}=="0", ATTRS{product}=="UGREEN*", SYMLINK+="camera-front"
+# Front camera (generic HD USB Camera, 32e4:2210) — /dev/camera-front
+SUBSYSTEM=="video4linux", ATTR{index}=="0", ATTRS{product}=="HD USB Camera*", SYMLINK+="camera-front"
 
 # Cabin camera (Logitech Brio 100) — /dev/camera-cabin
 SUBSYSTEM=="video4linux", ATTR{index}=="0", ATTRS{product}=="Brio 100*", SYMLINK+="camera-cabin"

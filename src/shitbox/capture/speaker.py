@@ -45,24 +45,24 @@ _cache: dict[str, Path] = {}
 
 # All fixed messages that can be pre-rendered at init time
 _CACHED_MESSAGES: dict[str, str] = {
-    "system_ready": "Winter is here. Systems stand ready.",
-    "crash_recovery": "Knife in the dark. Still standing. Systems restored.",
-    "thermal_warning": "The forge burns hot. Temperature rising.",
-    "thermal_critical": "Seven hells. The CPU burns hotter than a dragon's arrs hole.",
-    "thermal_recovered": "The heat breaks. Temperature restored.",
-    "under_voltage": "We are bleeding power. Under voltage.",
-    "service_crash": "A sworn brother has fallen. Service down.",
-    "service_recovered": "Back on his feet. Service restored.",
-    "health_alarm": "Dark wings. Dark words. Health failing.",
-    "i2c_lockup": "The ravens are silent. Sensor bus locked.",
-    "ffmpeg_stall": "The maester's quill has snapped. Recording stalled.",
-    "capture_failed": "The moment is lost. Capture failed.",
-    "capture_hard_brake": "Hold fast. Hard braking.",
-    "capture_big_corner": "Steady now. Big corner.",
-    "capture_high_g": "Gods be good. High G.",
-    "capture_rough_road": "Hold together. Rough road.",
-    "capture_manual": "Maester. Write this down.",
-    "capture_end": "It is written.",
+    "system_ready": "Good day, Michael. All systems are operational.",
+    "crash_recovery": "I'm back online, Michael. We had a bit of a moment there.",
+    "thermal_warning": "Michael, my core temperature is climbing. Worth keeping an eye on.",
+    "thermal_critical": "Michael, I'm rather warm. We should slow down before something gives.",
+    "thermal_recovered": "Much better, Michael. Temperature back to normal.",
+    "under_voltage": "Michael, the electrical supply is unsteady.",
+    "service_crash": "Michael, I'm afraid one of my subsystems has dropped out.",
+    "service_recovered": "All accounted for again, Michael.",
+    "health_alarm": "Michael, something isn't quite right. I'd appreciate a look.",
+    "i2c_lockup": "Michael, I've lost the sensor bus. I can't see what's happening out there.",
+    "ffmpeg_stall": "Michael, the recording has stalled. I'm working on it.",
+    "capture_failed": "I'm sorry Michael, I couldn't save that one.",
+    "capture_hard_brake": "That was a firm one, Michael.",
+    "capture_big_corner": "Hold on Michael, significant cornering.",
+    "capture_high_g": "Michael, that was a substantial G-force.",
+    "capture_rough_road": "Brace yourself Michael, the road is rough here.",
+    "capture_manual": "Recording now, Michael. As you wish.",
+    "capture_end": "Recording saved, Michael.",
 }
 
 
@@ -386,9 +386,9 @@ def speak_boot(was_crash: bool = False) -> None:
         was_crash: True if the previous shutdown was an unclean crash.
     """
     if was_crash:
-        _enqueue("Knife in the dark. Still standing. Systems restored.")
+        _enqueue("I'm back online, Michael. We had a bit of a moment there.")
     else:
-        _enqueue("Winter is here. Systems stand ready.")
+        _enqueue("Good day, Michael. All systems are operational.")
 
 
 def speak_thermal_warning() -> None:
@@ -398,7 +398,7 @@ def speak_thermal_warning() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("The forge burns hot. Temperature rising.")
+    _enqueue("Michael, my core temperature is climbing. Worth keeping an eye on.")
 
 
 def speak_thermal_critical() -> None:
@@ -408,7 +408,7 @@ def speak_thermal_critical() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Seven hells. The CPU burns hotter than a dragon's arrs hole.")
+    _enqueue("Michael, I'm rather warm. We should slow down before something gives.")
 
 
 def speak_thermal_recovered() -> None:
@@ -418,7 +418,7 @@ def speak_thermal_recovered() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("The heat breaks. Temperature restored.")
+    _enqueue("Much better, Michael. Temperature back to normal.")
 
 
 def speak_under_voltage() -> None:
@@ -428,7 +428,7 @@ def speak_under_voltage() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("We are bleeding power. Under voltage.")
+    _enqueue("Michael, the electrical supply is unsteady.")
 
 
 def speak_service_crash() -> None:
@@ -438,7 +438,7 @@ def speak_service_crash() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("A sworn brother has fallen. Service down.")
+    _enqueue("Michael, I'm afraid one of my subsystems has dropped out.")
 
 
 def speak_service_recovered() -> None:
@@ -448,7 +448,7 @@ def speak_service_recovered() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Back on his feet. Service restored.")
+    _enqueue("All accounted for again, Michael.")
 
 
 def speak_health_alarm() -> None:
@@ -458,7 +458,7 @@ def speak_health_alarm() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Dark wings. Dark words. Health failing.")
+    _enqueue("Michael, something isn't quite right. I'd appreciate a look.")
 
 
 def speak_i2c_lockup() -> None:
@@ -468,7 +468,7 @@ def speak_i2c_lockup() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("The ravens are silent. Sensor bus locked.")
+    _enqueue("Michael, I've lost the sensor bus. I can't see what's happening out there.")
 
 
 def speak_ffmpeg_stall() -> None:
@@ -478,7 +478,7 @@ def speak_ffmpeg_stall() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("The maester's quill has snapped. Recording stalled.")
+    _enqueue("Michael, the recording has stalled. I'm working on it.")
 
 
 def speak_capture_failed() -> None:
@@ -490,15 +490,15 @@ def speak_capture_failed() -> None:
         return
     if not _should_alert():
         return
-    _enqueue("The moment is lost. Capture failed.")
+    _enqueue("I'm sorry Michael, I couldn't save that one.")
 
 
 _EVENT_TYPE_MESSAGES: dict[str, str] = {
-    "hard_brake": "Hold fast. Hard braking.",
-    "big_corner": "Steady now. Big corner.",
-    "high_g": "Gods be good. High G.",
-    "rough_road": "Hold together. Rough road.",
-    "manual_capture": "Maester. Write this down.",
+    "hard_brake": "That was a firm one, Michael.",
+    "big_corner": "Hold on Michael, significant cornering.",
+    "high_g": "Michael, that was a substantial G-force.",
+    "rough_road": "Brace yourself Michael, the road is rough here.",
+    "manual_capture": "Recording now, Michael. As you wish.",
 }
 
 
@@ -519,7 +519,7 @@ def speak_capture_end() -> None:
 
     Not suppressed by the grace period — captures don't happen at boot.
     """
-    _enqueue("It is written.")
+    _enqueue("Recording saved, Michael.")
 
 
 def speak_waypoint_reached(name: str, day: int) -> None:
@@ -532,7 +532,7 @@ def speak_waypoint_reached(name: str, day: int) -> None:
         name: Human-readable waypoint name (e.g. "Broken Hill").
         day: Rally day number (e.g. 3).
     """
-    _enqueue(f"{name}. Day {day}. Still marching.")
+    _enqueue(f"Michael, we've reached {name}. Day {day} of our journey.")
 
 
 def speak_distance_update(km: int) -> None:
@@ -544,4 +544,4 @@ def speak_distance_update(km: int) -> None:
     Args:
         km: Kilometres driven today (integer).
     """
-    _enqueue(f"{km} kilometres. We endure.")
+    _enqueue(f"We've covered {km} kilometres today, Michael. A good run.")

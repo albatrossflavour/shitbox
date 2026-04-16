@@ -479,6 +479,12 @@ class BatchSyncService:
                         ("shitbox_lux", labels, reading.lux, timestamp_ms)
                     )
 
+            elif reading.sensor_type.value == "pm25":
+                if reading.pm25_ug_m3 is not None:
+                    metrics.append(
+                        ("shitbox_pm25", labels, reading.pm25_ug_m3, timestamp_ms)
+                    )
+
             elif reading.sensor_type.value == "power":
                 if reading.bus_voltage_v is not None:
                     metrics.append(

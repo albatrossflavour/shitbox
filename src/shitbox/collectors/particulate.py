@@ -18,14 +18,14 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 # Module-level imports — patched in tests via:
-#   patch("shitbox.collectors.particulate.busio")
+#   patch("shitbox.collectors.particulate.smbus2")
 try:
-    import busio
+    import smbus2
 
     from shitbox.collectors._vendor import dfrobot_airquality
     _HAS_SEN0460 = True
 except ImportError:
-    busio = None  # type: ignore[assignment]
+    smbus2 = None  # type: ignore[assignment]
     dfrobot_airquality = None  # type: ignore[assignment]
     _HAS_SEN0460 = False
 
@@ -48,7 +48,7 @@ class SEN0460Collector(BaseCollector["SEN0460Reading"]):
     ) -> None:
         super().__init__(
             name="sen0460",
-            sample_rate_hz=getattr(config, "sample_rate_hz", 0.2),
+            sample_rate_hz=getattr(config, "sample_rate_hz", 1.0),
             callback=callback,
         )
         self._enabled: bool = bool(getattr(config, "enabled", False))
@@ -57,20 +57,22 @@ class SEN0460Collector(BaseCollector["SEN0460Reading"]):
         self._sensor: Optional[object] = None
 
     def setup(self) -> None:
-        """Initialise SEN0460 over I2C.
+        """Initialise SEN0460 over smbus2.
 
-        When disabled, I2C is never opened (D-05 requirement).
+        When disabled, smbus2 is never opened (D-05 requirement).
         Logs sen0460_sensor_init_failed and leaves _sensor=None on any error.
         """
         if not self._enabled:
             log.info("sen0460_disabled")
             return
-        if busio is None or dfrobot_airquality is None:
+        if smbus2 is None or dfrobot_airquality is None:
             log.warning("sen0460_lib_missing")
             return
         try:
-            i2c = busio.I2C(1, 2)
-            self._sensor = dfrobot_airquality.DFRobot_AirQualitySensor(i2c, self._address)
+            bus = smbus2.SMBus(self._i2c_bus)
+            self._sensor = dfrobot_airquality.DFRobot_AirQualitySensor(
+                bus, address=self._address
+            )
             log.info("sen0460_sensor_init")
         except (OSError, Exception) as e:
             log.warning("sen0460_sensor_init_failed", error=str(e))
@@ -93,6 +95,4 @@ class SEN0460Collector(BaseCollector["SEN0460Reading"]):
 
     def to_reading(self, data: "SEN0460Reading") -> Reading:
         """Convert SEN0460Reading to a generic Reading for storage."""
-        return Reading(
-            sensor_type="pm25",  # type: ignore[arg-type]
-        )
+        return Reading.from_pm25(pm25_ug_m3=data.pm25_ug_m3, timestamp=self.now_utc())

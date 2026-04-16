@@ -138,13 +138,13 @@ def test_init_piper_not_available() -> None:
 
 
 def test_speak_boot_clean() -> None:
-    """speak_boot(was_crash=False) enqueues the Stark boot message."""
+    """speak_boot(was_crash=False) enqueues the boot message."""
     with patch.object(speaker, "_enqueue") as mock_enqueue:
         # _voice must be set (non-None) for _enqueue to not short-circuit;
         # but we're patching _enqueue directly so it does not matter here.
         speaker.speak_boot(was_crash=False)
 
-    mock_enqueue.assert_called_once_with("Winter is here. Systems stand ready.")
+    mock_enqueue.assert_called_once_with("Good day, Michael. All systems are operational.")
 
 
 def test_speak_boot_crash() -> None:
@@ -153,7 +153,7 @@ def test_speak_boot_crash() -> None:
         speaker.speak_boot(was_crash=True)
 
     mock_enqueue.assert_called_once_with(
-        "Knife in the dark. Still standing. Systems restored."
+        "I'm back online, Michael. We had a bit of a moment there."
     )
 
 
@@ -174,7 +174,7 @@ def test_speak_thermal_critical() -> None:
         speaker.speak_thermal_critical()
 
     mock_enqueue.assert_called_once()
-    assert "hotter" in mock_enqueue.call_args[0][0].lower()
+    assert "warm" in mock_enqueue.call_args[0][0].lower()
 
 
 def test_speaker_noop_when_not_init() -> None:
@@ -241,7 +241,7 @@ def test_boot_not_suppressed_by_grace() -> None:
     with patch.object(speaker, "_enqueue") as mock_enqueue:
         speaker.speak_boot(was_crash=False)
 
-    mock_enqueue.assert_called_once_with("Winter is here. Systems stand ready.")
+    mock_enqueue.assert_called_once_with("Good day, Michael. All systems are operational.")
 
 
 # ---------------------------------------------------------------------------

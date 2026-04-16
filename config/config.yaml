@@ -139,11 +139,11 @@ sensors:
     i2c_bus: 1
     address: 0x10
 
-  particulate: # SEN0460 PM2.5 at 0x19 — rail not wired, ships disabled (D-05)
-    enabled: false
+  particulate: # SEN0460 PM2.5 at 0x19
+    enabled: true
     i2c_bus: 1
     address: 0x19
-    sample_rate_hz: 0.2
+    sample_rate_hz: 1.0
 
   power: # INA226 at 0x40 — shunt not wired, ships disabled (D-06)
     enabled: false

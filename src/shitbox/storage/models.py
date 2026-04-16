@@ -17,6 +17,7 @@ class SensorType(str, Enum):
     POWER = "power"
     ENVIRONMENT = "environment"
     LIGHT = "light"
+    PM25 = "pm25"
 
 
 @dataclass
@@ -136,6 +137,9 @@ class Reading:
     # Light fields (VEML7700)
     lux: Optional[float] = None
 
+    # Particulate fields (SEN0460)
+    pm25_ug_m3: Optional[float] = None
+
     # System fields (Pi health)
     cpu_temp_celsius: Optional[float] = None
     cpu_percent: Optional[float] = None
@@ -217,6 +221,15 @@ class Reading:
             lux=lux,
         )
 
+    @classmethod
+    def from_pm25(cls, pm25_ug_m3: float, timestamp: datetime) -> "Reading":
+        """Create a Reading from a SEN0460 PM2.5 measurement."""
+        return cls(
+            timestamp_utc=timestamp,
+            sensor_type=SensorType.PM25,
+            pm25_ug_m3=pm25_ug_m3,
+        )
+
     def to_mqtt_payload(self) -> dict:
         """Convert to MQTT JSON payload."""
         ts = self.timestamp_utc.isoformat()
@@ -262,6 +275,11 @@ class Reading:
                 "hum": self.humidity_pct,
                 "env_temp": self.env_temp_celsius,
                 "gas_ohms": self.gas_resistance_ohms,
+            }
+        elif self.sensor_type == SensorType.PM25:
+            return {
+                "ts": ts,
+                "pm25": self.pm25_ug_m3,
             }
         elif self.sensor_type == SensorType.SYSTEM:
             return {

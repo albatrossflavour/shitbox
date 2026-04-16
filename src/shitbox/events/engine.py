@@ -36,6 +36,7 @@ from shitbox.events.detector import DetectorConfig, Event, EventDetector, EventT
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
 from shitbox.events.sampler import HighRateSampler
 from shitbox.events.storage import EventStorage
+from shitbox.gpsd_client import GpsdClient
 from shitbox.health.health_collector import HealthCollector
 from shitbox.health.thermal_monitor import ThermalMonitorService
 from shitbox.storage.database import Database
@@ -407,7 +408,7 @@ class UnifiedEngine:
         self.database = Database(config.database_path)
 
         # GPS collector (lazy init)
-        self._gps = None
+        self._gps: Optional[GpsdClient] = None
         self._gps_available = False
 
         # v2 sensor collectors (phase 11) — each uses BaseCollector.start/stop lifecycle
@@ -705,16 +706,24 @@ class UnifiedEngine:
         self._engine_start_time = 0.0
 
     def _init_gps(self) -> bool:
-        """Initialise GPS connection."""
+        """Initialise GPS connection.
+
+        Uses our own persistent gpsd JSON-stream client (see
+        :mod:`shitbox.gpsd_client`). Unlike gpsd-py3's ``get_current()``, this
+        tolerates SKY frames interleaved with TPV and survives socket drops
+        via a background reconnect loop.
+        """
         if not self.config.gps_enabled:
             return False
 
         try:
-            import gpsd
-            gpsd.connect(host=self.config.gps_host, port=self.config.gps_port)
-            self._gps = gpsd
+            client = GpsdClient(
+                host=self.config.gps_host, port=self.config.gps_port
+            )
+            client.start()
+            self._gps = client
             self._gps_available = True
-            log.info("gps_connected", host=self.config.gps_host)
+            log.info("gps_client_started", host=self.config.gps_host)
             return True
         except Exception as e:
             log.error("gps_init_failed", error=str(e))
@@ -1115,46 +1124,58 @@ class UnifiedEngine:
         return matches[0] if matches else None
 
     def _read_gps(self) -> Optional[Reading]:
-        """Read current GPS data."""
-        if not self._gps_available:
+        """Read current GPS data from the cached gpsd stream."""
+        if not self._gps_available or self._gps is None:
             return None
 
         try:
-            packet = self._gps.get_current()
-
-            if packet.mode < 2:
+            tpv, sky, tpv_mono = self._gps.get_latest()
+            if tpv is None:
                 return None
 
-            # Get satellite count via direct socket (gpsd-py3 bug workaround)
-            satellites = self._get_satellite_count()
+            # Drop stale fixes — gpsd can go quiet with no new TPV for a while
+            # if the receiver loses lock; treat anything >5s old as no-fix.
+            if tpv_mono > 0.0 and (time.monotonic() - tpv_mono) > 5.0:
+                return None
+
+            mode = int(tpv.get("mode", 0) or 0)
+            if mode < 2:
+                return None
 
             timestamp = datetime.now(timezone.utc)
-            if hasattr(packet, "time") and packet.time:
+            raw_time = tpv.get("time")
+            if isinstance(raw_time, str):
                 try:
                     timestamp = datetime.fromisoformat(
-                        packet.time.replace("Z", "+00:00")
+                        raw_time.replace("Z", "+00:00")
                     )
-                except (ValueError, AttributeError):
+                except ValueError:
                     pass
 
-            # Sync system clock from GPS on first fix
             if not self._clock_synced_from_gps:
                 self._sync_clock_from_gps(timestamp)
+
+            hspeed = tpv.get("speed")
+            speed_kmh = hspeed * 3.6 if isinstance(hspeed, (int, float)) else None
+
+            satellites: Optional[int] = None
+            if sky is not None:
+                u = sky.get("uSat")
+                if u is None:
+                    u = sky.get("nSat")
+                if isinstance(u, int):
+                    satellites = u
 
             reading = Reading(
                 timestamp_utc=timestamp,
                 sensor_type=SensorType.GPS,
-                latitude=packet.lat if hasattr(packet, "lat") else None,
-                longitude=packet.lon if hasattr(packet, "lon") else None,
-                altitude_m=packet.alt if packet.mode >= 3 and hasattr(packet, "alt") else None,
-                speed_kmh=(
-                    (packet.hspeed * 3.6)
-                    if hasattr(packet, "hspeed") and packet.hspeed
-                    else None
-                ),
-                heading_deg=packet.track if hasattr(packet, "track") else None,
+                latitude=tpv.get("lat"),
+                longitude=tpv.get("lon"),
+                altitude_m=tpv.get("alt") if mode >= 3 else None,
+                speed_kmh=speed_kmh,
+                heading_deg=tpv.get("track"),
                 satellites=satellites,
-                fix_quality=packet.mode if hasattr(packet, "mode") else 0,
+                fix_quality=mode,
             )
             return reading
 
@@ -1227,39 +1248,6 @@ class UnifiedEngine:
             log.debug("fake_hwclock_saved", time=time_str)
         except Exception as e:
             log.debug("fake_hwclock_save_failed", error=str(e))
-
-    def _get_satellite_count(self) -> Optional[int]:
-        """Get satellite count directly from gpsd."""
-        import json
-        import socket
-
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2.0)
-            sock.connect((self.config.gps_host, self.config.gps_port))
-            sock.send(b'?WATCH={"enable":true,"json":true}\n')
-
-            data = b""
-            for _ in range(15):
-                chunk = sock.recv(4096)
-                if not chunk:
-                    break
-                data += chunk
-                for line in data.decode(errors="ignore").split("\n"):
-                    if '"class":"SKY"' in line:
-                        try:
-                            sky = json.loads(line)
-                            return sky.get("uSat", sky.get("nSat", 0))
-                        except json.JSONDecodeError:
-                            pass
-        except (socket.error, socket.timeout, OSError):
-            pass
-        finally:
-            try:
-                sock.close()
-            except Exception:
-                pass
-        return None
 
     def _read_imu_snapshot(self) -> Optional[Reading]:
         """Get current IMU reading from ring buffer."""
@@ -2033,6 +2021,12 @@ class UnifiedEngine:
 
         if self._environment_collector:
             self._environment_collector.cleanup()
+
+        if self._gps is not None:
+            try:
+                self._gps.stop()
+            except Exception as e:
+                log.error("gps_client_stop_failed", error=str(e))
 
         self.connection.stop()
 

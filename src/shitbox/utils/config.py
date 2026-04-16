@@ -117,12 +117,12 @@ class PowerConfig:
 
 @dataclass
 class ParticulateConfig:
-    """SEN0460 PM2.5 (D-05, ships disabled)."""
+    """SEN0460 PM2.5 particulate sensor (I2C 0x19)."""
 
-    enabled: bool = False
+    enabled: bool = True
     i2c_bus: int = 1
     address: int = 0x19
-    sample_rate_hz: float = 0.2
+    sample_rate_hz: float = 1.0
 
 
 @dataclass

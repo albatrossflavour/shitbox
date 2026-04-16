@@ -13,7 +13,7 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 # Database schema version for migrations
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS readings (
 
     -- Light fields (VEML7700)
     lux REAL,
+
+    -- Particulate fields (SEN0460)
+    pm25_ug_m3 REAL,
 
     -- System fields (Pi health)
     cpu_temp_celsius REAL,
@@ -205,6 +208,9 @@ class Database:
 
         if current_version < 9:
             self._migrate_to_v9(conn)
+
+        if current_version < 10:
+            self._migrate_to_v10(conn)
 
         if current_version < SCHEMA_VERSION:
             conn.execute(
@@ -364,6 +370,15 @@ class Database:
         conn.commit()
         log.info("migrated_to_v9", columns=["sensor_id"])
 
+    def _migrate_to_v10(self, conn: sqlite3.Connection) -> None:
+        """Add pm25_ug_m3 column for SEN0460 particulate sensor."""
+        try:
+            conn.execute("ALTER TABLE readings ADD COLUMN pm25_ug_m3 REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        conn.commit()
+        log.info("migrated_to_v10", columns=["pm25_ug_m3"])
+
     def close(self) -> None:
         """Close database connection for current thread."""
         if hasattr(self._local, "conn") and self._local.conn:
@@ -416,10 +431,11 @@ class Database:
                     pressure_hpa, humidity_pct, env_temp_celsius,
                     gas_resistance_ohms,
                     lux,
+                    pm25_ug_m3,
                     cpu_temp_celsius, cpu_percent, disk_percent, sync_backlog, throttle_flags
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 (
@@ -448,6 +464,7 @@ class Database:
                     reading.env_temp_celsius,
                     reading.gas_resistance_ohms,
                     reading.lux,
+                    reading.pm25_ug_m3,
                     reading.cpu_temp_celsius,
                     reading.cpu_percent,
                     reading.disk_percent,
@@ -487,11 +504,12 @@ class Database:
                             pressure_hpa, humidity_pct, env_temp_celsius,
                             gas_resistance_ohms,
                             lux,
+                            pm25_ug_m3,
                             cpu_temp_celsius, cpu_percent, disk_percent,
                             sync_backlog, throttle_flags
                         ) VALUES (
                             ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
                         """,
                         (
@@ -520,6 +538,7 @@ class Database:
                             reading.env_temp_celsius,
                             reading.gas_resistance_ohms,
                             reading.lux,
+                            reading.pm25_ug_m3,
                             reading.cpu_temp_celsius,
                             reading.cpu_percent,
                             reading.disk_percent,
@@ -805,6 +824,7 @@ class Database:
             sync_backlog=row["sync_backlog"] if "sync_backlog" in keys else None,
             throttle_flags=row["throttle_flags"] if "throttle_flags" in keys else None,
             lux=row["lux"] if "lux" in keys else None,
+            pm25_ug_m3=row["pm25_ug_m3"] if "pm25_ug_m3" in keys else None,
         )
 
     def get_trip_state(self, key: str) -> Optional[float]:
