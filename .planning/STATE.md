@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: executing
-stopped_at: context exhaustion at 90% (2026-04-16)
-last_updated: "2026-04-16T05:14:17.952Z"
-last_activity: 2026-04-10
+stopped_at: Completed 19-01-PLAN.md
+last_updated: "2026-04-16T11:33:44.796Z"
+last_activity: 2026-04-16
 progress:
-  total_phases: 7
-  completed_phases: 3
-  total_plans: 15
-  completed_plans: 14
-  percent: 93
+  total_phases: 9
+  completed_phases: 4
+  total_plans: 27
+  completed_plans: 16
+  percent: 59
 ---
 
 # Project State
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 17 — driver-display
+**Current focus:** Phase 19 — website-narrative-rebuild
 
 ## Current Position
 
-Phase: 18
-Plan: Not started
+Phase: 19 (website-narrative-rebuild) — EXECUTING
+Plan: 2 of 12
 Status: Ready to execute
-Last activity: 2026-04-10
+Last activity: 2026-04-16
 
 Progress: [██████████] 100% (v2.0, 4/4 plans in phase 12)
 
@@ -66,6 +66,9 @@ v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 - Plan 13-04: activeDriver SSE field is nullable — null maps to '---' in top bar via Alpine x-text || fallback
 - Plan 17-01: dashboard_push_event imported via try/except in thermal_monitor — mirrors buzzer/speaker pattern, graceful degradation when dashboard absent
 - Plan 17-01: elif SensorType.TEMPERATURE branch in _on_reading uses last-write wins — DS18B20 and BME680 can coexist without coordination
+- Plan 19-01: Iterative DP (stack-based) chosen over recursive for douglas_peucker -- handles 50k+ inputs without RecursionError
+- Plan 19-01: tolerance_m=10.0 default kept -- 14-day synthetic rally produces 1,255 bytes (trivially under 1 MB budget)
+- Plan 19-01: Sydney timezone as UTC+10 fixed offset -- QLD/NSW rally timing, no pytz/zoneinfo dep required
 
 ### Known Constraints for v2.0
 
@@ -81,8 +84,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-16T05:14:17.948Z
-Stopped at: context exhaustion at 90% (2026-04-16)
+Last session: 2026-04-16T11:33:44.793Z
+Stopped at: Completed 19-01-PLAN.md
 Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)

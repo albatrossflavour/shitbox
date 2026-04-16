@@ -245,7 +245,7 @@ anchors the site through all three modes.
 **Plans**: 12 plans
 
 Plans:
-- [ ] 19-01-PLAN.md — Pi-side RouteStorage + Douglas-Peucker + engine wiring (TDD)
+- [x] 19-01-PLAN.md — Pi-side RouteStorage + Douglas-Peucker + engine wiring (TDD)
 - [ ] 19-02-PLAN.md — agenda.json authoring + nginx no-cache + SPA fetch plumbing
 - [ ] 19-03-PLAN.md — SPA router + detectMode() mode detection
 - [ ] 19-04-PLAN.md — Site-wide day-nav progress bar component
@@ -314,5 +314,5 @@ sensor placement but are not hard blockers)
 | 16. Video Capture Tuning | v2.0 | TBD | Not started | — |
 | 17. Driver Display | v2.0 | 1/2 | Complete    | 2026-04-10 |
 | 18. Website Revamp | v2.0 | 5/5 | Complete    | 2026-04-11 |
-| 19. Website Narrative Rebuild | v2.0 | TBD | Not started | — |
+| 19. Website Narrative Rebuild | v2.0 | 1/12 | In Progress|  |
 | 20. Physical Integration | v2.0 | TBD | Not started | — |
