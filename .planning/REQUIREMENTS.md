@@ -57,6 +57,20 @@
 - [ ] **MON-02**: Prometheus scrape job label conflict resolved (job: shitbox-mqtt-exporter no longer collides with shitbox metrics)
 - [ ] **MON-03**: All critical events (thermal, undervoltage, capture failure) surface visibly in the live dashboard
 
+### Narrative (NARR)
+
+- [x] **NARR-01**: Homepage adapts to rally mode -- before-mode (countdown + itinerary), live-mode (today IS the homepage with current-driver widget and 2-minute refresh), archive-mode (overview stats + linear day grid)
+- [x] **NARR-02**: Site routes /day/YYYY-MM-DD as a first-class URL via single-file SPA using history.pushState and popstate
+- [x] **NARR-03**: Each day page has a timeline spine merging events, notes, fuel stops, driver changes, stage bookends, and agenda markers -- sorted by timestamp
+- [x] **NARR-04**: Day page renders agenda context (route, camping, meals) BEFORE any telemetry section
+- [x] **NARR-05**: Site-wide day-nav progress bar visible on homepage, day pages, and /about with completed/current/future segment states
+- [x] **NARR-06**: Top nav shrunk from 9 tabs to 4 entries: Home / Grafana / About / Donate
+- [x] **NARR-07**: /about consolidates drivers roster + car story + telemetry explainer into one page
+- [x] **NARR-08**: Pi-side RouteStorage generator emits route.json with Douglas-Peucker-simplified per-day polylines (10m tolerance), integrated with CaptureSyncService
+- [x] **NARR-08b**: Home-address exclusion enforced in route.json (points within configurable radius of home_lat/home_lng are dropped)
+- [x] **NARR-09**: Day-page map shows full-rally polyline as grey backdrop with current day slice highlighted in orange, event pins colour-coded via BADGE_COLORS
+- [x] **NARR-10**: agenda.json authored as single source of rally-shape truth (JSON not YAML, served via home-ops ConfigMap with no-cache nginx rule)
+
 ## Future Requirements
 
 - Magnetometer (LIS3MDL) ellipsoid calibration — deferred; rough heading accuracy sufficient for current use; revisit if compass display is added
@@ -106,3 +120,14 @@
 | MON-01 | Phase 15 | Pending |
 | MON-02 | Phase 15 | Pending |
 | MON-03 | Phase 15 | Pending |
+| NARR-01 | Phase 19 | Complete |
+| NARR-02 | Phase 19 | Complete |
+| NARR-03 | Phase 19 | Complete |
+| NARR-04 | Phase 19 | Complete |
+| NARR-05 | Phase 19 | Complete |
+| NARR-06 | Phase 19 | Complete |
+| NARR-07 | Phase 19 | Complete |
+| NARR-08 | Phase 19 | Complete |
+| NARR-08b | Phase 19 | Complete |
+| NARR-09 | Phase 19 | Complete |
+| NARR-10 | Phase 19 | Complete |
