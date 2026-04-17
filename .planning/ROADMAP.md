@@ -39,7 +39,7 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [x] **Phase 17: Driver Display** - Fullscreen 7" kiosk productionised with live data, alerts, and active driver (completed 2026-04-10)
 - [x] **Phase 18: Website Revamp** - Notes, fuel, and driver data integrated; Grafana improved (completed 2026-04-11)
 - [x] **Phase 19: Website Narrative Rebuild** - Day-centric IA with before/live/archive modes, timeline spine, progress-bar day nav (completed 2026-04-17)
-- [ ] **Phase 20: Physical Integration** - Mount the build; 3D-printed enclosures, cable looms, dash fitting
+- [ ] **Phase 20: Physical Integration** - 3D-printed enclosures for Pi, screen, and camera; dash mounting; system verification
 
 ## Phase Details
 
@@ -266,27 +266,28 @@ Plans:
 
 ### Phase 20: Physical Integration
 
-**Goal**: Move v2 hardware from bench pile to install-ready. Mount the Pi 5 + hat stack in
-the car, design and 3D-print enclosures for the main board and sensors, route a proper cable
-loom, and fit the 7" driver display on VESA mount. Target: nothing flapping, nothing dupont,
-everything servicable.
+**Goal**: Design 3D-printed PETG enclosures for the Pi 5 stack, Waveshare 7" screen, and ELP
+front camera in OpenSCAD. Produce print-ready parametric designs based on physical measurements
+of in-hand hardware. Verify the full system boots and runs in its installed configuration.
 
 **Depends on**: v2 hardware phases complete (Phase 11 done; Phases 14, 15, 16 can inform
 sensor placement but are not hard blockers)
 
-**Requirements**: TBD (to be defined in discuss-phase)
+**Requirements**: PHYS-01, PHYS-02, PHYS-03, PHYS-04
 
 **Success Criteria** (what must be TRUE):
 
-  1. Main Pi + hat stack housed in a 3D-printed enclosure with airflow
-  2. All sensors mounted in their intended locations (cabin, engine bay, exterior)
-  3. Cable loom routed cleanly — no loose dupont jumpers, no floating breadboards
-  4. 7" driver display mounted on VESA arm in driver sightline
-  5. PM2.5 sensor housed with air intake
-  6. Power distribution from car battery via fused circuit, not breadboard power
-  7. Full system boots and runs in-car for a multi-hour shake-down drive without failure
+  1. Pi 5 stack housed in a 3D-printed PETG enclosure with active fan cooling, GX12 sensor loom connector, SMA GPS bulkhead, and panel-mount flanges
+  2. Waveshare 7" screen mounted in a bezel with VESA 75mm backplate, bolted to passenger-side dash via fixed-angle bracket
+  3. ELP 4K front camera mounted on dash via a 3D-printed cradle bracket
+  4. Full system boots and runs in installed in-car configuration with all sensors detected
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 20-01-PLAN.md — Pi 5 stack enclosure (measure + OpenSCAD design)
+- [ ] 20-02-PLAN.md — Screen bezel + VESA backplate + dash bracket (measure + OpenSCAD design)
+- [ ] 20-03-PLAN.md — Camera cradle + full system verification
 
 **UI hint**: no
 
@@ -315,4 +316,4 @@ sensor placement but are not hard blockers)
 | 17. Driver Display | v2.0 | 1/2 | Complete    | 2026-04-10 |
 | 18. Website Revamp | v2.0 | 5/5 | Complete    | 2026-04-11 |
 | 19. Website Narrative Rebuild | v2.0 | 12/12 | Complete   | 2026-04-17 |
-| 20. Physical Integration | v2.0 | TBD | Not started | — |
+| 20. Physical Integration | v2.0 | 0/3 | Not started | — |

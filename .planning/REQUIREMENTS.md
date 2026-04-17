@@ -71,6 +71,13 @@
 - [x] **NARR-09**: Day-page map shows full-rally polyline as grey backdrop with current day slice highlighted in orange, event pins colour-coded via BADGE_COLORS
 - [x] **NARR-10**: agenda.json authored as single source of rally-shape truth (JSON not YAML, served via home-ops ConfigMap with no-cache nginx rule)
 
+### Physical Integration (PHYS)
+
+- [ ] **PHYS-01**: Pi 5 stack housed in a 3D-printed PETG enclosure with active fan cooling, GX12 sensor loom connector, SMA GPS bulkhead, sized cable exits, and M2.5 rubber standoff vibration isolation
+- [ ] **PHYS-02**: Waveshare 7" screen mounted in a 3D-printed bezel with VESA 75mm backplate, bolted to passenger-side dash via a fixed-angle gusset-braced bracket
+- [ ] **PHYS-03**: ELP 4K front camera mounted on dash via a 3D-printed cradle bracket
+- [ ] **PHYS-04**: Full system boots and runs in installed in-car configuration with all sensors detected
+
 ## Future Requirements
 
 - Magnetometer (LIS3MDL) ellipsoid calibration — deferred; rough heading accuracy sufficient for current use; revisit if compass display is added
@@ -87,6 +94,8 @@
 - **Real-time video streaming**: Connectivity too sparse; batch sync remains the model.
 - **AI/ML event classification**: Unnecessary complexity.
 - **OBD/ECU data**: 2001 Ford Laser is OBD-I only.
+- **Cable loom routing**: Full cable loom design (split tubing, connector choices for engine bay and exterior sensor runs) is deferred from Phase 20.
+- **Power distribution**: 12V fused circuit from car battery, buck converter placement, ignition-linked vs always-on, clean shutdown is deferred from Phase 20.
 
 ## Traceability
 
@@ -131,3 +140,7 @@
 | NARR-08b | Phase 19 | Complete |
 | NARR-09 | Phase 19 | Complete |
 | NARR-10 | Phase 19 | Complete |
+| PHYS-01 | Phase 20 | Pending |
+| PHYS-02 | Phase 20 | Pending |
+| PHYS-03 | Phase 20 | Pending |
+| PHYS-04 | Phase 20 | Pending |
