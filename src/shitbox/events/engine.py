@@ -567,7 +567,12 @@ class UnifiedEngine:
             )
 
         # Route storage -- REST-less, GPS polyline generator
-        self.route_storage = RouteStorage(self.database)
+        self.route_storage = RouteStorage(
+            self.database,
+            home_lat=self.config.storage.home_lat,
+            home_lng=self.config.storage.home_lng,
+            home_exclusion_radius_m=self.config.storage.home_exclusion_radius_m,
+        )
         if self.capture_sync is not None:
             self.capture_sync.register_json_generator(
                 "route",

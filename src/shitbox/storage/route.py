@@ -16,6 +16,16 @@ _SYDNEY_OFFSET_HOURS = 10
 _DEFAULT_TOLERANCE_M = 10.0
 _LAT_METRES_PER_DEGREE = 111_000.0
 _COORD_DECIMALS = 5  # ~1.1 m precision at the equator; saves ~15% JSON bytes
+_EARTH_RADIUS_M = 6_371_000.0
+
+
+def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Great-circle distance in metres between two WGS-84 points."""
+    rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
+    dlat = rlat2 - rlat1
+    dlng = math.radians(lng2 - lng1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlng / 2) ** 2
+    return 2 * _EARTH_RADIUS_M * math.asin(math.sqrt(a))
 
 
 def _perpendicular_distance(
@@ -95,9 +105,20 @@ class RouteStorage:
     JSON-serialisable value (the registry writes it).
     """
 
-    def __init__(self, db: Database, tolerance_m: float = _DEFAULT_TOLERANCE_M) -> None:
+    def __init__(
+        self,
+        db: Database,
+        tolerance_m: float = _DEFAULT_TOLERANCE_M,
+        home_lat: float = 0.0,
+        home_lng: float = 0.0,
+        home_exclusion_radius_m: float = 2000.0,
+    ) -> None:
         self.db = db
         self.tolerance_m = tolerance_m
+        self.home_lat = home_lat
+        self.home_lng = home_lng
+        self.home_exclusion_radius_m = home_exclusion_radius_m
+        self._exclude_home = home_lat != 0.0 or home_lng != 0.0
 
     def generate_route_json(self) -> Dict[str, Any]:
         """Return route payload suitable for route.json.
@@ -124,11 +145,18 @@ class RouteStorage:
                 "ORDER BY timestamp_utc ASC"
             ).fetchall()
 
+        excluded = 0
         by_day: Dict[str, List[Tuple[float, float]]] = {}
         for row in rows:
             ts, lat, lng = row[0], row[1], row[2]
+            flat, flng = float(lat), float(lng)
+            if self._exclude_home and _haversine_m(
+                flat, flng, self.home_lat, self.home_lng
+            ) < self.home_exclusion_radius_m:
+                excluded += 1
+                continue
             day = _sydney_date(ts)
-            by_day.setdefault(day, []).append((float(lat), float(lng)))
+            by_day.setdefault(day, []).append((flat, flng))
 
         days_out: Dict[str, Dict[str, Any]] = {}
         total_before = 0
@@ -153,6 +181,7 @@ class RouteStorage:
             day_count=len(days_out),
             points_before=total_before,
             points_after=total_after,
+            points_excluded_home=excluded,
             tolerance_m=self.tolerance_m,
         )
         return payload

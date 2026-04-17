@@ -158,6 +158,9 @@ class StorageConfig:
     backup_enabled: bool = True
     backup_interval_hours: int = 6
     max_backups: int = 10
+    home_lat: float = 0.0
+    home_lng: float = 0.0
+    home_exclusion_radius_m: float = 2000.0
 
 
 @dataclass

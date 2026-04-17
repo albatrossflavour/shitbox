@@ -169,3 +169,47 @@ def test_dp_recursion_safe_on_50k_points(tmp_path: Path) -> None:
     out = douglas_peucker(pts, tolerance_m=10.0)
     # Must not crash, and must reduce substantially
     assert len(out) < 5000, f"Expected < 5000 points after DP, got {len(out)}"
+
+
+def test_home_exclusion_drops_nearby_points(tmp_path: Path) -> None:
+    """Points within home_exclusion_radius_m of home_lat/home_lng are excluded."""
+    db = _db(tmp_path)
+    home_lat, home_lng = -33.8688, 151.2093
+
+    # Point ~500m from home (well within 2km radius)
+    _insert_gps(db, "2026-05-01T01:00:00Z", home_lat + 0.003, home_lng + 0.003)
+    # Point ~50km away (well outside radius)
+    _insert_gps(db, "2026-05-01T02:00:00Z", home_lat + 0.5, home_lng + 0.5)
+    _insert_gps(db, "2026-05-01T03:00:00Z", home_lat + 0.6, home_lng + 0.6)
+
+    rs = RouteStorage(
+        db,
+        home_lat=home_lat,
+        home_lng=home_lng,
+        home_exclusion_radius_m=2000.0,
+    )
+    payload = rs.generate_route_json()
+
+    all_points = []
+    for day_data in payload["days"].values():
+        all_points.extend(day_data["points"])
+
+    assert len(all_points) == 2, f"Expected 2 points (1 excluded), got {len(all_points)}"
+    for pt in all_points:
+        assert abs(pt[0] - home_lat) > 0.01, "Near-home point should have been excluded"
+
+
+def test_home_exclusion_disabled_when_zero(tmp_path: Path) -> None:
+    """When home_lat/home_lng are both 0, no points are excluded."""
+    db = _db(tmp_path)
+    _insert_gps(db, "2026-05-01T01:00:00Z", 0.001, 0.001)
+    _insert_gps(db, "2026-05-01T02:00:00Z", 0.002, 0.002)
+
+    rs = RouteStorage(db, home_lat=0.0, home_lng=0.0)
+    payload = rs.generate_route_json()
+
+    all_points = []
+    for day_data in payload["days"].values():
+        all_points.extend(day_data["points"])
+
+    assert len(all_points) == 2, f"Expected 2 points (none excluded), got {len(all_points)}"

@@ -157,6 +157,9 @@ storage:
   backup_enabled: true
   backup_interval_hours: 6
   max_backups: 10
+  home_lat: 0.0
+  home_lng: 0.0
+  home_exclusion_radius_m: 2000
 
 sync:
   # Master switch for all uplink - set false when going offline
