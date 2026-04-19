@@ -4,7 +4,7 @@
 // Camera drops in from the top, lens faces forward. 1/4"-20 UNC heat-set
 // insert boss on the bottom for tripod mount already on dash.
 //
-// Base flat on bed, no supports needed.
+// Print upside-down (cradle opening on bed) so tripod boss prints without support.
 //
 // Measured with calipers 2026-04-18 ±0.5mm:
 //   Camera body: 42 × 42 × 42mm (metal case, cube)
@@ -24,12 +24,13 @@ CAM_H = 42;               // height
 // ---- Cradle construction ----
 CRADLE_WALL  = 2.0;        // wall thickness (matches OUTER_WALL convention)
 CRADLE_TOL   = 0.5;        // clearance around camera body
-CRADLE_FLOOR = 3.0;        // base thickness (houses tripod insert)
+CRADLE_FLOOR = 3.0;        // base thickness above tripod boss
 
 // ---- Tripod mount (1/4"-20 UNC heat-set insert) ----
 TRIPOD_HOLE_D  = 6.0;      // hole for heat-set insert (slightly under insert OD)
 TRIPOD_BOSS_D  = 14.0;     // boss around insert for strength
 TRIPOD_DEPTH   = 8.0;      // insert depth into boss
+TRIPOD_BOSS_H  = 10.0;     // total boss height below base (insert depth + 2mm solid base)
 
 // ---- Lens aperture ----
 LENS_D         = 20;        // generous aperture for lens + adjustment ring
@@ -93,9 +94,9 @@ module cradle_walls() {
 }
 
 module cradle_tripod_boss() {
-    // Reinforced boss on bottom centre for 1/4"-20 heat-set insert
-    translate([OUTER_W / 2, OUTER_D / 2, 0])
-        cylinder(d = TRIPOD_BOSS_D, h = CRADLE_FLOOR);
+    // Reinforced boss extending below base for 1/4"-20 heat-set insert
+    translate([OUTER_W / 2, OUTER_D / 2, -TRIPOD_BOSS_H])
+        cylinder(d = TRIPOD_BOSS_D, h = TRIPOD_BOSS_H + CRADLE_FLOOR);
 }
 
 
@@ -124,7 +125,7 @@ module cradle_usb_exit() {
 }
 
 module cradle_tripod_hole() {
-    // Hole for 1/4"-20 heat-set insert from bottom
-    translate([OUTER_W / 2, OUTER_D / 2, -0.1])
+    // Hole for 1/4"-20 heat-set insert from bottom of boss
+    translate([OUTER_W / 2, OUTER_D / 2, -TRIPOD_BOSS_H - 0.1])
         cylinder(d = TRIPOD_HOLE_D, h = TRIPOD_DEPTH + 0.2);
 }
