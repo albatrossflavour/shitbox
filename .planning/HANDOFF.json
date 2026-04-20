@@ -1,0 +1,51 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-04-20T06:21:10.313Z",
+  "phase": "20",
+  "phase_name": "physical-integration",
+  "phase_dir": ".planning/phases/20-physical-integration",
+  "plan": 3,
+  "task": null,
+  "total_tasks": null,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "Pi case Game of Thrones castle redesign", "status": "done", "commit": "pending"},
+    {"id": 2, "name": "Camera bracket USB exit enlargement (19x13mm)", "status": "done", "commit": "pending"},
+    {"id": 3, "name": "Sensor cluster major redesign (PCB sizes, cell spacing, posts, SEN0460 bay, board flip, lid cutouts)", "status": "done", "commit": "pending"},
+    {"id": 4, "name": "Sensor cluster per-type post heights for lid proximity", "status": "done", "commit": "pending"},
+    {"id": 5, "name": "Sensor cluster lid engraving (Shit of Theseus)", "status": "done", "commit": "pending"},
+    {"id": 6, "name": "Website: video highlights and timelapse wiring", "status": "done", "commit": "in home-ops repo"},
+    {"id": 7, "name": "Website: day nav future days clickable", "status": "done", "commit": "in home-ops repo"},
+    {"id": 8, "name": "Website: Grafana link UID fix (shitbox-rally-v2)", "status": "done", "commit": "in home-ops repo"}
+  ],
+  "remaining_tasks": [
+    {"id": 9, "name": "OpenSCAD render review of all hardware files", "status": "not_started"},
+    {"id": 10, "name": "PETG test prints and fit checks", "status": "not_started"}
+  ],
+  "blockers": [],
+  "human_actions_pending": [
+    {"action": "Review OpenSCAD renders of sensor-cluster.scad (engraving position, post heights, SEN bay)", "context": "Major redesign needs visual verification before printing", "blocking": false},
+    {"action": "Review pi-case.scad castle aesthetic render", "context": "Stone mortar, crenellations, portcullis vents need visual check", "blocking": false},
+    {"action": "Commit shitbox hardware changes", "context": "4 hardware files modified but not committed", "blocking": false}
+  ],
+  "decisions": [
+    {"decision": "OUTER_WALL increased 2.0->2.5mm on pi-case for stone mortar relief depth", "rationale": "Extra 0.5mm for mortar carving, leaves 2.0mm minimum structural wall", "phase": "20"},
+    {"decision": "Crenellations on lid not tray walls", "rationale": "Preserves lid-tray seating interface", "phase": "20"},
+    {"decision": "Per-type post heights in sensor cluster", "rationale": "Board flip means components face lid; posts sized so each board type sits 1mm below lid", "phase": "20"},
+    {"decision": "POST_OD increased 4.5->6mm", "rationale": "Original posts were splitting on M2.5 screw insertion; 1.95mm wall now", "phase": "20"},
+    {"decision": "Snake routing for Qwiic daisy chain", "rationale": "Every consecutive hop is adjacent cells, all reachable with 50mm cables", "phase": "20"},
+    {"decision": "Video highlights and timelapse sections hide when empty", "rationale": "No placeholder clutter; timelapse uses HEAD request to check file existence", "phase": "19"}
+  ],
+  "uncommitted_files": [
+    "hardware/camera-bracket.scad",
+    "hardware/pi-case.scad",
+    "hardware/screen-bezel.scad",
+    "hardware/sensor-cluster.scad",
+    ".gitignore",
+    "CLAUDE.md",
+    ".planning/STATE.md",
+    ".planning/config.json"
+  ],
+  "next_action": "Review OpenSCAD renders of all hardware files, then commit the shitbox hardware changes",
+  "context_notes": "Mixed session: hardware OpenSCAD design (phase 20) and website wiring (phase 19). Hardware files have major changes but no commits yet. Website changes already committed in home-ops repo. Sensor cluster is the most complex piece — complete redesign with board flip, per-type post heights, SEN0460 bay, and lid engraving."
+}
