@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: executing
-stopped_at: context exhaustion at 90% (2026-04-21)
-last_updated: "2026-04-21T04:25:46.423Z"
-last_activity: 2026-04-21 -- Phase 21 verified and closed
+stopped_at: Phase 21 closed, focus returning to Phase 20 (physical-integration)
+last_updated: "2026-04-21T04:37:00.000Z"
+last_activity: 2026-04-21 -- Phase 21 closed; OLED enabled on Pi; returning focus to Phase 20
 progress:
   total_phases: 10
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 36
   completed_plans: 35
   percent: 97
@@ -22,7 +22,7 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 21 — hardware-inventory-and-graceful-degradation
+**Current focus:** Phase 20 — physical-integration (resumed 2026-04-21 after Phase 21 close)
 
 ## Current Position
 
