@@ -40,6 +40,7 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [x] **Phase 18: Website Revamp** - Notes, fuel, and driver data integrated; Grafana improved (completed 2026-04-11)
 - [x] **Phase 19: Website Narrative Rebuild** - Day-centric IA with before/live/archive modes, timeline spine, progress-bar day nav (completed 2026-04-17)
 - [ ] **Phase 20: Physical Integration** - 3D-printed enclosures for Pi, screen, and camera; dash mounting; system verification
+- [ ] **Phase 21: Hardware Inventory and Graceful Degradation** - Per-device manifest, boot-time presence validation, graceful handling of missing/lost I2C and USB devices, TTS/OLED/UI status
 
 ## Phase Details
 
@@ -290,6 +291,33 @@ Plans:
 - [ ] 20-03-PLAN.md — Camera cradle + full system verification
 
 **UI hint**: no
+
+### Phase 21: Hardware Inventory and Graceful Degradation
+
+**Goal:** Formalise hardware presence handling end-to-end. A declared manifest in
+`config.yaml` lists every expected device with criticality. Boot probes the real
+hardware and records PRESENT/MISSING into a central `HardwareState`. Collectors
+report runtime loss and recovery into the same state. A `HardwareSupervisor` thread
+owns alert cadence (TTS, OLED, dashboard) and drives exponential-backoff re-adoption
+so devices that come back are picked up without a restart. The daemon always boots,
+regardless of what is missing.
+
+**Depends on:** Phase 20 paused; this phase runs in parallel (software-layer, independent of enclosure design).
+
+**Requirements**: HW-01, HW-02, HW-03, HW-04, HW-05
+
+**Success Criteria** (what must be TRUE):
+
+  1. A top-level `hardware:` block in `config.yaml` lists every expected device with `role`, `bus`, `address`/`path`, and `criticality`; it loads into a typed dataclass via `load_config()`
+  2. At boot, each declared device is probed; presence result is recorded in a `HardwareState` object and visible to the dashboard + OLED within one status refresh
+  3. Missing `critical` devices trigger repeated TTS + red dashboard banner + OLED invert; missing `important` devices trigger single TTS + orange badge; `best_effort` devices log only
+  4. Any collector that loses contact with its device (setup failure, consecutive I2C errors, ffmpeg stall, USB gone) reports MISSING into `HardwareState` and is re-attempted on exponential backoff (5s / 15s / 60s / 5-minute cap) — recovery flips state back and speaks a positive-confirmation TTS
+  5. BME680 cold-boot init failure (documented in STATE.md out-of-band section 2026-04-10) is resolved end-to-end by the retry + supervisor path — canonical acceptance case
+  6. Daemon boots and runs its main loop even when `critical`-tier devices are absent — no systemd crash-loop, no boot refusal
+
+**Plans**: TBD (run /gsd-plan-phase 21 to break down)
+
+**UI hint**: yes (dashboard hardware panel)
 
 ---
 

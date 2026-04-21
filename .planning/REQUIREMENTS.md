@@ -78,6 +78,14 @@
 - [ ] **PHYS-03**: ELP 4K front camera mounted on dash via a 3D-printed cradle bracket
 - [ ] **PHYS-04**: Full system boots and runs in installed in-car configuration with all sensors detected
 
+### Hardware Inventory and Graceful Degradation (HW)
+
+- [ ] **HW-01**: A top-level `hardware:` block in `config.yaml` declares every expected device with `role`, `bus`, `address`/`path`, and `criticality`, and loads cleanly into a typed dataclass via `load_config()`
+- [ ] **HW-02**: At boot, each declared device is probed and its presence (PRESENT / MISSING) is recorded in a central `HardwareState` object, which is visible to the dashboard and OLED within one status refresh
+- [ ] **HW-03**: Alert cadence follows the criticality tier — `critical` devices trigger repeated TTS plus red dashboard banner plus OLED invert; `important` devices trigger single TTS plus orange badge; `best_effort` devices log only
+- [ ] **HW-04**: Any collector that loses contact with its device (setup failure, consecutive I2C errors, ffmpeg stall, USB disappearance) reports MISSING into `HardwareState` and is retried on exponential backoff (5s → 15s → 60s → 5-minute cap); recovery flips state back and speaks a positive-confirmation TTS. The BME680 cold-boot init failure documented in STATE.md (2026-04-10) is the canonical acceptance case and must resolve end-to-end via this path
+- [ ] **HW-05**: The daemon boots and runs its main loop even when `critical`-tier devices are absent — no systemd crash-loop, no boot refusal, regardless of what the probe reports
+
 ## Future Requirements
 
 - Magnetometer (LIS3MDL) ellipsoid calibration — deferred; rough heading accuracy sufficient for current use; revisit if compass display is added
@@ -144,3 +152,8 @@
 | PHYS-02 | Phase 20 | Pending |
 | PHYS-03 | Phase 20 | Pending |
 | PHYS-04 | Phase 20 | Pending |
+| HW-01 | Phase 21 | Pending |
+| HW-02 | Phase 21 | Pending |
+| HW-03 | Phase 21 | Pending |
+| HW-04 | Phase 21 | Pending |
+| HW-05 | Phase 21 | Pending |
