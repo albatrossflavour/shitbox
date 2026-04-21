@@ -315,7 +315,14 @@ regardless of what is missing.
   5. BME680 cold-boot init failure (documented in STATE.md out-of-band section 2026-04-10) is resolved end-to-end by the retry + supervisor path — canonical acceptance case
   6. Daemon boots and runs its main loop even when `critical`-tier devices are absent — no systemd crash-loop, no boot refusal
 
-**Plans**: TBD (run /gsd-plan-phase 21 to break down)
+**Plans**: 5 plans
+
+Plans:
+- [ ] 21-01-PLAN.md — Manifest config + HardwareState + probe primitives
+- [ ] 21-02-PLAN.md — HardwareSupervisor thread + speaker TTS lines
+- [ ] 21-03-PLAN.md — Collector base + sampler + ring_buffer hw_state hooks
+- [ ] 21-04-PLAN.md — OLED line 3 + SSE hardware payload + dashboard HARDWARE panel
+- [ ] 21-05-PLAN.md — Engine wiring + graceful boot (HW-05) + BME680 integration test
 
 **UI hint**: yes (dashboard hardware panel)
 
@@ -345,3 +352,4 @@ regardless of what is missing.
 | 18. Website Revamp | v2.0 | 5/5 | Complete    | 2026-04-11 |
 | 19. Website Narrative Rebuild | v2.0 | 12/12 | Complete   | 2026-04-17 |
 | 20. Physical Integration | v2.0 | 0/3 | Not started | — |
+| 21. Hardware Inventory and Graceful Degradation | v2.0 | 0/5 | Not started | — |
