@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional, cast
 
 from shitbox.capture import buzzer, overlay, speaker
 from shitbox.capture.button import ButtonHandler
@@ -38,6 +38,9 @@ from shitbox.events.ring_buffer import IMUSample, RingBuffer
 from shitbox.events.sampler import HighRateSampler
 from shitbox.events.storage import EventStorage
 from shitbox.gpsd_client import GpsdClient
+from shitbox.hardware import probes
+from shitbox.hardware import state as hw_state
+from shitbox.hardware.supervisor import HardwareSupervisor
 from shitbox.health.health_collector import HealthCollector
 from shitbox.health.thermal_monitor import ThermalMonitorService
 from shitbox.storage.database import Database
@@ -56,6 +59,7 @@ from shitbox.utils.config import (
     CaptureSyncConfig,
     Config,
     GrafanaConfig,
+    HardwareManifestConfig,
     IMUHeadingConfig,
     LightConfig,
     OLEDConfig,
@@ -236,6 +240,9 @@ class EngineConfig:
     # Driver roster (from config.drivers)
     drivers: list = field(default_factory=list)
 
+    # Hardware manifest (from config.hardware — passed through for supervisor wiring)
+    hardware: HardwareManifestConfig = field(default_factory=HardwareManifestConfig)
+
     @classmethod
     def from_yaml_config(cls, config: Config) -> "EngineConfig":
         """Create EngineConfig from the existing YAML config structure."""
@@ -362,6 +369,8 @@ class EngineConfig:
             dashboard_mbtiles_path=config.dashboard.mbtiles_path,
             # Driver roster
             drivers=config.drivers,
+            # Hardware manifest
+            hardware=config.hardware,
         )
 
 
@@ -379,6 +388,12 @@ class UnifiedEngine:
     def __init__(self, config: EngineConfig):
         """Initialise the unified engine."""
         self.config = config
+
+        # Seed module-level hw_state so collectors' role reports during __init__ land
+        # on a registered role (D-04: module IS the singleton, mirrors gps_state).
+        hw_state.initialise({d.role: d.criticality for d in config.hardware.devices})
+        reprobe_callbacks = self._build_reprobe_callbacks(config.hardware)
+        self.supervisor = HardwareSupervisor(config.hardware, reprobe_callbacks)
 
         # High-rate components
         self.ring_buffer = RingBuffer(
@@ -426,12 +441,17 @@ class UnifiedEngine:
                 config=config.temperature,
                 callback=self._on_reading,
             )
+            # DS18B20 manages multiple probes; individual roles (temp_exterior,
+            # temp_engine_bay) are reported per-probe inside the collector. The
+            # collector-level role is not set here — per-probe reporting is in
+            # DS18B20Collector.read() which calls report_present/missing per role.
 
         self._light_collector: Optional[VEML7700Collector] = None
         if config.light.enabled:
             self._light_collector = VEML7700Collector(
                 config=config.light,
                 callback=self._on_reading,
+                role="light",
             )
 
         self._particulate_collector: Optional[SEN0460Collector] = None
@@ -446,6 +466,7 @@ class UnifiedEngine:
             self._ina226_collector = INA226Collector(
                 config=config.power,
                 callback=self._on_reading,
+                role="power",
             )
 
         self._imu_heading_collector: Optional[IMUHeadingCollector] = None
@@ -633,6 +654,7 @@ class UnifiedEngine:
                     pip_scale=config.video_buffer_pip_scale,
                     camera_controls=config.video_buffer_camera_controls,
                     pip_camera_controls=config.video_buffer_pip_camera_controls,
+                    role="camera_front",
                 )
             else:
                 self.video_recorder = VideoRecorder(
@@ -726,6 +748,78 @@ class UnifiedEngine:
         self._last_sample_count = 0
         self._health_failures = 0
         self._engine_start_time = 0.0
+
+    def _build_reprobe_callbacks(
+        self, manifest: HardwareManifestConfig
+    ) -> dict[str, Callable[[], bool]]:
+        """Build per-role reprobe callbacks from the hardware manifest.
+
+        Each callback is a closure over the device's bus-specific field, using
+        default-argument capture to avoid late-binding bugs in the loop.
+        Devices with None for their required field are skipped with a warning.
+        """
+        cbs: dict[str, Callable[[], bool]] = {}
+        for dev in manifest.devices:
+            bus = dev.bus
+            if bus == "i2c-1":
+                if dev.address is None:
+                    log.warning("reprobe_skip_missing_address", role=dev.role)
+                    continue
+                addr: int = dev.address
+                cbs[dev.role] = cast(Callable[[], bool], lambda a=addr: probes.probe_i2c(1, a))
+            elif bus == "1-wire":
+                if not dev.sensor_id:
+                    log.warning("reprobe_skip_missing_sensor_id", role=dev.role)
+                    continue
+                sid: str = dev.sensor_id
+                cbs[dev.role] = cast(Callable[[], bool], lambda s=sid: probes.probe_onewire(s))
+            elif bus == "usb":
+                if not dev.path:
+                    log.warning("reprobe_skip_missing_path", role=dev.role)
+                    continue
+                path: str = dev.path
+                cbs[dev.role] = cast(Callable[[], bool], lambda p=path: probes.probe_usb_path(p))
+            elif bus == "audio":
+                if not dev.label:
+                    log.warning("reprobe_skip_missing_label", role=dev.role)
+                    continue
+                lbl: str = dev.label
+                cbs[dev.role] = cast(
+                    Callable[[], bool], lambda lbl=lbl: probes.probe_audio_label(lbl)
+                )
+            elif bus == "hdmi":
+                if not dev.connector:
+                    log.warning("reprobe_skip_missing_connector", role=dev.role)
+                    continue
+                conn: str = dev.connector
+                cbs[dev.role] = cast(Callable[[], bool], lambda c=conn: probes.probe_hdmi(c))
+            elif bus == "gpio":
+                if dev.pin is None:
+                    log.warning("reprobe_skip_missing_pin", role=dev.role)
+                    continue
+                pin: int = dev.pin
+                cbs[dev.role] = cast(
+                    Callable[[], bool], lambda p=pin: probes.probe_gpio_pin(p)
+                )
+            else:
+                log.warning("unknown_bus_for_reprobe", role=dev.role, bus=bus)
+        return cbs
+
+    def _start_service_graceful(
+        self, name: str, start_fn: Callable[[], None]
+    ) -> bool:
+        """Start a service, catching any exception so a single failure cannot abort boot.
+
+        Returns True if the service started cleanly, False if it raised.
+        HW-05 relies on this: no collector failure can prevent the engine from booting.
+        """
+        try:
+            start_fn()
+            log.info("service_started", service=name)
+            return True
+        except Exception as e:
+            log.error("service_start_failed", service=name, error=str(e))
+            return False
 
     def _init_gps(self) -> bool:
         """Initialise GPS connection.
@@ -1898,6 +1992,11 @@ class UnifiedEngine:
             data_dir=data_dir,
         )
 
+        # Start hardware supervisor BEFORE any collectors so the tick loop is
+        # running when collector hooks fire their first report_present/missing calls.
+        self.supervisor.start()
+        log.info("hardware_supervisor_started")
+
         # Start OLED display
         if self.oled_display:
             self.oled_display.start()
@@ -1906,26 +2005,38 @@ class UnifiedEngine:
         if self.config.overlay_enabled and self.video_ring_buffer:
             overlay.init()
 
-        # Start video ring buffers (primary + PIP)
+        # Start video ring buffers (primary + PIP) — graceful so a missing
+        # camera device does not prevent the rest of the engine from booting.
+        started: dict[str, bool] = {}
         if self.video_ring_buffer:
-            self.video_ring_buffer.start()
+            started["camera_front"] = self._start_service_graceful(
+                "video_ring_buffer", self.video_ring_buffer.start
+            )
 
-        # Start high-rate sampler
-        self.sampler.start()
+        # Start high-rate sampler — graceful per HW-05. A setup() failure here
+        # is caught and logged; _force_reboot remains reachable only from the
+        # runtime i2c_max_resets ladder inside the sampler, not from boot-time
+        # setup failure (pitfall 5).
+        started["imu"] = self._start_service_graceful("imu_sampler", self.sampler.start)
 
-        # Start v2 sensor collectors (phase 11)
+        # Start v2 sensor collectors (phase 11) — graceful per HW-05
+        started["light"] = self._start_service_graceful(
+            "light_collector",
+            self._light_collector.start if self._light_collector else lambda: None,
+        )
+        started["power"] = self._start_service_graceful(
+            "power_collector",
+            self._ina226_collector.start if self._ina226_collector else lambda: None,
+        )
         for collector in (
             self._ds18b20_collector,
-            self._light_collector,
             self._particulate_collector,
-            self._ina226_collector,
             self._imu_heading_collector,
         ):
             if collector is not None:
-                try:
-                    collector.start()
-                except Exception as e:
-                    log.error("v2_collector_start_failed", collector=collector.name, error=str(e))
+                self._start_service_graceful(collector.name, collector.start)
+
+        log.info("unified_engine_started", collectors=started)
 
         # Start telemetry loop
         self._telemetry_thread = threading.Thread(
@@ -2091,6 +2202,14 @@ class UnifiedEngine:
             imu_samples=self.sampler.samples_total,
             imu_dropped=self.sampler.samples_dropped,
         )
+
+        # Stop hardware supervisor LAST so final MISSING transitions during
+        # teardown are still observed by the tick loop.
+        try:
+            self.supervisor.stop()
+            log.info("hardware_supervisor_stopped")
+        except Exception as e:
+            log.error("hardware_supervisor_stop_failed", error=str(e))
 
     def run(self) -> None:
         """Run until interrupted."""

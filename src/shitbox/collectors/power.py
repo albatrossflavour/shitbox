@@ -41,11 +41,13 @@ class INA226Collector(BaseCollector["INA226Reading"]):
         self,
         config: object,
         callback: Optional[object] = None,
+        role: Optional[str] = None,
     ) -> None:
         super().__init__(
             name="ina226",
             sample_rate_hz=getattr(config, "sample_rate_hz", 1.0),
             callback=callback,
+            role=role,
         )
         self._enabled: bool = bool(getattr(config, "enabled", False))
         self._i2c_bus: int = int(getattr(config, "i2c_bus", 1))

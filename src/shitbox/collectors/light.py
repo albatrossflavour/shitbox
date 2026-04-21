@@ -42,11 +42,13 @@ class VEML7700Collector(BaseCollector["VEML7700Reading"]):
         self,
         config: object,
         callback: Optional[object] = None,
+        role: Optional[str] = None,
     ) -> None:
         super().__init__(
             name="veml7700",
             sample_rate_hz=getattr(config, "sample_rate_hz", 1.0),
             callback=callback,
+            role=role,
         )
         self._sensor: Optional[object] = None
 
