@@ -4,14 +4,14 @@ milestone: v2.0
 milestone_name: — Rally Ready
 status: executing
 stopped_at: null
-last_updated: "2026-04-21T01:40:45.248Z"
-last_activity: 2026-04-21 -- Phase 21 execution started (Wave 1)
+last_updated: "2026-04-21T03:35:17.625Z"
+last_activity: 2026-04-21 -- Completed 21-05 engine wiring and boot (HW-04, HW-05 closed)
 progress:
   total_phases: 10
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 36
-  completed_plans: 30
-  percent: 83
+  completed_plans: 35
+  percent: 97
 ---
 
 # Project State
@@ -37,7 +37,7 @@ Phase: 21 (hardware-inventory-and-graceful-degradation) — EXECUTING
 
 Last activity: 2026-04-21 -- Phase 21 execution started (Wave 1)
 
-Progress: [██████████] 100% (v2.0, 4/4 plans in phase 12)
+Progress: [██████████] 97%
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
@@ -105,8 +105,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-21T01:38:22.287Z
-Stopped at: context exhaustion at 90% (2026-04-21)
+Last session: 2026-04-21T03:35:17.617Z
+Stopped at: Completed 21-05-engine-wiring-and-boot-PLAN.md
 Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)
