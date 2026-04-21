@@ -360,6 +360,6 @@ hardware:
       description: "Manual capture button"
     - role: display_hdmi
       bus: hdmi
-      connector: HDMI-A-1
+      connector: HDMI-A-2
       criticality: best_effort
       description: "7in kiosk display"
