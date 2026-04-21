@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: verifying
-stopped_at: Phase 20 context gathered
-last_updated: "2026-04-17T06:36:47.739Z"
-last_activity: 2026-04-17
+status: executing
+stopped_at: context exhaustion at 90% (2026-04-20)
+last_updated: "2026-04-20T23:34:46.562Z"
+last_activity: 2026-04-17 -- Phase 20 execution started
 progress:
   total_phases: 9
-  completed_phases: 4
-  total_plans: 28
-  completed_plans: 27
-  percent: 96
+  completed_phases: 5
+  total_plans: 31
+  completed_plans: 30
+  percent: 97
 ---
 
 # Project State
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 19 — website-narrative-rebuild
+**Current focus:** Phase 20 — physical-integration
 
 ## Current Position
 
-Phase: 19 (website-narrative-rebuild) — EXECUTING
-Plan: 12 of 12
-Status: Phase complete — ready for verification
-Last activity: 2026-04-17
+Phase: 20 (physical-integration) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 20
+Last activity: 2026-04-17 -- Phase 20 execution started
 
 Progress: [██████████] 100% (v2.0, 4/4 plans in phase 12)
 
@@ -95,9 +95,9 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-17T06:36:47.734Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-physical-integration/20-CONTEXT.md
+Last session: 2026-04-20T23:34:46.558Z
+Stopped at: context exhaustion at 90% (2026-04-20)
+Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
