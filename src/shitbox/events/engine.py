@@ -834,7 +834,9 @@ class UnifiedEngine:
 
         try:
             client = GpsdClient(
-                host=self.config.gps_host, port=self.config.gps_port
+                host=self.config.gps_host,
+                port=self.config.gps_port,
+                role="gps",
             )
             client.start()
             self._gps = client

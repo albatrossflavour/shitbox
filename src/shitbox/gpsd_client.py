@@ -32,9 +32,15 @@ _WATCH_CMD: bytes = b'?WATCH={"enable":true,"json":true}\n'
 class GpsdClient:
     """Background gpsd client that caches the latest TPV and SKY frames."""
 
-    def __init__(self, host: str = "localhost", port: int = 2947) -> None:
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 2947,
+        role: str = "gps",
+    ) -> None:
         self.host = host
         self.port = port
+        self.role = role
         self._sock: Optional[socket.socket] = None
         self._thread: Optional[threading.Thread] = None
         self._running: bool = False
@@ -140,6 +146,11 @@ class GpsdClient:
             with self._lock:
                 self._latest_tpv = obj
                 self._last_tpv_mono = time.monotonic()
+            if self.role:
+                # Local import -- avoids import cycle and keeps gpsd_client
+                # usable without the hardware module.
+                from shitbox.hardware import state as hw_state
+                hw_state.report_present(self.role)
         elif cls == "SKY":
             with self._lock:
                 self._latest_sky = obj
