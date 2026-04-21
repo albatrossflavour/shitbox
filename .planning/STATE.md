@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: paused
-stopped_at: Phase 21 UI-SPEC approved
-last_updated: "2026-04-21T00:56:54.535Z"
-last_activity: 2026-04-21 -- Phase 20 paused for P1S print queue; opening Phase 21
+status: executing
+stopped_at: null
+last_updated: "2026-04-21T01:40:45.248Z"
+last_activity: 2026-04-21 -- Phase 21 execution started (Wave 1)
 progress:
   total_phases: 10
   completed_phases: 5
-  total_plans: 31
+  total_plans: 36
   completed_plans: 30
-  percent: 97
+  percent: 83
 ---
 
 # Project State
@@ -22,7 +22,7 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 20 — physical-integration
+**Current focus:** Phase 21 — hardware-inventory-and-graceful-degradation
 
 ## Current Position
 
@@ -30,11 +30,12 @@ Phase: 20 (physical-integration) — PAUSED (3D prints queued on Bambu P1S)
   Plan: 1 of 3 started, remaining work blocked on physical prints coming off the machine
   Resume after: prints complete and mock-fit done in-car
 
-Phase: 21 (hardware-inventory-and-graceful-degradation) — ACTIVE (discuss-phase)
+Phase: 21 (hardware-inventory-and-graceful-degradation) — EXECUTING
+  Plan: 1 of 5 (Wave 1 of 3)
   Reason for working 21 in parallel: hardware enumeration + graceful degradation is software-layer,
   independent of enclosure/mounting decisions in Phase 20
 
-Last activity: 2026-04-21 -- Phase 20 paused for P1S print queue; opening Phase 21
+Last activity: 2026-04-21 -- Phase 21 execution started (Wave 1)
 
 Progress: [██████████] 100% (v2.0, 4/4 plans in phase 12)
 
@@ -104,9 +105,9 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-21T00:56:54.535Z
-Stopped at: Phase 21 UI-SPEC approved
-Resume file: .planning/phases/21-hardware-inventory-and-graceful-degradation/21-UI-SPEC.md
+Last session: 2026-04-21T01:38:22.287Z
+Stopped at: context exhaustion at 90% (2026-04-21)
+Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
@@ -139,3 +140,5 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **CPU temp 70.5°C at idle**: Hitting warning threshold. May need airflow improvement.
 - **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
+
+**Planned Phase:** 21 (Hardware Inventory and Graceful Degradation) — 5 plans — 2026-04-21T01:38:39.545Z
