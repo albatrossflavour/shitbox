@@ -114,6 +114,9 @@ class EngineConfig:
 
     # SQLite storage
     database_path: str = "/var/lib/shitbox/telemetry.db"
+    home_lat: float = 0.0
+    home_lng: float = 0.0
+    home_exclusion_radius_m: float = 2000.0
 
     # MQTT
     mqtt_enabled: bool = True
@@ -257,6 +260,9 @@ class EngineConfig:
             environment_i2c_address=config.sensors.environment.address,
             # Storage
             database_path=config.storage.database_path,
+            home_lat=config.storage.home_lat,
+            home_lng=config.storage.home_lng,
+            home_exclusion_radius_m=config.storage.home_exclusion_radius_m,
             # MQTT
             mqtt_enabled=config.sync.mqtt.enabled,
             mqtt_broker_host=config.sync.mqtt.broker_host,
@@ -569,9 +575,9 @@ class UnifiedEngine:
         # Route storage -- REST-less, GPS polyline generator
         self.route_storage = RouteStorage(
             self.database,
-            home_lat=self.config.storage.home_lat,
-            home_lng=self.config.storage.home_lng,
-            home_exclusion_radius_m=self.config.storage.home_exclusion_radius_m,
+            home_lat=self.config.home_lat,
+            home_lng=self.config.home_lng,
+            home_exclusion_radius_m=self.config.home_exclusion_radius_m,
         )
         if self.capture_sync is not None:
             self.capture_sync.register_json_generator(
