@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: executing
-stopped_at: context exhaustion at 90% (2026-04-20)
-last_updated: "2026-04-20T23:34:46.562Z"
-last_activity: 2026-04-17 -- Phase 20 execution started
+status: paused
+stopped_at: Phase 20 paused 2026-04-21 — 3D prints queued on Bambu P1S; working Phase 21 (hardware inventory and graceful degradation) in parallel
+last_updated: "2026-04-21T00:00:00.000Z"
+last_activity: 2026-04-21 -- Phase 20 paused for P1S print queue; opening Phase 21
 progress:
   total_phases: 9
   completed_phases: 5
@@ -26,10 +26,15 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 
 ## Current Position
 
-Phase: 20 (physical-integration) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 20
-Last activity: 2026-04-17 -- Phase 20 execution started
+Phase: 20 (physical-integration) — PAUSED (3D prints queued on Bambu P1S)
+  Plan: 1 of 3 started, remaining work blocked on physical prints coming off the machine
+  Resume after: prints complete and mock-fit done in-car
+
+Phase: 21 (hardware-inventory-and-graceful-degradation) — ACTIVE (discuss-phase)
+  Reason for working 21 in parallel: hardware enumeration + graceful degradation is software-layer,
+  independent of enclosure/mounting decisions in Phase 20
+
+Last activity: 2026-04-21 -- Phase 20 paused for P1S print queue; opening Phase 21
 
 Progress: [██████████] 100% (v2.0, 4/4 plans in phase 12)
 
@@ -92,6 +97,10 @@ v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 ### Blockers/Concerns
 
 None.
+
+### Roadmap Evolution
+
+- Phase 21 added: hardware inventory and graceful degradation
 
 ## Session Continuity
 
