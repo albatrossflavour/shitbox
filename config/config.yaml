@@ -281,3 +281,85 @@ capture:
 drivers:
   - Tony
   - Steve
+
+hardware:
+  # Each entry declares expected hardware. Boot probe verifies and records
+  # PRESENT/MISSING into HardwareState. Existing sensor blocks (sensors.imu,
+  # sensors.environment, etc.) keep their tuning knobs; this block is
+  # presence metadata only.
+  devices:
+    # ── critical ─────────────────────────────────────────────────────────
+    - role: imu
+      bus: i2c-1
+      address: 0x6a
+      criticality: critical
+      description: "LSM6DSOX accel+gyro"
+    - role: camera_front
+      bus: usb
+      path: /dev/camera-front
+      criticality: critical
+      description: "ELP 4K IMX317 (front dashcam)"
+
+    # ── important ────────────────────────────────────────────────────────
+    - role: power
+      bus: i2c-1
+      address: 0x40
+      criticality: important
+      description: "INA226 power monitor"
+    - role: gps
+      bus: usb
+      path: /dev/gps0
+      criticality: important
+      description: "U-blox USB GPS via gpsd"
+
+    # ── best_effort ──────────────────────────────────────────────────────
+    - role: environment
+      bus: i2c-1
+      address: 0x77
+      criticality: best_effort
+      description: "BME680 temperature/humidity/pressure/gas"
+    - role: magnetometer
+      bus: i2c-1
+      address: 0x1c
+      criticality: best_effort
+      description: "LIS3MDL magnetometer"
+    - role: light
+      bus: i2c-1
+      address: 0x10
+      criticality: best_effort
+      description: "VEML7700 ambient light"
+    - role: oled
+      bus: i2c-1
+      address: 0x3c
+      criticality: best_effort
+      description: "SSD1306 128x64 status display"
+    - role: temp_exterior
+      bus: 1-wire
+      sensor_id: "28-00000024263a"
+      criticality: best_effort
+      description: "DS18B20 exterior probe"
+    - role: temp_engine_bay
+      bus: 1-wire
+      sensor_id: "28-0000002405b1"
+      criticality: best_effort
+      description: "DS18B20 engine bay probe"
+    - role: camera_cabin
+      bus: usb
+      path: /dev/camera-cabin
+      criticality: best_effort
+      description: "Logitech Brio 100 (cabin)"
+    - role: audio_mic
+      bus: audio
+      label: UACDemo
+      criticality: best_effort
+      description: "USB mic for TTS speaker (also playback)"
+    - role: button
+      bus: gpio
+      pin: 17
+      criticality: best_effort
+      description: "Manual capture button"
+    - role: display_hdmi
+      bus: hdmi
+      connector: HDMI-A-1
+      criticality: best_effort
+      description: "7in kiosk display"

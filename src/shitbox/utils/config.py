@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Optional
 
 import yaml
 
@@ -92,6 +92,30 @@ class TemperatureConfig:
     def sensor_ids(self) -> dict:
         """Return {role: sensor_id} dict for DS18B20Collector."""
         return {p.role: p.sensor_id for p in self.probes if p.role and p.sensor_id}
+
+
+@dataclass
+class HardwareDeviceConfig:
+    """Single expected device in the hardware manifest."""
+
+    role: str = ""
+    bus: str = ""                      # i2c-1 | 1-wire | usb | gpio | hdmi | audio
+    criticality: str = "best_effort"   # critical | important | best_effort
+    description: str = ""
+    # Bus-specific fields (all optional; the right one is set per bus type)
+    address: Optional[int] = None      # i2c: 0x6a style
+    path: Optional[str] = None         # usb: /dev/camera-front
+    sensor_id: Optional[str] = None    # 1-wire: 28-00000024263a
+    pin: Optional[int] = None          # gpio: 17
+    label: Optional[str] = None        # audio: UACDemo (/proc/asound/cards)
+    connector: Optional[str] = None    # hdmi: HDMI-A-1
+
+
+@dataclass
+class HardwareManifestConfig:
+    """Hardware manifest: expected devices declared in config and verified at boot."""
+
+    devices: List[HardwareDeviceConfig] = field(default_factory=list)
 
 
 @dataclass
@@ -377,6 +401,7 @@ class Config:
     display: DisplayConfig = field(default_factory=DisplayConfig)
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     drivers: List[str] = field(default_factory=list)
+    hardware: HardwareManifestConfig = field(default_factory=HardwareManifestConfig)
 
 
 def _dict_to_dataclass(cls: type, data: dict[str, Any]) -> Any:
@@ -469,6 +494,15 @@ def load_config(config_path: str | Path | None = None) -> Config:
         DS18B20ProbeConfig(**p) for p in (probes_data if isinstance(probes_data, list) else [])
     ]
 
+    # Explicitly convert hardware manifest devices list — same pattern as DS18B20 probes.
+    # Absent or malformed hardware: block yields an empty list (D-04: boot never refuses).
+    hw_dict = data.get("hardware", {})
+    hw_config = HardwareManifestConfig()
+    devices_data = hw_dict.get("devices", []) if isinstance(hw_dict, dict) else []
+    hw_config.devices = [
+        HardwareDeviceConfig(**d) for d in (devices_data if isinstance(devices_data, list) else [])
+    ]
+
     return Config(
         app=_dict_to_dataclass(AppConfig, data.get("app", {})),
         sensors=SensorsConfig(
@@ -522,4 +556,5 @@ def load_config(config_path: str | Path | None = None) -> Config:
         ),
         dashboard=_dict_to_dataclass(DashboardConfig, data.get("dashboard", {})),
         drivers=data.get("drivers", []),
+        hardware=hw_config,
     )
