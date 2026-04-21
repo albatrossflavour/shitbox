@@ -395,7 +395,7 @@
     <div x-show="criticalMissing()" class="hw-banner" style="font-size: 26px; flex-shrink: 0;"
          x-text="'CRITICAL: ' + criticalMissing() + ' OFFLINE'"></div>
 
-    <div style="flex: 1; overflow-y: auto; padding-right: 8px;">
+    <div style="flex: 1; min-height: 0; overflow-y: auto; padding-right: 8px; -webkit-overflow-scrolling: touch;">
       <template x-for="row in sortedHardware()" :key="row.role">
         <div class="hw-row hw-row-lg" :class="'hw-' + row.state + ' hw-tier-' + row.tier">
           <span class="hw-glyph" x-text="stateGlyph(row.state)"></span>
