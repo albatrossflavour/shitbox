@@ -1,24 +1,29 @@
 // Shitbox Rally — Waveshare 7-inch screen bezel (split two-part variant)
 //
-// Alternative to screen-bezel.scad that splits the enclosure into a
-// separately-printed front bezel and back shell. Purpose: each half prints
-// with its show face on the bed and no enclosed cavities, so no supports
-// are needed at all (big win for PETG).
+// Picture-frame construction: the back-shell walls are thick enough to
+// wrap the screen directly (0.2 mm clearance, not 0.5), and M3 heat-set
+// inserts live in the top face of each wall. The front bezel is a flat
+// picture-frame ring — four M3 countersunk screws from the front face
+// thread down into the wall-top inserts.
+//
+// Retention comes from the walls gripping the screen, not from the
+// front lip clamping. Under rally vibration the screen has nowhere to
+// walk. Previous stub-based design relied on a 1.5 mm lip overhang
+// with 0.5 mm pocket slop, which was not enough.
 //
 // Assembly:
-//   1. Drop screen into back shell pocket (open top).
-//   2. Place front bezel over the front; lip covers the screen edge.
-//   3. 4× M3 screws from the back shell thread into heat-set inserts
-//      in the top and bottom edge stubs of the front bezel.
-//
-// Edge-stub layout (v2): the four retention screws live on the top and
-// bottom rims of the bezel rather than the corners. Shrinking the corner
-// bosses to edge stubs drops the rim from 14 mm to 10 mm per side,
-// reclaiming 8 mm of dashboard real estate on each axis.
+//   1. Press 4× M3 heat-set inserts into the top face of the back-shell
+//      walls (top-left, top-right, bottom-left, bottom-right).
+//   2. Drop screen into pocket. Left side is open for HDMI/USB/audio.
+//   3. Place front bezel over the screen; lip overhangs the screen's
+//      black bezel (not the glass).
+//   4. 4× M3 countersunk screws from the front face thread down into
+//      the wall-top inserts. Heads are visible on the front face — fine
+//      for a rally car.
 //
 // Print orientation:
-//   Front bezel   — front face down on bed. Stubs project upward.
-//   Back shell    — back face (dash-bracket side) down on bed. Pocket up.
+//   Front bezel   — front face down on bed. Flat print, no overhangs.
+//   Back shell    — backplate down on bed. Walls project upward.
 //
 // Both orientations have no overhangs worth supporting.
 //
@@ -43,31 +48,26 @@ BEZEL_L = 20; BEZEL_R = 20; BEZEL_T = 15; BEZEL_B = 15;
 // =====================================================
 //   Enclosure construction
 // =====================================================
-FRONT_LIP_T    = 1.5;         // front face plate thickness
-FRONT_LIP_IN   = 1.5;         // lip overhang onto glass (retention + cosmetic edge)
-BEZEL_TOL      = 0.5;         // clearance around screen in pocket
-BACKPLATE_T    = 4.0;         // back shell floor thickness (>M3_HEAD_H so head has a bearing floor)
-SHELL_WALL     = 3.0;         // back shell side wall thickness
+FRONT_LIP_T    = 3.0;         // front face plate thickness (houses countersink + screw head)
+FRONT_LIP_IN   = 1.5;         // lip overhang onto black bezel
+BEZEL_TOL      = 0.2;         // snug pocket — walls grip the screen
+BACKPLATE_T    = 4.0;         // back shell floor
+SHELL_WALL     = 6.0;         // wall thickness: 4.2 insert OD + 0.9 wall each side
 
-// Edge-stub retention (v2): stubs live on the top and bottom rims instead
-// of the corners, so the rim only needs to accommodate a slim stub and the
-// M3 screw-head counterbore on the backplate.
-RIM            = 10;
-
-OUTER_W        = SCREEN_W + 2 * RIM;   // 210
-OUTER_H        = SCREEN_H + 2 * RIM;   // 135
+OUTER_W        = SCREEN_W + 2 * SHELL_WALL + BEZEL_TOL;   // 202.2
+OUTER_H        = SCREEN_H + 2 * SHELL_WALL + BEZEL_TOL;   // 127.2
 
 // =====================================================
-//   Fasteners (M3 heat-set insert in front bezel, screw from back)
+//   Fasteners (M3 heat-set insert in wall, screw from front)
 // =====================================================
 INSERT_D       = 4.2;         // heat-set insert OD (M3xL4xD4.2 stock)
-INSERT_DEPTH   = 4.2;         // insert length + 0.2mm headroom
-STUB_D         = 6.0;         // outer diameter of stub around insert (0.9 mm wall)
-STUB_Y_INSET   = 6.5;         // stub centre inset from top/bottom outer edge
-STUB_X_SPREAD  = 140;         // horizontal distance between the two stub pairs
-M3_CLEARANCE_D = 3.4;         // M3 clearance bore through backplate and stub
-M3_HEAD_D      = 6.0;         // M3 socket head clearance
-M3_HEAD_H      = 3.0;         // M3 socket head counterbore depth
+INSERT_DEPTH   = 4.2;         // insert length + headroom
+M3_CLEARANCE_D = 3.4;         // M3 clearance bore through front bezel
+M3_CSK_D       = 6.0;         // M3 countersink head diameter (90° head)
+M3_CSK_DEPTH   = 1.7;         // M3 countersink depth
+
+// Screw layout: 4 screws on the top and bottom walls, inset from corners
+SCREW_X_SPREAD = 150;         // horizontal distance between left/right screws
 
 // =====================================================
 //   Dash bracket (same pattern as screen-bezel.scad)
@@ -82,9 +82,7 @@ BRACKET_SPREAD_H = 75;
 //   Derived
 // =====================================================
 POCKET_D        = SCREEN_DEPTH;
-STUB_LEN        = POCKET_D;           // stub spans the pocket depth
-TOTAL_D         = BACKPLATE_T + POCKET_D;   // assembled shell height
-FRONT_TOTAL_D   = FRONT_LIP_T + STUB_LEN;   // assembled front-part height
+TOTAL_D         = BACKPLATE_T + POCKET_D;   // assembled back-shell height
 
 
 // =====================================================
@@ -99,74 +97,57 @@ if (PART == "front") {
     back_shell();
     translate([0, 0, TOTAL_D + 20])
         rotate([180, 0, 0])
-            translate([0, 0, -FRONT_TOTAL_D])
+            translate([0, 0, -FRONT_LIP_T])
                 front_bezel();
 }
 
 
 // =====================================================
-//   Front bezel
+//   Front bezel (picture frame)
 // =====================================================
 module front_bezel() {
     difference() {
-        union() {
-            // Front face lip plate — sits on the bed
-            cube([OUTER_W, OUTER_H, FRONT_LIP_T]);
-            // Four edge stubs project back from the lip (top and bottom rims)
-            stub_positions()
-                translate([0, 0, FRONT_LIP_T])
-                    cylinder(d = STUB_D, h = STUB_LEN);
-        }
-        // Glass window through the front lip
+        // Solid frame plate, front face on the bed
+        cube([OUTER_W, OUTER_H, FRONT_LIP_T]);
+        // Glass window through the frame
         glass_window();
-        // M3 clearance bore through each stub
-        stub_positions()
-            translate([0, 0, FRONT_LIP_T - 0.1])
-                cylinder(d = M3_CLEARANCE_D, h = STUB_LEN + 0.2);
-        // Insert pocket at the rear (back) end of each stub — the open
-        // end faces the back shell so the insert is pressed in from there.
-        stub_positions()
-            translate([0, 0, FRONT_LIP_T + STUB_LEN - INSERT_DEPTH])
-                cylinder(d = INSERT_D, h = INSERT_DEPTH + 0.1);
+        // Four M3 clearance bores with countersinks on the front face
+        screw_positions() {
+            // Clearance bore through the frame
+            translate([0, 0, -0.1])
+                cylinder(d = M3_CLEARANCE_D, h = FRONT_LIP_T + 0.2);
+            // Countersink opens on the Z=0 face (front, bed side)
+            translate([0, 0, -0.1])
+                cylinder(d = M3_CSK_D, h = M3_CSK_DEPTH + 0.1);
+        }
     }
 }
 
 
 // =====================================================
-//   Back shell
+//   Back shell (U-shape with wall-top inserts)
 // =====================================================
 module back_shell() {
     difference() {
         union() {
-            // Backplate — sits on the bed
+            // Backplate on the bed
             cube([OUTER_W, OUTER_H, BACKPLATE_T]);
-            // Right, top, bottom walls (left short edge left open for
-            // HDMI / USB / audio connectors on the Waveshare case).
+            // Right wall (cable egress is on the left — HDMI/USB/audio)
             translate([OUTER_W - SHELL_WALL, 0, 0])
                 cube([SHELL_WALL, OUTER_H, TOTAL_D]);
+            // Top wall
             translate([0, OUTER_H - SHELL_WALL, 0])
                 cube([OUTER_W, SHELL_WALL, TOTAL_D]);
+            // Bottom wall
             cube([OUTER_W, SHELL_WALL, TOTAL_D]);
         }
 
-        // Screen pocket
-        translate([RIM - BEZEL_TOL / 2,
-                   RIM - BEZEL_TOL / 2,
-                   BACKPLATE_T])
-            cube([SCREEN_W + BEZEL_TOL,
-                  SCREEN_H + BEZEL_TOL,
-                  POCKET_D + 0.1]);
+        // Insert pockets in the top face of each wall
+        screw_positions()
+            translate([0, 0, TOTAL_D - INSERT_DEPTH])
+                cylinder(d = INSERT_D, h = INSERT_DEPTH + 0.1);
 
-        // M3 pass-through at each stub position: clearance bore through
-        // the backplate, socket-head counterbore on the back face.
-        stub_positions() {
-            translate([0, 0, -0.1])
-                cylinder(d = M3_CLEARANCE_D, h = BACKPLATE_T + 0.2);
-            translate([0, 0, -0.1])
-                cylinder(d = M3_HEAD_D, h = M3_HEAD_H + 0.1);
-        }
-
-        // Dash bracket holes through backplate (matches screen-bezel.scad)
+        // Dash bracket holes through backplate
         bracket_holes();
     }
 }
@@ -175,21 +156,21 @@ module back_shell() {
 // =====================================================
 //   Shared geometry
 // =====================================================
-module stub_positions() {
-    // Four positions: top rim (x-left, x-right) and bottom rim (same X).
-    // Y sits STUB_Y_INSET in from the outer edge so the stub fits between
-    // the back-shell outer wall and the screen pocket.
+module screw_positions() {
+    // Four positions: top rim (X-left, X-right) and bottom rim (same X).
+    // Y sits on the wall centreline so the insert is surrounded by
+    // SHELL_WALL/2 of material on both sides (3 mm each side at SHELL_WALL=6).
     for (sx = [-1, 1], sy = [-1, 1]) {
-        translate([OUTER_W / 2 + sx * STUB_X_SPREAD / 2,
-                   sy < 0 ? STUB_Y_INSET : OUTER_H - STUB_Y_INSET,
+        translate([OUTER_W / 2 + sx * SCREW_X_SPREAD / 2,
+                   sy < 0 ? SHELL_WALL / 2 : OUTER_H - SHELL_WALL / 2,
                    0])
             children();
     }
 }
 
 module glass_window() {
-    win_x = RIM + BEZEL_L - FRONT_LIP_IN + BEZEL_TOL / 2;
-    win_y = RIM + BEZEL_B - FRONT_LIP_IN + BEZEL_TOL / 2;
+    win_x = (OUTER_W - GLASS_W - 2 * FRONT_LIP_IN) / 2;
+    win_y = (OUTER_H - GLASS_H - 2 * FRONT_LIP_IN) / 2;
     translate([win_x, win_y, -0.1])
         cube([GLASS_W + 2 * FRONT_LIP_IN,
               GLASS_H + 2 * FRONT_LIP_IN,
