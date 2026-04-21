@@ -61,6 +61,9 @@ def _make_vrb(tmp_path: Path) -> VideoRingBuffer:
     vrb._last_segment_size = 0
     vrb._stall_check_armed = False
 
+    # Hardware state role (Plan 21-03)
+    vrb.role = "camera_front"
+
     return vrb
 
 
@@ -211,3 +214,132 @@ def test_health_monitor_restarts_on_stall(tmp_path: Path) -> None:
     mock_beep.assert_called_once()
     mock_kill.assert_called_once()
     mock_start.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# HardwareState observational hook tests (Phase 21-03)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clear_hw_state_ffmpeg():
+    """Reset HardwareState before and after each test in this module."""
+    from shitbox.hardware import state as hw_state
+    hw_state.clear_state()
+    yield
+    hw_state.clear_state()
+
+
+def _make_vrb_with_role(tmp_path: Path, role: str = "camera_front") -> VideoRingBuffer:
+    """Build a VideoRingBuffer with a role attribute for hardware state tests."""
+    vrb = _make_vrb(tmp_path)
+    vrb.role = role
+    return vrb
+
+
+def test_video_device_missing_reports_missing(tmp_path: Path) -> None:
+    """video_device_missing log site reports MISSING for the camera role."""
+    from shitbox.hardware import state as hw_state
+    from shitbox.hardware.state import DeviceState
+
+    hw_state.initialise({"camera_front": "critical"})
+
+    vrb = _make_vrb_with_role(tmp_path, role="camera_front")
+
+    # Simulate ffmpeg process that has exited (poll returns non-None)
+    mock_process = MagicMock()
+    mock_process.poll.return_value = 1  # exited
+    mock_process.returncode = 1
+    mock_process.stderr = MagicMock()
+    mock_process.stderr.fileno.return_value = -1
+    vrb._process = mock_process
+    vrb._running = True
+
+    sleep_calls = [None, SystemExit("stop")]
+
+    def _sleep_side_effect(_duration: float) -> None:
+        effect = sleep_calls.pop(0) if sleep_calls else SystemExit("stop")
+        if isinstance(effect, BaseException):
+            raise effect
+
+    with (
+        patch("os.path.exists", return_value=False),  # device node missing
+        patch.object(vrb, "_read_stderr", return_value=""),
+        patch.object(vrb, "_start_ffmpeg"),
+        patch("time.sleep", side_effect=_sleep_side_effect),
+    ):
+        try:
+            vrb._health_monitor()
+        except SystemExit:
+            pass
+
+    snap = hw_state.snapshot()
+    assert snap["camera_front"].state == DeviceState.MISSING
+
+
+def test_stall_reports_degraded(tmp_path: Path) -> None:
+    """ffmpeg stall detection path reports DEGRADED for the camera role."""
+    from shitbox.hardware import state as hw_state
+    from shitbox.hardware.state import DeviceState
+
+    hw_state.initialise({"camera_front": "critical"})
+
+    vrb = _make_vrb_with_role(tmp_path, role="camera_front")
+
+    mock_process = MagicMock()
+    mock_process.poll.return_value = None  # alive
+    vrb._process = mock_process
+    vrb._running = True
+
+    sleep_calls = [None, SystemExit("stop")]
+
+    def _sleep_side_effect(_duration: float) -> None:
+        effect = sleep_calls.pop(0) if sleep_calls else SystemExit("stop")
+        if isinstance(effect, BaseException):
+            raise effect
+
+    with (
+        patch.object(vrb, "_check_stall", return_value=True),
+        patch.object(vrb, "_kill_current"),
+        patch.object(vrb, "_start_ffmpeg"),
+        patch.object(vrb, "_read_stderr", return_value=""),
+        patch("shitbox.capture.buzzer.beep_ffmpeg_stall"),
+        patch("time.sleep", side_effect=_sleep_side_effect),
+    ):
+        try:
+            vrb._health_monitor()
+        except SystemExit:
+            pass
+
+    snap = hw_state.snapshot()
+    assert snap["camera_front"].state == DeviceState.DEGRADED
+
+
+def test_successful_ffmpeg_start_reports_present(tmp_path: Path) -> None:
+    """_start_ffmpeg reports PRESENT after process launches successfully."""
+    from shitbox.hardware import state as hw_state
+    from shitbox.hardware.state import DeviceState
+
+    hw_state.initialise({"camera_front": "critical"})
+
+    vrb = _make_vrb_with_role(tmp_path, role="camera_front")
+    vrb._running = True
+    vrb.audio_device = ""  # video-only path (no audio retry delay)
+    vrb.pip_device = ""
+    vrb.input_format = "mjpeg"
+    vrb._ffmpeg_started_at = 0.0
+
+    mock_process = MagicMock()
+    mock_process.poll.return_value = None  # process alive
+
+    with (
+        patch("os.path.exists", return_value=True),
+        patch("subprocess.run"),
+        patch("subprocess.Popen", return_value=mock_process),
+        patch.object(vrb, "_build_ffmpeg_cmd", return_value=["ffmpeg"]),
+        patch.object(vrb, "_cleanup_buffer"),
+    ):
+        vrb._start_ffmpeg()
+
+    snap = hw_state.snapshot()
+    assert snap["camera_front"].state == DeviceState.PRESENT

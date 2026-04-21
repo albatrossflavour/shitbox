@@ -18,6 +18,7 @@ except ImportError:
 
 from shitbox.capture import buzzer, speaker
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
+from shitbox.hardware import state as hw_state
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -78,6 +79,9 @@ class HighRateSampler:
         self.samples_total = 0
         self.samples_dropped = 0
         self._last_sample_time = 0.0
+
+        # Hardware state role for observational reporting
+        self.role = "imu"
 
         # I2C lockup recovery
         self._consecutive_failures: int = 0
@@ -176,6 +180,7 @@ class HighRateSampler:
                 self.ring_buffer.append(sample)
                 self.samples_total += 1
                 self._consecutive_failures = 0
+                hw_state.report_present(self.role)
 
                 if self.on_sample:
                     self.on_sample(sample)
@@ -191,6 +196,7 @@ class HighRateSampler:
                         reset_attempt=self._reset_count + 1,
                         max_resets=I2C_MAX_RESETS,
                     )
+                    hw_state.report_degraded(self.role)
                     buzzer.beep_i2c_lockup()
                     speaker.speak_i2c_lockup()
 
@@ -211,6 +217,7 @@ class HighRateSampler:
                         self._reset_count = 0
                     elif self._reset_count >= I2C_MAX_RESETS:
                         log.critical("i2c_max_resets_exceeded", reset_count=self._reset_count)
+                        hw_state.report_missing(self.role)
                         self._force_reboot()
 
             except Exception as e:

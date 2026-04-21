@@ -26,6 +26,7 @@ class BaseCollector(ABC, Generic[T]):
         name: str,
         sample_rate_hz: float,
         callback: Optional[Callable[[Reading], None]] = None,
+        role: Optional[str] = None,
     ):
         """Initialise the collector.
 
@@ -33,11 +34,16 @@ class BaseCollector(ABC, Generic[T]):
             name: Human-readable name for logging.
             sample_rate_hz: How many samples per second to collect.
             callback: Function to call with each reading.
+            role: Hardware manifest role (e.g. "environment"). When set, the
+                collector reports PRESENT/MISSING into HardwareState on each
+                successful read or error. If None, hardware state reporting is
+                disabled (no-op).
         """
         self.name = name
         self.sample_rate_hz = sample_rate_hz
         self.sample_interval = 1.0 / sample_rate_hz
         self.callback = callback
+        self.role = role
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -94,6 +100,7 @@ class BaseCollector(ABC, Generic[T]):
             self.setup()
         except Exception as e:
             log.error("collector_setup_failed", collector=self.name, error=str(e))
+            self._report_missing()
             raise
 
         self._running = True
@@ -114,6 +121,18 @@ class BaseCollector(ABC, Generic[T]):
 
         self.cleanup()
 
+    def _report_present(self) -> None:
+        """Report PRESENT to HardwareState. No-op if no role wired."""
+        if self.role:
+            from shitbox.hardware import state as hw_state  # local import — avoids cycles
+            hw_state.report_present(self.role)
+
+    def _report_missing(self) -> None:
+        """Report MISSING to HardwareState. No-op if no role wired."""
+        if self.role:
+            from shitbox.hardware import state as hw_state  # local import — avoids cycles
+            hw_state.report_missing(self.role)
+
     def _run_loop(self) -> None:
         """Main collection loop running in background thread."""
         log.info("collector_loop_started", collector=self.name)
@@ -127,12 +146,14 @@ class BaseCollector(ABC, Generic[T]):
                 if data is not None:
                     self._last_reading = data
                     self._error_count = 0
+                    self._report_present()
 
                     if self.callback:
                         reading = self.to_reading(data)
                         self.callback(reading)
 
             except Exception as e:
+                self._report_missing()
                 self._error_count += 1
                 log.error(
                     "collector_read_error",
