@@ -5,6 +5,8 @@ Tests verify:
 - Buzzer functions exist and produce expected tone patterns
 - BootRecoveryService exposes expected attributes
 - Full recovery flow end-to-end using tmp_path
+- HW-05: engine starts with all critical hardware missing (no crash, no block)
+- HW-05 pitfall 5: IMU setup failure does not invoke _force_reboot at boot
 """
 
 import json
@@ -13,6 +15,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from shitbox.hardware import state as hw_state
 from shitbox.storage.database import Database
 from shitbox.storage.models import Reading, SensorType
 from shitbox.sync.boot_recovery import BootRecoveryService, detect_unclean_shutdown
@@ -202,3 +205,164 @@ def test_on_reading_temperature_updates_cabin_temp():
     assert engine._cabin_temp_c == 30.0, (
         "ENVIRONMENT reading no longer updates _cabin_temp_c — regression in _on_reading."
     )
+
+
+# ---------------------------------------------------------------------------
+# HW-05: Engine boots with all critical hardware missing
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clear_hw_state_hw05():
+    """Ensure module-level hw_state does not leak between HW-05 tests."""
+    hw_state.clear_state()
+    yield
+    hw_state.clear_state()
+
+
+@pytest.fixture
+def minimal_engine_config(tmp_path):
+    """Build an EngineConfig with paths redirected to tmp_path.
+
+    Disables all network-dependent and hardware-dependent services so
+    start() can run without blocking on GPS, speaker, or dashboard init.
+    """
+    from shitbox.events.engine import EngineConfig
+    from shitbox.utils.config import load_config
+
+    cfg = load_config("config/config.yaml")
+    ecfg = EngineConfig.from_yaml_config(cfg)
+    ecfg.database_path = str(tmp_path / "test.db")
+    ecfg.events_dir = str(tmp_path / "events")
+    ecfg.captures_dir = str(tmp_path / "captures")
+    ecfg.video_buffer_dir = str(tmp_path / "video_buffer")
+    # Disable services that block on external resources
+    ecfg.uplink_enabled = False
+    ecfg.gps_enabled = False
+    ecfg.speaker_enabled = False
+    ecfg.buzzer_enabled = False
+    ecfg.dashboard_enabled = False
+    return ecfg
+
+
+def test_boot_with_all_critical_missing(minimal_engine_config):
+    """HW-05: engine.start() completes with every critical service failing.
+
+    All probes return False and all collector start() calls raise IOError.
+    The engine must not raise, must log unified_engine_started, and the
+    HardwareSupervisor thread must be alive.
+
+    Structlog uses cache_logger_on_first_use=True, so we intercept the module-level
+    log object in engine.py directly rather than relying on pytest caplog.
+    """
+    from shitbox.events.engine import UnifiedEngine
+
+    info_calls: list[str] = []
+    error_calls: list[tuple[str, dict]] = []
+
+    def fake_info(event: str, **kw) -> None:  # type: ignore[return]
+        info_calls.append(event)
+
+    def fake_error(event: str, **kw) -> None:  # type: ignore[return]
+        error_calls.append((event, kw))
+
+    with patch("shitbox.hardware.probes.probe_i2c", return_value=False), \
+         patch("shitbox.hardware.probes.probe_onewire", return_value=False), \
+         patch("shitbox.hardware.probes.probe_usb_path", return_value=False), \
+         patch("shitbox.hardware.probes.probe_audio_label", return_value=False), \
+         patch("shitbox.hardware.probes.probe_hdmi", return_value=False), \
+         patch("shitbox.hardware.probes.probe_gpio_pin", return_value=False), \
+         patch("shitbox.hardware.probes.probe_i2c_bus_is_bitbang", return_value=True), \
+         patch("shitbox.events.sampler.HighRateSampler.start", side_effect=IOError("no imu")), \
+         patch(
+             "shitbox.collectors.environment.EnvironmentCollector.start",
+             side_effect=IOError("no bme680"),
+         ), \
+         patch(
+             "shitbox.collectors.light.VEML7700Collector.start",
+             side_effect=IOError("no veml7700"),
+         ), \
+         patch(
+             "shitbox.capture.ring_buffer.VideoRingBuffer.start",
+             side_effect=IOError("no camera"),
+         ), \
+         patch("shitbox.events.engine.log.info", side_effect=fake_info), \
+         patch("shitbox.events.engine.log.error", side_effect=fake_error):
+        engine = UnifiedEngine(minimal_engine_config)
+
+        # Must not raise
+        engine.start()
+
+        # Supervisor must be alive
+        assert engine.supervisor is not None
+        assert engine.supervisor._thread is not None  # type: ignore[attr-defined]
+        assert engine.supervisor._thread.is_alive()   # type: ignore[attr-defined]
+
+        # unified_engine_started logged at INFO
+        assert "unified_engine_started" in info_calls, (
+            f"unified_engine_started must be logged; got info calls: {info_calls}"
+        )
+
+        # At least one service_start_failed logged at ERROR
+        assert any(ev == "service_start_failed" for ev, _ in error_calls), (
+            f"expected service_start_failed; got error calls: {[e for e, _ in error_calls]}"
+        )
+
+        # Clean stop must not raise
+        engine.stop()
+
+
+def test_imu_setup_failure_is_nonfatal(minimal_engine_config):
+    """HW-05 + pitfall 5: IMU setup failure must not call _force_reboot at boot.
+
+    Only the IMU start() raises; other probes return True. Engine must complete
+    start(), log service_start_failed for imu_sampler, and never call _force_reboot.
+    """
+    from shitbox.events.engine import UnifiedEngine
+
+    error_calls: list[tuple[str, dict]] = []
+
+    def fake_error(event: str, **kw) -> None:  # type: ignore[return]
+        error_calls.append((event, kw))
+
+    with patch(
+        "shitbox.events.sampler.HighRateSampler.start",
+        side_effect=IOError("imu init failed"),
+    ), patch(
+        "shitbox.events.sampler.HighRateSampler._force_reboot"
+    ) as mock_reboot, patch(
+        "shitbox.hardware.probes.probe_i2c", return_value=True
+    ), patch(
+        "shitbox.hardware.probes.probe_gpio_pin", return_value=True
+    ), patch(
+        "shitbox.hardware.probes.probe_i2c_bus_is_bitbang", return_value=True
+    ), patch(
+        "shitbox.hardware.probes.probe_usb_path", return_value=False
+    ), patch(
+        "shitbox.hardware.probes.probe_onewire", return_value=False
+    ), patch(
+        "shitbox.hardware.probes.probe_audio_label", return_value=False
+    ), patch(
+        "shitbox.hardware.probes.probe_hdmi", return_value=False
+    ), patch(
+        "shitbox.capture.ring_buffer.VideoRingBuffer.start",
+        side_effect=IOError("no camera"),
+    ), patch(
+        "shitbox.events.engine.log.error", side_effect=fake_error
+    ):
+        engine = UnifiedEngine(minimal_engine_config)
+        engine.start()
+
+        # IMU failure recorded with correct service name
+        imu_errors = [
+            (ev, kw) for ev, kw in error_calls
+            if ev == "service_start_failed" and kw.get("service") == "imu_sampler"
+        ]
+        assert imu_errors, (
+            f"service_start_failed for imu_sampler must be logged; errors: {error_calls}"
+        )
+
+        # _force_reboot NEVER called during boot
+        mock_reboot.assert_not_called()
+
+        engine.stop()
