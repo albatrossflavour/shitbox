@@ -447,3 +447,118 @@ def test_stop_resets_counter(sampler: HighRateSampler) -> None:
     sampler.stop()
 
     assert sampler._reset_count == 0
+
+
+# ---------------------------------------------------------------------------
+# HardwareState observational hook tests (Phase 21-03)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clear_hw_state_for_i2c_tests():
+    """Reset HardwareState before and after each test in this module."""
+    from shitbox.hardware import state as hw_state
+    hw_state.clear_state()
+    yield
+    hw_state.clear_state()
+
+
+def test_successful_sample_reports_present(sampler: HighRateSampler) -> None:
+    """A successful sample read reports PRESENT for the 'imu' role."""
+    from shitbox.hardware import state as hw_state
+    from shitbox.hardware.state import DeviceState
+
+    hw_state.initialise({"imu": "critical"})
+
+    # Drive the success branch of _sample_loop directly
+    with patch.object(sampler, "_read_sample", return_value=MagicMock()):
+        sample = sampler._read_sample()
+        sampler.ring_buffer.append(sample)
+        sampler._consecutive_failures = 0
+        hw_state.report_present(sampler.role)
+
+    snap = hw_state.snapshot()
+    assert snap["imu"].state == DeviceState.PRESENT
+
+
+def test_i2c_lockup_reports_degraded(sampler: HighRateSampler) -> None:
+    """i2c_bus_lockup_detected path reports DEGRADED and still calls _i2c_bus_reset."""
+    from shitbox.hardware import state as hw_state
+    from shitbox.hardware.state import DeviceState
+
+    hw_state.initialise({"imu": "critical"})
+
+    # Pre-arm the failure counter to threshold - 1
+    sampler._consecutive_failures = I2C_CONSECUTIVE_FAILURE_THRESHOLD - 1
+
+    with (
+        patch.object(sampler, "_read_sample", side_effect=OSError("I2C bus error")),
+        patch.object(sampler, "_i2c_bus_reset", return_value=True) as mock_reset,
+        patch.object(sampler, "_force_reboot"),
+        patch("shitbox.events.sampler.buzzer"),
+        patch("shitbox.events.sampler.speaker"),
+        patch("shitbox.events.sampler.time") as mock_time,
+    ):
+        mock_time.perf_counter.side_effect = [0.0, 0.0, 1.0]
+        mock_time.sleep = MagicMock()
+        sampler._running = True
+        # Run just one iteration by stopping after the lockup fires
+        call_count = [0]
+
+        def _stop_after_reset(*args, **kwargs):
+            call_count[0] += 1
+            sampler._running = False
+            return True
+
+        mock_reset.side_effect = _stop_after_reset
+        sampler._sample_loop()
+
+    snap = hw_state.snapshot()
+    assert snap["imu"].state == DeviceState.DEGRADED
+    mock_reset.assert_called_once()
+
+
+def test_i2c_max_resets_reports_missing_before_reboot(sampler: HighRateSampler) -> None:
+    """MISSING is reported for 'imu' before _force_reboot() is called."""
+    from shitbox.hardware import state as hw_state
+    from shitbox.hardware.state import DeviceState
+
+    hw_state.initialise({"imu": "critical"})
+
+    reboot_calls = []
+
+    def _record_reboot():
+        # Capture state at time of reboot call
+        reboot_calls.append(hw_state.snapshot().get("imu"))
+        sampler._running = False
+
+    reset_calls = [0]
+
+    def _always_fail_reset() -> bool:
+        reset_calls[0] += 1
+        if reset_calls[0] >= I2C_MAX_RESETS:
+            sampler._running = False
+        return False
+
+    sampler._consecutive_failures = 0
+    sampler._reset_count = 0
+
+    with (
+        patch.object(sampler, "_read_sample", side_effect=OSError("I2C bus error")),
+        patch.object(sampler, "_i2c_bus_reset", side_effect=_always_fail_reset),
+        patch.object(sampler, "_force_reboot", side_effect=_record_reboot),
+        patch("shitbox.events.sampler.buzzer"),
+        patch("shitbox.events.sampler.speaker"),
+        patch("shitbox.events.sampler.time") as mock_time,
+    ):
+        mock_time.perf_counter.side_effect = lambda: float(reset_calls[0])
+        mock_time.sleep = MagicMock()
+        sampler._running = True
+        sampler._sample_loop()
+
+    # _force_reboot was called
+    assert len(reboot_calls) > 0, "_force_reboot was never called"
+    # State at time of reboot was MISSING
+    assert reboot_calls[0].state == DeviceState.MISSING, (
+        f"Expected MISSING at reboot time, got {reboot_calls[0].state}"
+    )
