@@ -128,19 +128,20 @@ def test_report_missing_on_setup_failure() -> None:
 def test_max_errors_safety_valve_unchanged() -> None:
     """_max_errors safety valve still flips _running=False after 10 consecutive errors."""
     hw_state.initialise({"env_test": "best_effort"})
-    c = FakeCollector(role="env_test", sample_rate_hz=1000.0)
+    # Run at very high rate so loop iterates quickly; patch time.sleep in the loop only
+    c = FakeCollector(role="env_test", sample_rate_hz=100_000.0)
     c._read_should_raise = OSError("persistent error")
-
-    # Start collector — runs in background thread
     c._setup_should_raise = None  # setup succeeds
-    with patch("time.sleep"):
+
+    # Patch the module-level time.sleep used inside _run_loop so the loop doesn't
+    # actually wait between iterations, but join the actual thread to wait for it.
+    with patch("shitbox.collectors.base.time") as mock_time:
+        mock_time.monotonic.return_value = 0.0
+        mock_time.sleep = MagicMock()
         c.start()
-        import time
-        # Give thread time to hit max errors
-        for _ in range(50):
-            if not c._running:
-                break
-            time.sleep(0.01)
+        # Thread started — join with a generous timeout to let it exhaust _max_errors
+        assert c._thread is not None
+        c._thread.join(timeout=5.0)
 
     assert not c._running, "Collector should have stopped after max errors"
     snap = hw_state.snapshot()

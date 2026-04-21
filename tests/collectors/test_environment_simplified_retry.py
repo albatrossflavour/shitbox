@@ -8,6 +8,7 @@ Verifies that:
 """
 from __future__ import annotations
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,6 +26,22 @@ from shitbox.utils.config import EnvironmentConfig
 def _make_config() -> EnvironmentConfig:
     """Build a minimal EnvironmentConfig for testing."""
     return EnvironmentConfig(sample_rate_hz=1.0, i2c_bus=1, address=0x77)
+
+
+def _make_hw_mocks():
+    """Return (mock_board, mock_busio, mock_sensor_cls, mock_sensor_instance)."""
+    mock_board = MagicMock()
+    mock_board.SCL = MagicMock()
+    mock_board.SDA = MagicMock()
+
+    mock_i2c_instance = MagicMock()
+    mock_busio = MagicMock()
+    mock_busio.I2C.return_value = mock_i2c_instance
+
+    mock_sensor_instance = MagicMock()
+    mock_sensor_cls = MagicMock(return_value=mock_sensor_instance)
+
+    return mock_board, mock_busio, mock_sensor_cls, mock_sensor_instance
 
 
 # ---------------------------------------------------------------------------
@@ -54,21 +71,25 @@ def test_setup_single_attempt_on_success() -> None:
     config = _make_config()
     collector = EnvironmentCollector(config)
 
-    mock_i2c = MagicMock()
-    mock_sensor = MagicMock()
+    mock_board, mock_busio, mock_sensor_cls, mock_sensor_instance = _make_hw_mocks()
 
+    # Patch hardware libs that are imported inside setup()
     with (
-        patch("shitbox.collectors.environment.busio") as mock_busio,
-        patch("shitbox.collectors.environment.board"),
-        patch("shitbox.collectors.environment.Adafruit_BME680_I2C", return_value=mock_sensor),
+        patch.dict(
+            sys.modules,
+            {
+                "board": mock_board,
+                "busio": mock_busio,
+                "adafruit_bme680": MagicMock(Adafruit_BME680_I2C=mock_sensor_cls),
+            },
+        ),
         patch("time.sleep") as mock_sleep,
     ):
-        mock_busio.I2C.return_value = mock_i2c
         collector.setup()
 
     # time.sleep must NOT be called during a successful setup
     mock_sleep.assert_not_called()
-    assert collector._sensor is mock_sensor
+    assert collector._sensor is mock_sensor_instance
 
 
 def test_setup_raises_immediately_on_failure() -> None:
@@ -76,16 +97,21 @@ def test_setup_raises_immediately_on_failure() -> None:
     config = _make_config()
     collector = EnvironmentCollector(config)
 
+    mock_board, mock_busio, _, _ = _make_hw_mocks()
+    # Make sensor class raise on instantiation
+    failing_sensor_cls = MagicMock(side_effect=OSError("I2C bus error"))
+
     with (
-        patch("shitbox.collectors.environment.busio") as mock_busio,
-        patch("shitbox.collectors.environment.board"),
-        patch(
-            "shitbox.collectors.environment.Adafruit_BME680_I2C",
-            side_effect=OSError("I2C bus error"),
+        patch.dict(
+            sys.modules,
+            {
+                "board": mock_board,
+                "busio": mock_busio,
+                "adafruit_bme680": MagicMock(Adafruit_BME680_I2C=failing_sensor_cls),
+            },
         ),
         patch("time.sleep") as mock_sleep,
     ):
-        mock_busio.I2C.return_value = MagicMock()
         with pytest.raises(OSError):
             collector.setup()
 
