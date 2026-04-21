@@ -5,13 +5,11 @@ thread. The display hardware, PIL, and engine references are all mocked.
 """
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 from shitbox.hardware import state as hw_state
-
 
 # ---------------------------------------------------------------------------
 # Fixture: minimal OLEDDisplayService with mocked hardware context

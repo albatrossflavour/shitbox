@@ -6,6 +6,7 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, Optional
 
+from shitbox.hardware import state as hw_state
 from shitbox.utils.config import OLEDConfig
 from shitbox.utils.logging import get_logger
 
@@ -142,11 +143,29 @@ class OLEDDisplayService:
         if recording:
             self._draw_text(96, 16, "REC", inverted=True)
 
-        # Line 3: sensor health — each inverted when failed
-        imu_ok = status["imu_ok"]
-        env_ok = status["env_ok"]
-        self._draw_text(0, 32, "IMU", inverted=not imu_ok)
-        self._draw_text(44, 32, "ENV", inverted=not env_ok)
+        # Line 3: Hardware rollup — critical tokens invert when MISSING (Phase 21, HW-02)
+        snap = hw_state.snapshot()
+
+        def _is_present(role: str) -> bool:
+            st = snap.get(role)
+            return st is not None and st.state == hw_state.DeviceState.PRESENT
+
+        # Fixed 3-token grid for critical + important
+        for role, glyph, x in (
+            ("imu", "IMU", 0),
+            ("camera_front", "CAM", 32),
+            ("power", "PWR", 64),
+        ):
+            missing = not _is_present(role)
+            # Critical tier (imu, camera_front) inverts when MISSING;
+            # important (power) never inverts per UI-SPEC.
+            invert = missing and role in ("imu", "camera_front")
+            self._draw_text(x, 32, glyph, inverted=invert)
+
+        # Right-side rollup for best_effort env sensors
+        be_roles = ("environment", "magnetometer", "light")
+        be_present = sum(1 for r in be_roles if _is_present(r))
+        self._draw_text(96, 32, f"ENV:{be_present}/{len(be_roles)}")
 
         # Line 4: network, sync backlog, CPU temp — NET inverted when down
         net_ok = status["net_connected"]
