@@ -1,51 +1,53 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-20T06:21:10.313Z",
+  "timestamp": "2026-04-21T10:25:47.137Z",
   "phase": "20",
   "phase_name": "physical-integration",
   "phase_dir": ".planning/phases/20-physical-integration",
-  "plan": 3,
+  "plan": 1,
   "task": null,
   "total_tasks": null,
   "status": "paused",
   "completed_tasks": [
-    {"id": 1, "name": "Pi case Game of Thrones castle redesign", "status": "done", "commit": "pending"},
-    {"id": 2, "name": "Camera bracket USB exit enlargement (19x13mm)", "status": "done", "commit": "pending"},
-    {"id": 3, "name": "Sensor cluster major redesign (PCB sizes, cell spacing, posts, SEN0460 bay, board flip, lid cutouts)", "status": "done", "commit": "pending"},
-    {"id": 4, "name": "Sensor cluster per-type post heights for lid proximity", "status": "done", "commit": "pending"},
-    {"id": 5, "name": "Sensor cluster lid engraving (Shit of Theseus)", "status": "done", "commit": "pending"},
-    {"id": 6, "name": "Website: video highlights and timelapse wiring", "status": "done", "commit": "in home-ops repo"},
-    {"id": 7, "name": "Website: day nav future days clickable", "status": "done", "commit": "in home-ops repo"},
-    {"id": 8, "name": "Website: Grafana link UID fix (shitbox-rally-v2)", "status": "done", "commit": "in home-ops repo"}
+    {"id": "pi-case-rev2", "name": "Pi 5 case v2 pre-print audit - tolerances and connector positions", "status": "done", "commit": null, "progress": "File modified, not yet committed"},
+    {"id": "grafana-kiosk", "name": "Hide Grafana sidebar - full kiosk mode on telemetry iframe", "status": "done", "commit": "3c85c69 (home-ops)"},
+    {"id": "grafana-basicauth-code", "name": "Grafana annotator: API token -> basic-auth with password_file", "status": "done", "commit": null, "progress": "Code edits in place across utils/config.py, sync/grafana.py, events/engine.py, config/config.yaml - not yet tested, not yet committed"},
+    {"id": "grafana-k8s", "name": "k8s bootstrap: ExternalSecret + admin.existingSecret + kustomization", "status": "done", "commit": "3c85c69 (home-ops)"}
   ],
   "remaining_tasks": [
-    {"id": 9, "name": "OpenSCAD render review of all hardware files", "status": "not_started"},
-    {"id": 10, "name": "PETG test prints and fit checks", "status": "not_started"}
+    {"id": "lint-test", "name": "Run ruff check src/, mypy src/, pytest against Grafana refactor", "status": "not_started"},
+    {"id": "pi-case-scad-render", "name": "Open pi-case.scad in OpenSCAD and eyeball - confirm HDMI/USB-C on front wall, USB-A on right wall, no geometry errors", "status": "not_started"},
+    {"id": "commit-shitbox", "name": "Commit pi-case + grafana code changes (separate commits - they are unrelated)", "status": "not_started"},
+    {"id": "deploy-pw-file", "name": "On Pi (laser): write /etc/shitbox/grafana-password (chmod 600, root:root); restart shitbox-telemetry", "status": "not_started"},
+    {"id": "verify-1p-entry", "name": "Confirm Discworld vault 'grafana' item has GRAFANA_ADMIN_USERNAME and GRAFANA_ADMIN_PASSWORD fields, or that sharing with observability grafana is intended", "status": "not_started"},
+    {"id": "smoke-test", "name": "curl -u admin:<pw> -X POST https://grafana.shit-of-theseus.com/api/annotations with a test annotation", "status": "not_started"},
+    {"id": "print-pi-case", "name": "Slice + print pi-case.scad on Bambu P1S in PETG; mock-fit Pi stack", "status": "blocked_on_physical"}
   ],
-  "blockers": [],
+  "blockers": [
+    {"description": "Pi 5 case cannot be verified until printed and mock-fit - PCB_TOL bumped to 1.0, HDMI slot width (15) merges with second HDMI at 13.5mm spacing (intentional, bridge is ~29mm PETG)", "type": "external", "workaround": "Print and check; the geometry is sound on paper"},
+    {"description": "Grafana annotator changes not runtime-tested - no password file exists on Pi yet", "type": "human_action", "workaround": "Write password file on Pi before first service restart"}
+  ],
   "human_actions_pending": [
-    {"action": "Review OpenSCAD renders of sensor-cluster.scad (engraving position, post heights, SEN bay)", "context": "Major redesign needs visual verification before printing", "blocking": false},
-    {"action": "Review pi-case.scad castle aesthetic render", "context": "Stone mortar, crenellations, portcullis vents need visual check", "blocking": false},
-    {"action": "Commit shitbox hardware changes", "context": "4 hardware files modified but not committed", "blocking": false}
+    {"action": "Confirm 'grafana' 1Password item in Discworld vault has fields GRAFANA_ADMIN_USERNAME and GRAFANA_ADMIN_PASSWORD", "context": "ExternalSecret uses dataFrom.extract.key=grafana and templates admin-user/admin-password from those field names. Existing observability/grafana uses the same entry. If we reuse it, the two Grafana admin passwords are shared - worth confirming intended.", "blocking": true},
+    {"action": "On Pi (laser): write /etc/shitbox/grafana-password with the admin password, chmod 600 root:root, then sudo systemctl restart shitbox-telemetry", "context": "Pi is offline-first, no 1Password access at runtime. Password is written to disk manually. Without this file, GrafanaAnnotator logs grafana_password_file_unreadable and disables auth (annotations would 401).", "blocking": true},
+    {"action": "Run ruff check src/ + mypy src/ + pytest before committing grafana code changes", "context": "Refactor touched 4 files across config/engine/sync - no tests run yet", "blocking": false}
   ],
   "decisions": [
-    {"decision": "OUTER_WALL increased 2.0->2.5mm on pi-case for stone mortar relief depth", "rationale": "Extra 0.5mm for mortar carving, leaves 2.0mm minimum structural wall", "phase": "20"},
-    {"decision": "Crenellations on lid not tray walls", "rationale": "Preserves lid-tray seating interface", "phase": "20"},
-    {"decision": "Per-type post heights in sensor cluster", "rationale": "Board flip means components face lid; posts sized so each board type sits 1mm below lid", "phase": "20"},
-    {"decision": "POST_OD increased 4.5->6mm", "rationale": "Original posts were splitting on M2.5 screw insertion; 1.95mm wall now", "phase": "20"},
-    {"decision": "Snake routing for Qwiic daisy chain", "rationale": "Every consecutive hop is adjacent cells, all reachable with 50mm cables", "phase": "20"},
-    {"decision": "Video highlights and timelapse sections hide when empty", "rationale": "No placeholder clutter; timelapse uses HEAD request to check file existence", "phase": "19"}
+    {"decision": "Grafana auth via admin basic-auth (password_file on Pi), not API token", "rationale": "Grafana pod has no PVC - service-account tokens would vanish on restart. Admin password is config-driven via admin.existingSecret, survives pod restarts. Pi reads password from file at startup, sends as HTTP Basic auth on annotation POST. Offline-first compatible (no 1P fetch at runtime).", "phase": "ad-hoc"},
+    {"decision": "Reuse existing 'grafana' 1P entry in Discworld vault", "rationale": "Avoids duplicating secrets across vault items. Means observability Grafana and Shit-of-Theseus Grafana share admin password - acceptable, both are admin-only surfaces.", "phase": "ad-hoc"},
+    {"decision": "Pi case PCB_TOL bumped from 0.6 to 1.0 (0.5mm per side)", "rationale": "Every prior physical print has needed a second attempt. More margin reduces the chance of a re-print.", "phase": "20-01"},
+    {"decision": "HDMI_SLOT width 15mm is intentional despite 13.5mm HDMI0/HDMI1 centre spacing", "rationale": "Slots merge into a single opening - acceptable because only one HDMI (screen) is used at a time, and the ~29mm bridge across the top prints cleanly in PETG.", "phase": "20-01"},
+    {"decision": "USB-C moved from right short wall to front long wall", "rationale": "USB-C is on the HDMI edge of the Pi 5, not the USB/Ethernet edge. Original code had it on the wrong wall entirely.", "phase": "20-01"},
+    {"decision": "FLANGE_THICK decoupled from FLOOR (3.0 vs 2.0)", "rationale": "Needed 1.5mm material under the counterbore for M4 head - FLOOR=2.0 was insufficient with a 1.5mm counterbore on top.", "phase": "20-01"}
   ],
   "uncommitted_files": [
-    "hardware/camera-bracket.scad",
-    "hardware/pi-case.scad",
-    "hardware/screen-bezel.scad",
-    "hardware/sensor-cluster.scad",
-    ".gitignore",
-    "CLAUDE.md",
     ".planning/STATE.md",
-    ".planning/config.json"
+    "config/config.yaml",
+    "hardware/pi-case.scad",
+    "src/shitbox/events/engine.py",
+    "src/shitbox/sync/grafana.py",
+    "src/shitbox/utils/config.py"
   ],
-  "next_action": "Review OpenSCAD renders of all hardware files, then commit the shitbox hardware changes",
-  "context_notes": "Mixed session: hardware OpenSCAD design (phase 20) and website wiring (phase 19). Hardware files have major changes but no commits yet. Website changes already committed in home-ops repo. Sensor cluster is the most complex piece — complete redesign with board flip, per-type post heights, SEN0460 bay, and lid engraving."
+  "next_action": "Run ruff check src/ and mypy src/ against the Grafana refactor; if clean, split into two commits (pi-case standalone; grafana code refactor standalone). Then hand off to the Pi deployment step: write /etc/shitbox/grafana-password and restart shitbox-telemetry.",
+  "context_notes": "Two unrelated threads were paused together mid-session: (1) Phase 20 Plan 01 Pi case redesign was a pre-print audit - bumped tolerances, fixed connector wall assignments (USB-C was on wrong wall, HDMI offsets measured from wrong edge). No physical verification possible from the laptop; needs to print on the Bambu. (2) Grafana basic-auth refactor: the shit-of-theseus Grafana instance has no PVC so API tokens don't persist across pod restarts. Switched to admin.existingSecret + manual password-file on Pi. k8s side is committed in home-ops (3c85c69). Shitbox code side is unwired - still needs lint/test/commit and Pi password-file deploy."
 }

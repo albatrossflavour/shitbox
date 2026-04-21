@@ -229,7 +229,8 @@ class GrafanaConfig:
 
     enabled: bool = False
     url: str = ""
-    api_token: str = ""
+    username: str = ""
+    password_file: str = ""
     video_base_url: str = ""
     timeout_seconds: int = 5
 

@@ -197,7 +197,8 @@ class EngineConfig:
     # Grafana annotations
     grafana_enabled: bool = False
     grafana_url: str = ""
-    grafana_api_token: str = ""
+    grafana_username: str = ""
+    grafana_password_file: str = ""
     grafana_video_base_url: str = ""
     grafana_timeout_seconds: int = 5
 
@@ -333,7 +334,8 @@ class EngineConfig:
             # Grafana annotations
             grafana_enabled=config.sync.grafana.enabled,
             grafana_url=config.sync.grafana.url,
-            grafana_api_token=config.sync.grafana.api_token,
+            grafana_username=config.sync.grafana.username,
+            grafana_password_file=config.sync.grafana.password_file,
             grafana_video_base_url=config.sync.grafana.video_base_url,
             grafana_timeout_seconds=config.sync.grafana.timeout_seconds,
             # Capture sync
@@ -543,7 +545,8 @@ class UnifiedEngine:
             grafana_config = GrafanaConfig(
                 enabled=True,
                 url=config.grafana_url,
-                api_token=config.grafana_api_token,
+                username=config.grafana_username,
+                password_file=config.grafana_password_file,
                 video_base_url=config.grafana_video_base_url,
                 timeout_seconds=config.grafana_timeout_seconds,
             )

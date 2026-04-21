@@ -192,9 +192,10 @@ sync:
     timeout_seconds: 3
 
   grafana:
-    enabled: false
-    url: "https://shit-of-theseus.com"
-    api_token: ""
+    enabled: true
+    url: "https://grafana.shit-of-theseus.com"
+    username: "admin"
+    password_file: "/etc/shitbox/grafana-password"
     video_base_url: "https://shit-of-theseus.com/captures"
     timeout_seconds: 5
 

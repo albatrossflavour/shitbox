@@ -28,7 +28,7 @@ $fn = 64;
 // ---- Print / material ----
 OUTER_WALL = 2.5;        // 2mm structural + 0.5mm stone relief allowance
 FLOOR      = 2.0;
-PCB_TOL    = 0.6;        // total clearance (0.3mm per side)
+PCB_TOL    = 1.0;        // total clearance (0.5mm per side — first-print margin)
 
 // ---- Pi 5 board (verified RPi mechanical drawing) ----
 PI5_W      = 85.0;       // board width (long edge)
@@ -43,15 +43,18 @@ STACK_H       = 65;       // full stack height
 HAT_H         = 20;       // NVMe HAT: floor to Pi 5 PCB bottom
 
 // ---- Connector positions (from RPi mechanical drawing) ----
-HDMI1_OFFSET  = 26.0;    // centre of HDMI0 from left board edge
-HDMI2_OFFSET  = 39.5;    // centre of HDMI1 from left board edge
-HDMI_PORT_H   = 3.5;     // port height above Pi PCB
+// HDMI, USB-C, AV and fan header all sit on the same long edge as HDMI.
+// HDMI/USB-C X offsets are measured INWARD FROM THE USB/ETHERNET SHORT EDGE
+// (case right wall) — this is how the Pi 5 mech drawing dimensions them.
+HDMI1_OFFSET  = 26.0;    // HDMI0 centre, from USB/Ethernet short edge
+HDMI2_OFFSET  = 39.5;    // HDMI1 centre, from USB/Ethernet short edge
+HDMI_PORT_H   = 3.5;     // port body height above Pi PCB top
 
-USB_OFFSET    = 29.0;    // centre of USB stack from front board edge
-USB_PORT_H    = 15.5;    // stacked USB-A height above PCB
+USB_OFFSET    = 29.0;    // USB-A stack centre, along Pi short axis (Y)
+USB_PORT_H    = 15.5;    // stacked USB-A height above PCB (ref only)
 
-PWR_OFFSET    = 11.5;    // centre of USB-C from front board edge
-PWR_PORT_H    = 3.5;     // USB-C height above PCB
+PWR_OFFSET    = 11.5;    // USB-C centre, from USB/Ethernet short edge
+PWR_PORT_H    = 3.5;     // USB-C port body height above Pi PCB top
 
 // ---- Fan (Noctua NF-A4x10 5V, to be purchased) ----
 FAN_W         = 40;
@@ -70,9 +73,10 @@ STANDOFF_H      = 4.0;    // rubber standoff compressed height
 
 // ---- Mounting flanges (M4 to plywood panel) ----
 FLANGE_W      = 12;
-FLANGE_THICK  = FLOOR;
+FLANGE_THICK  = 3.0;      // stepped above FLOOR — leaves 1.5mm under counterbore
 BOLT_D        = 4.5;      // M4 clearance
 BOLT_HEAD_D   = 8.5;      // M4 washer/head counterbore
+BOLT_HEAD_H   = 1.5;      // counterbore depth
 
 // ---- Lid ----
 LID_THICK     = 1.6;
@@ -81,11 +85,17 @@ LID_BOSS_D    = 6;
 LID_BOSS_HOLE = 2.1;      // pilot for M2.5 self-tap
 
 // ---- Cable exit slots (right-angle adapters, per Research pitfall 3) ----
-HDMI_SLOT  = [14, 8];     // right-angle HDMI adapter body
-USB_SLOT   = [14, 17];    // stacked USB-A ports
-PWR_SLOT   = [10, 6];     // USB-C power cable
-QWIIC_SLOT = [6, 4];      // Qwiic/STEMMA QT cable
-ONEWIRE_SLOT = [5, 3];    // DS18B20 1-Wire cable
+// Sized with 1-2mm margin on the nominal connector dimension — adapter
+// bodies and cable strain-reliefs vary more than datasheet dims suggest.
+// NOTE: HDMI0 and HDMI1 centres are 13.5mm apart on Pi 5. Any slot width
+// over that merges the two cutouts into one opening — acceptable and only
+// one HDMI is in use at a time (screen only). Bridge across the top of the
+// merged slot is ~29mm, which PETG handles at reasonable print speeds.
+HDMI_SLOT  = [15, 10];    // right-angle micro-HDMI adapter body (nom 14x8)
+USB_SLOT   = [15, 18];    // stacked USB-A ports (nom 13.5x16.5)
+PWR_SLOT   = [12, 8];     // USB-C cable shroud (nom ~11x7)
+QWIIC_SLOT = [7, 5];      // Qwiic/STEMMA QT cable + strain relief
+ONEWIRE_SLOT = [6, 4];    // DS18B20 1-Wire cable + heatshrink
 
 // ---- Exhaust vents (original, kept for reference) ----
 VENT_SLOT_W   = 20;
@@ -315,24 +325,30 @@ module pi_case_sma_cutout() {
 }
 
 module pi_case_cable_slots() {
+    // HDMI0, HDMI1, USB-C all live on the Pi's HDMI long edge, which faces
+    // the case front wall (Y=0). Offsets are measured from the USB/Ethernet
+    // short edge, which is the case RIGHT wall (X = PI_X0 + PI5_W).
     hdmi_z = PI_Z0 + HDMI_PORT_H;
     for (offset = [HDMI1_OFFSET, HDMI2_OFFSET]) {
-        x = PI_X0 + offset - HDMI_SLOT[0] / 2;
+        x = PI_X0 + PI5_W - offset - HDMI_SLOT[0] / 2;
         translate([x, -0.1, hdmi_z])
             cube([HDMI_SLOT[0], OUTER_WALL + 0.2, HDMI_SLOT[1]]);
     }
 
+    // USB-C power: front wall, offset from the USB/Ethernet (right) short edge.
+    pwr_x = PI_X0 + PI5_W - PWR_OFFSET - PWR_SLOT[0] / 2;
+    pwr_z = PI_Z0 + PWR_PORT_H;
+    translate([pwr_x, -0.1, pwr_z])
+        cube([PWR_SLOT[0], OUTER_WALL + 0.2, PWR_SLOT[1]]);
+
+    // USB-A stack: right short wall.
     usb_x = FLANGE_W + OUTER_WALL + INNER_W;
     usb_y = PI_Y0 + USB_OFFSET - USB_SLOT[0] / 2;
     usb_z = PI_Z0 + 1;
     translate([usb_x - 0.1, usb_y, usb_z])
         cube([OUTER_WALL + 0.2, USB_SLOT[0], USB_SLOT[1]]);
 
-    pwr_y = PI_Y0 + PWR_OFFSET - PWR_SLOT[0] / 2;
-    pwr_z = PI_Z0 + PWR_PORT_H;
-    translate([usb_x - 0.1, pwr_y, pwr_z])
-        cube([OUTER_WALL + 0.2, PWR_SLOT[0], PWR_SLOT[1]]);
-
+    // Qwiic + 1-Wire: back wall, near GPIO header long edge.
     translate([FLANGE_W + OUTER_W / 2 - 15 - QWIIC_SLOT[0] / 2,
                OUTER_D - 0.1,
                FLOOR + 2])
@@ -351,7 +367,7 @@ module pi_case_flange_holes() {
         translate([x, y, -0.1]) {
             cylinder(d = BOLT_D, h = FLANGE_THICK + 0.2);
             translate([0, 0, -0.1])
-                cylinder(d = BOLT_HEAD_D, h = 1.5);
+                cylinder(d = BOLT_HEAD_D, h = BOLT_HEAD_H + 0.1);
         }
 }
 

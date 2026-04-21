@@ -2,7 +2,7 @@
 
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import requests
 
@@ -20,10 +20,23 @@ class GrafanaAnnotator:
         self._config = config
         self._captures_dir = captures_dir
         self._url = config.url.rstrip("/") + "/api/annotations"
-        self._headers = {
-            "Authorization": f"Bearer {config.api_token}",
-            "Content-Type": "application/json",
-        }
+        self._headers = {"Content-Type": "application/json"}
+        self._auth: Optional[Tuple[str, str]] = None
+
+        if config.username and config.password_file:
+            try:
+                password = Path(config.password_file).read_text().strip()
+            except OSError as e:
+                log.warning(
+                    "grafana_password_file_unreadable",
+                    path=config.password_file,
+                    error=str(e),
+                )
+                password = ""
+            if password:
+                self._auth = (config.username, password)
+            else:
+                log.warning("grafana_password_empty", path=config.password_file)
 
     def annotate_event(self, event: Event, video_path: Optional[Path] = None) -> None:
         """Post an annotation for a driving event in a background thread."""
@@ -58,6 +71,7 @@ class GrafanaAnnotator:
                 self._url,
                 json=payload,
                 headers=self._headers,
+                auth=self._auth,
                 timeout=self._config.timeout_seconds,
             )
             if resp.ok:
