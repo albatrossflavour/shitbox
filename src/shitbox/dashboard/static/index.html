@@ -380,8 +380,7 @@
   <!-- Hardware status modal (full screen) -->
   <div x-show="showHardwareModal" x-cloak
        @keydown.escape.window="showHardwareModal = false"
-       style="position: fixed; inset: 0; background: #0d1117; z-index: 1000;
-              display: flex; flex-direction: column; padding: 48px; gap: 20px;">
+       style="position: fixed; inset: 0; background: #0d1117; z-index: 1000; box-sizing: border-box;">
 
     <!-- Always-visible top-right close (matches Map/Timelapse pattern) -->
     <button @click="showHardwareModal = false"
@@ -390,12 +389,17 @@
                    padding: 6px 14px; border-radius: 4px; font-size: 35px;
                    cursor: pointer; font-weight: 700;">&times; Close</button>
 
-    <h2 style="font-size: 39px; font-weight: 600; margin: 0; color: #e6edf3; flex-shrink: 0;">Hardware</h2>
+    <!-- Title pinned top-left -->
+    <h2 style="position: absolute; top: 24px; left: 48px; font-size: 39px; font-weight: 600; margin: 0; color: #e6edf3;">Hardware</h2>
 
-    <div x-show="criticalMissing()" class="hw-banner" style="font-size: 26px; flex-shrink: 0;"
+    <!-- Critical banner pinned below title -->
+    <div x-show="criticalMissing()" class="hw-banner"
+         style="position: absolute; top: 80px; left: 48px; right: 48px; font-size: 26px;"
          x-text="'CRITICAL: ' + criticalMissing() + ' OFFLINE'"></div>
 
-    <div style="flex: 1; min-height: 0; overflow-y: auto; padding-right: 8px; -webkit-overflow-scrolling: touch;">
+    <!-- Scrollable list: absolutely positioned between header band and footer band -->
+    <div style="position: absolute; top: 140px; bottom: 110px; left: 48px; right: 48px;
+                overflow-y: auto; padding-right: 8px; -webkit-overflow-scrolling: touch;">
       <template x-for="row in sortedHardware()" :key="row.role">
         <div class="hw-row hw-row-lg" :class="'hw-' + row.state + ' hw-tier-' + row.tier">
           <span class="hw-glyph" x-text="stateGlyph(row.state)"></span>
@@ -410,14 +414,16 @@
       </div>
     </div>
 
-    <div x-show="hardware.length > 0" class="hw-rollup" style="font-size: 18px; flex-shrink: 0;"
+    <!-- Rollup pinned above footer -->
+    <div x-show="hardware.length > 0" class="hw-rollup"
+         style="position: absolute; bottom: 72px; left: 48px; right: 48px; font-size: 18px;"
          x-text="`${beRollup().present} best_effort present / ${beRollup().total} declared`"></div>
 
-    <div style="display: flex; justify-content: flex-end; flex-shrink: 0;">
-      <button @click="showHardwareModal = false"
-              style="background: #1f6feb; color: #fff; padding: 16px 32px; font-size: 35px;
-                     border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Close</button>
-    </div>
+    <!-- Bottom Close pinned bottom-right -->
+    <button @click="showHardwareModal = false"
+            style="position: absolute; bottom: 24px; right: 48px;
+                   background: #1f6feb; color: #fff; padding: 12px 28px; font-size: 28px;
+                   border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Close</button>
   </div>
 
   <script src="/static/vendor/leaflet.js"></script>

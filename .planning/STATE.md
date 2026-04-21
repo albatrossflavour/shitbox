@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: executing
-stopped_at: null
-last_updated: "2026-04-21T14:10:00.000Z"
-last_activity: 2026-04-21 -- Phase 21 complete (VERIFICATION PASS; GpsdClient hw_state hook + top-bar HW button + modal)
+stopped_at: context exhaustion at 90% (2026-04-21)
+last_updated: "2026-04-21T04:25:46.423Z"
+last_activity: 2026-04-21 -- Phase 21 verified and closed
 progress:
   total_phases: 10
-  completed_phases: 7
+  completed_phases: 6
   total_plans: 36
-  completed_plans: 36
-  percent: 100
+  completed_plans: 35
+  percent: 97
 ---
 
 # Project State
@@ -32,6 +32,7 @@ Phase: 20 (physical-integration) — PAUSED (3D prints queued on Bambu P1S)
 
 Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE (VERIFICATION PASS)
   All 5 plans done. Post-review follow-ups landed:
+
     - GpsdClient TPV → hw_state.report_present("gps")
     - Inline HARDWARE panel replaced with top-bar HW button + full-screen modal
   4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
@@ -106,8 +107,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-21T03:35:17.617Z
-Stopped at: Completed 21-05-engine-wiring-and-boot-PLAN.md
+Last session: 2026-04-21T04:25:46.416Z
+Stopped at: context exhaustion at 90% (2026-04-21)
 Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)

@@ -59,20 +59,31 @@ def probe_audio_label(label: str) -> bool:
 
 
 def probe_hdmi(connector: str) -> bool:
-    """Return True if the named HDMI connector reports 'connected'.
+    """Return True if the named HDMI connector is attached and driving output.
 
-    connector: e.g. 'HDMI-A-1' (matches /sys/class/drm/*HDMI-A-1*/status).
+    connector: e.g. 'HDMI-A-1' (matches /sys/class/drm/*HDMI-A-1/status).
+
+    Status file values come from the kernel DRM driver. 'connected' is the
+    explicit hot-plug-detected case. 'unknown' is common on Pi 5 once the
+    framebuffer is driving a monitor whose EDID has already been read and
+    cached (hot-plug no longer fires) -- treating it as missing was wrong,
+    hence the check is inverted: anything *other than* 'disconnected' counts
+    as present, provided the connector node exists at all.
     """
     try:
-        for path in Path("/sys/class/drm").glob(f"*{connector}"):
-            status = path / "status"
-            try:
-                if status.read_text().strip() == "connected":
-                    return True
-            except OSError:
-                continue
+        matches = list(Path("/sys/class/drm").glob(f"*{connector}"))
     except OSError:
-        pass
+        return False
+    if not matches:
+        return False
+    for path in matches:
+        status = path / "status"
+        try:
+            value = status.read_text().strip().lower()
+        except OSError:
+            continue
+        if value and value != "disconnected":
+            return True
     return False
 
 
