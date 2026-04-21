@@ -24,6 +24,23 @@
     .bg-yellow-600 { background: #ca8a04; color: #000; }
     .bg-green-700 { background: #15803d; color: #fff; }
     .bg-gray-700 { background: #374151; color: #9ca3af; }
+    .hw-panel { /* follows existing .card sizing */ }
+    .hw-banner { background: #da3633; color: #fff; font-weight: 600; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px; }
+    .hw-row { display: grid; grid-template-columns: 24px 1fr auto auto 48px; gap: 12px; align-items: center; padding: 4px 0; }
+    .hw-glyph { font-size: 18px; }
+    .hw-label { font-size: 18px; font-weight: 600; color: #e6edf3; }
+    .hw-state { font-size: 18px; font-weight: 400; }
+    .hw-since { font-size: 13px; color: #8b949e; text-align: right; }
+    .hw-missing .hw-glyph { color: #8b949e; }
+    .hw-missing .hw-state { color: #da3633; }
+    .hw-degraded .hw-glyph { color: #d29922; }
+    .hw-degraded .hw-state { color: #f85149; }
+    .hw-present .hw-glyph { color: #238636; }
+    .badge-critical { background: #da3633; color: #fff; }
+    .badge-important { background: #d29922; color: #000; }
+    .badge-best_effort { background: #8b949e; color: #fff; }
+    .hw-empty { color: #d29922; font-size: 15px; }
+    .hw-rollup { color: #8b949e; font-size: 13px; margin-top: 8px; }
 </style>
 </head>
 <body x-data="dashboard()" x-init="init()" style="display: flex; flex-direction: column; width: 1024px; height: 600px; overflow: hidden;">
@@ -129,6 +146,28 @@
       </div>
     </div>
   </main>
+
+  <!-- HARDWARE panel (Phase 21, HW-02/HW-03): sits between main and footer -->
+  <div class="card hw-panel" style="flex-shrink: 0; padding: 8px 12px; overflow-y: auto; max-height: 200px;">
+    <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">HARDWARE</div>
+    <div x-show="criticalMissing()" class="hw-banner"
+         x-text="'CRITICAL: ' + criticalMissing() + ' OFFLINE'"></div>
+    <template x-for="row in sortedHardware()" :key="row.role">
+      <div class="hw-row" :class="'hw-' + row.state + ' hw-tier-' + row.tier">
+        <span class="hw-glyph" x-text="stateGlyph(row.state)"></span>
+        <span class="hw-label" x-text="row.label"></span>
+        <span class="badge" :class="'badge-' + row.tier" x-text="row.tier"></span>
+        <span class="hw-state" x-text="stateText(row.state)"></span>
+        <span class="hw-since" x-text="sinceText(row.since_ms)"></span>
+      </div>
+    </template>
+    <div x-show="hardware.length === 0" class="hw-empty">
+      No hardware manifest — check config.yaml
+    </div>
+    <div x-show="hardware.length > 0" class="hw-rollup"
+         x-text="`${beRollup().present} best_effort present / ${beRollup().total} declared`">
+    </div>
+  </div>
 
   <!-- BOTTOM STRIP: 5-item event ticker + timelapse thumbnail (h: 130px) -->
   <footer class="card" style="height: 130px; flex-shrink: 0; padding: 6px 10px; overflow: hidden; display: flex; gap: 8px;">
@@ -368,6 +407,7 @@
     function dashboard() {
       return {
         speed: 0, imuTemp: '—', socTemp: '—',
+        hardware: [],
         gpsBadge: 'NO FIX', gpsBadgeClass: 'bg-red-700',
         syncBadge: 'SYNC OFFLINE', syncBadgeClass: 'bg-red-700',
         netBadge: 'NET OFFLINE', netBadgeClass: 'bg-red-700',
@@ -514,6 +554,7 @@
             this.recBadge = d.recording_active ? 'REC' : 'NO REC';
             this.recBadgeClass = d.recording_active ? 'bg-red-700' : 'bg-gray-700';
             this.activeDriver = d.active_driver;
+            this.hardware = d.hardware || [];
             if (d.lat != null && d.lng != null) {
               const ll = [d.lat, d.lng];
               if (!this.marker) {
@@ -734,6 +775,36 @@
         flashSuccess(msg) {
           this.successMsg = msg;
           setTimeout(() => { this.successMsg = ''; }, 3000);
+        },
+        // Hardware panel helpers (Phase 21, HW-02/HW-03)
+        criticalMissing() {
+          const labels = this.hardware
+            .filter(r => r.tier === 'critical' && r.state === 'missing')
+            .map(r => r.label.toUpperCase());
+          return labels.join(', ');
+        },
+        sortedHardware() {
+          const order = { critical: 0, important: 1, best_effort: 2 };
+          return this.hardware.slice().sort((a, b) =>
+            (order[a.tier] - order[b.tier]) || a.role.localeCompare(b.role)
+          );
+        },
+        beRollup() {
+          const be = this.hardware.filter(r => r.tier === 'best_effort');
+          return { present: be.filter(r => r.state === 'present').length, total: be.length };
+        },
+        stateText(state) {
+          return { present: 'PRESENT', degraded: 'RECOVERING', missing: 'OFFLINE' }[state]
+            || state.toUpperCase();
+        },
+        stateGlyph(state) {
+          return { present: '●', degraded: '◐', missing: '○' }[state] || '?';
+        },
+        sinceText(ms) {
+          if (ms == null) return '—';
+          if (ms < 60000) return `${Math.floor(ms / 1000)}s`;
+          if (ms < 3600000) return `${Math.floor(ms / 60000)}m`;
+          return `${Math.floor(ms / 3600000)}h`;
         },
       };
     }
