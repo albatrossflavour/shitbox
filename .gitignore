@@ -52,3 +52,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 rally.mbtiles
+
+# Graphify
+graphify-out/
+
+# Generated 3D print artefacts (SCAD is source of truth)
+hardware/*.stl
