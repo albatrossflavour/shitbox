@@ -9,10 +9,15 @@
 //   1. Drop screen into back shell pocket (open top).
 //   2. Place front bezel over the front; lip covers the screen edge.
 //   3. 4× M3 screws from the back shell thread into heat-set inserts
-//      in the front bezel corner bosses.
+//      in the top and bottom edge stubs of the front bezel.
+//
+// Edge-stub layout (v2): the four retention screws live on the top and
+// bottom rims of the bezel rather than the corners. Shrinking the corner
+// bosses to edge stubs drops the rim from 14 mm to 10 mm per side,
+// reclaiming 8 mm of dashboard real estate on each axis.
 //
 // Print orientation:
-//   Front bezel   — front face down on bed. Bosses project upward.
+//   Front bezel   — front face down on bed. Stubs project upward.
 //   Back shell    — back face (dash-bracket side) down on bed. Pocket up.
 //
 // Both orientations have no overhangs worth supporting.
@@ -44,21 +49,23 @@ BEZEL_TOL      = 0.5;         // clearance around screen in pocket
 BACKPLATE_T    = 4.0;         // back shell floor thickness (>M3_HEAD_H so head has a bearing floor)
 SHELL_WALL     = 3.0;         // back shell side wall thickness
 
-// Rim carries the corner bosses. 14mm gives clearance between the screen
-// pocket (inner edge at X=RIM) and a 10mm boss with 2mm gap.
-RIM            = 14;
+// Edge-stub retention (v2): stubs live on the top and bottom rims instead
+// of the corners, so the rim only needs to accommodate a slim stub and the
+// M3 screw-head counterbore on the backplate.
+RIM            = 10;
 
-OUTER_W        = SCREEN_W + 2 * RIM;   // 218
-OUTER_H        = SCREEN_H + 2 * RIM;   // 143
+OUTER_W        = SCREEN_W + 2 * RIM;   // 210
+OUTER_H        = SCREEN_H + 2 * RIM;   // 135
 
 // =====================================================
 //   Fasteners (M3 heat-set insert in front bezel, screw from back)
 // =====================================================
 INSERT_D       = 4.2;         // heat-set insert OD (M3xL4xD4.2 stock)
 INSERT_DEPTH   = 4.2;         // insert length + 0.2mm headroom
-INSERT_BOSS_D  = 10.0;        // outer diameter of boss around insert
-BOSS_INSET     = 7.0;         // boss centre inset from outer corner
-M3_CLEARANCE_D = 3.4;         // M3 clearance bore through boss shank
+STUB_D         = 6.0;         // outer diameter of stub around insert (0.9 mm wall)
+STUB_Y_INSET   = 6.5;         // stub centre inset from top/bottom outer edge
+STUB_X_SPREAD  = 140;         // horizontal distance between the two stub pairs
+M3_CLEARANCE_D = 3.4;         // M3 clearance bore through backplate and stub
 M3_HEAD_D      = 6.0;         // M3 socket head clearance
 M3_HEAD_H      = 3.0;         // M3 socket head counterbore depth
 
@@ -75,9 +82,9 @@ BRACKET_SPREAD_H = 75;
 //   Derived
 // =====================================================
 POCKET_D        = SCREEN_DEPTH;
-BOSS_LEN        = POCKET_D;           // boss spans the pocket depth
+STUB_LEN        = POCKET_D;           // stub spans the pocket depth
 TOTAL_D         = BACKPLATE_T + POCKET_D;   // assembled shell height
-FRONT_TOTAL_D   = FRONT_LIP_T + BOSS_LEN;   // assembled front-part height
+FRONT_TOTAL_D   = FRONT_LIP_T + STUB_LEN;   // assembled front-part height
 
 
 // =====================================================
@@ -105,21 +112,21 @@ module front_bezel() {
         union() {
             // Front face lip plate — sits on the bed
             cube([OUTER_W, OUTER_H, FRONT_LIP_T]);
-            // Four corner bosses project back from the lip
-            boss_positions()
+            // Four edge stubs project back from the lip (top and bottom rims)
+            stub_positions()
                 translate([0, 0, FRONT_LIP_T])
-                    cylinder(d = INSERT_BOSS_D, h = BOSS_LEN);
+                    cylinder(d = STUB_D, h = STUB_LEN);
         }
         // Glass window through the front lip
         glass_window();
-        // M3 clearance bore through each boss
-        boss_positions()
+        // M3 clearance bore through each stub
+        stub_positions()
             translate([0, 0, FRONT_LIP_T - 0.1])
-                cylinder(d = M3_CLEARANCE_D, h = BOSS_LEN + 0.2);
-        // Insert pocket at the rear (back) end of each boss — the open
+                cylinder(d = M3_CLEARANCE_D, h = STUB_LEN + 0.2);
+        // Insert pocket at the rear (back) end of each stub — the open
         // end faces the back shell so the insert is pressed in from there.
-        boss_positions()
-            translate([0, 0, FRONT_LIP_T + BOSS_LEN - INSERT_DEPTH])
+        stub_positions()
+            translate([0, 0, FRONT_LIP_T + STUB_LEN - INSERT_DEPTH])
                 cylinder(d = INSERT_D, h = INSERT_DEPTH + 0.1);
     }
 }
@@ -150,10 +157,11 @@ module back_shell() {
                   SCREEN_H + BEZEL_TOL,
                   POCKET_D + 0.1]);
 
-        // M3 pass-through with socket head counterbore on the back face
-        boss_positions() {
+        // M3 pass-through at each stub position: clearance bore through
+        // the backplate, socket-head counterbore on the back face.
+        stub_positions() {
             translate([0, 0, -0.1])
-                cylinder(d = M3_CLEARANCE_D, h = TOTAL_D + 0.2);
+                cylinder(d = M3_CLEARANCE_D, h = BACKPLATE_T + 0.2);
             translate([0, 0, -0.1])
                 cylinder(d = M3_HEAD_D, h = M3_HEAD_H + 0.1);
         }
@@ -167,10 +175,13 @@ module back_shell() {
 // =====================================================
 //   Shared geometry
 // =====================================================
-module boss_positions() {
-    for (sx = [0, 1], sy = [0, 1]) {
-        translate([sx ? OUTER_W - BOSS_INSET : BOSS_INSET,
-                   sy ? OUTER_H - BOSS_INSET : BOSS_INSET,
+module stub_positions() {
+    // Four positions: top rim (x-left, x-right) and bottom rim (same X).
+    // Y sits STUB_Y_INSET in from the outer edge so the stub fits between
+    // the back-shell outer wall and the screen pocket.
+    for (sx = [-1, 1], sy = [-1, 1]) {
+        translate([OUTER_W / 2 + sx * STUB_X_SPREAD / 2,
+                   sy < 0 ? STUB_Y_INSET : OUTER_H - STUB_Y_INSET,
                    0])
             children();
     }
