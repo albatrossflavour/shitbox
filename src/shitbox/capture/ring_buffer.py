@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from shitbox.capture import buzzer
+from shitbox.hardware import state as hw_state
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -65,8 +66,10 @@ class VideoRingBuffer:
         pip_scale: float = 0.25,
         camera_controls: Optional[dict[str, int]] = None,
         pip_camera_controls: Optional[dict[str, int]] = None,
+        role: str = "camera_front",
     ):
         self.buffer_dir = Path(buffer_dir)
+        self.role = role
         self.output_dir = Path(output_dir)
         self.device = device
         self.input_format = input_format
@@ -746,6 +749,8 @@ class VideoRingBuffer:
                     preexec_fn=_nice,
                 )
 
+            hw_state.report_present(self.role)
+
         except FileNotFoundError:
             log.error("ffmpeg_not_found", hint="Install with: sudo apt install ffmpeg")
             self._running = False
@@ -884,6 +889,7 @@ class VideoRingBuffer:
                             device=self.device,
                             backoff_seconds=self.DEVICE_MISSING_BACKOFF_SECONDS,
                         )
+                        hw_state.report_missing(self.role)
                         backoff_end = time.time() + self.DEVICE_MISSING_BACKOFF_SECONDS
                         while time.time() < backoff_end and self._running:
                             time.sleep(1.0)
@@ -902,6 +908,7 @@ class VideoRingBuffer:
                             stall_timeout_seconds=self.STALL_TIMEOUT_SECONDS,
                             stderr=stderr,
                         )
+                        hw_state.report_degraded(self.role)
                         buzzer.beep_ffmpeg_stall()
                         # Kill before replacing _process reference to avoid zombies
                         self._kill_current()

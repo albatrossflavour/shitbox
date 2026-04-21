@@ -61,6 +61,9 @@ def _make_vrb(tmp_path: Path) -> VideoRingBuffer:
     vrb._last_segment_size = 0
     vrb._stall_check_armed = False
 
+    # Hardware state role (Plan 21-03)
+    vrb.role = "camera_front"
+
     return vrb
 
 
@@ -323,6 +326,8 @@ def test_successful_ffmpeg_start_reports_present(tmp_path: Path) -> None:
     vrb._running = True
     vrb.audio_device = ""  # video-only path (no audio retry delay)
     vrb.pip_device = ""
+    vrb.input_format = "mjpeg"
+    vrb._ffmpeg_started_at = 0.0
 
     mock_process = MagicMock()
     mock_process.poll.return_value = None  # process alive
