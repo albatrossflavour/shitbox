@@ -21,7 +21,7 @@ $fn = 64;
 // ---- Screen dimensions (measured 2026-04-17) ----
 SCREEN_W     = 190;       // case width (landscape, long edge)
 SCREEN_H     = 115;       // case height (short edge)
-SCREEN_DEPTH = 15;        // case thickness (front glass to back)
+SCREEN_DEPTH = 17.3;      // case thickness (front glass to back, measured 2026-04-20)
 
 // ---- Glass visible area (derived) ----
 GLASS_W      = 150;       // 190 - 2 * 20
@@ -34,15 +34,15 @@ BEZEL_T = 15;             // top
 BEZEL_B = 15;             // bottom
 
 // ---- Bezel construction ----
-BEZEL_WALL   = 2.0;       // side wall thickness
+BEZEL_WALL   = 3.0;       // side wall thickness (was 2.0, broke at joins)
 BEZEL_LIP    = 1.5;       // front lip overlapping glass face (retention)
 BEZEL_TOL    = 0.5;       // clearance around screen case
 BACKPLATE_T  = 3.0;       // backplate thickness (structural)
 
 // ---- Bracket attachment (custom spacing, no VESA) ----
 BRACKET_HOLE_D  = 4.5;    // M4 clearance
-BRACKET_BOSS_D  = 10;     // boss around each hole
-BRACKET_BOSS_H  = 4;      // boss standoff from backplate
+BRACKET_CB_D    = 8.0;    // M4 socket head counterbore diameter
+BRACKET_CB_DEPTH = 2.0;   // counterbore depth (screw head sits flush, leaves 1mm floor)
 BRACKET_SPREAD_W = 140;   // horizontal bolt spacing
 BRACKET_SPREAD_H = 75;    // vertical bolt spacing
 
@@ -73,7 +73,6 @@ module screen_bezel() {
         union() {
             bezel_frame();
             bezel_backplate();
-            bezel_bracket_bosses();
         }
         bezel_glass_window();
         bezel_screen_cavity();
@@ -111,16 +110,7 @@ module bezel_backplate() {
         cube([OUTER_W, OUTER_H, BACKPLATE_T]);
 }
 
-module bezel_bracket_bosses() {
-    // 4 bosses on backplate for bracket bolt attachment
-    cx = OUTER_W / 2;
-    cy = OUTER_H / 2;
-    for (sx = [-1, 1], sy = [-1, 1])
-        translate([cx + sx * BRACKET_SPREAD_W / 2,
-                   cy + sy * BRACKET_SPREAD_H / 2,
-                   TOTAL_D])
-            cylinder(d = BRACKET_BOSS_D, h = BRACKET_BOSS_H);
-}
+// (bosses removed — bracket bolts use flush counterbores in backplate)
 
 
 // =====================================================
@@ -143,12 +133,18 @@ module bezel_screen_cavity() {
 }
 
 module bezel_bracket_holes() {
-    // M4 clearance holes through backplate + bosses
+    // M4 clearance holes through backplate with counterbores for flush screw heads
     cx = OUTER_W / 2;
     cy = OUTER_H / 2;
-    for (sx = [-1, 1], sy = [-1, 1])
+    for (sx = [-1, 1], sy = [-1, 1]) {
         translate([cx + sx * BRACKET_SPREAD_W / 2,
                    cy + sy * BRACKET_SPREAD_H / 2,
                    CAVITY_D - 0.1])
-            cylinder(d = BRACKET_HOLE_D, h = BACKPLATE_T + BRACKET_BOSS_H + 0.2);
+            cylinder(d = BRACKET_HOLE_D, h = BACKPLATE_T + 0.2);
+        // Counterbore from back face
+        translate([cx + sx * BRACKET_SPREAD_W / 2,
+                   cy + sy * BRACKET_SPREAD_H / 2,
+                   TOTAL_D - BRACKET_CB_DEPTH])
+            cylinder(d = BRACKET_CB_D, h = BRACKET_CB_DEPTH + 0.1);
+    }
 }
