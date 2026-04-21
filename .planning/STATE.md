@@ -4,14 +4,14 @@ milestone: v2.0
 milestone_name: — Rally Ready
 status: executing
 stopped_at: null
-last_updated: "2026-04-21T03:35:17.625Z"
-last_activity: 2026-04-21 -- Completed 21-05 engine wiring and boot (HW-04, HW-05 closed)
+last_updated: "2026-04-21T14:10:00.000Z"
+last_activity: 2026-04-21 -- Phase 21 complete (VERIFICATION PASS; GpsdClient hw_state hook + top-bar HW button + modal)
 progress:
   total_phases: 10
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 36
-  completed_plans: 35
-  percent: 97
+  completed_plans: 36
+  percent: 100
 ---
 
 # Project State
@@ -30,14 +30,15 @@ Phase: 20 (physical-integration) — PAUSED (3D prints queued on Bambu P1S)
   Plan: 1 of 3 started, remaining work blocked on physical prints coming off the machine
   Resume after: prints complete and mock-fit done in-car
 
-Phase: 21 (hardware-inventory-and-graceful-degradation) — EXECUTING
-  Plan: 1 of 5 (Wave 1 of 3)
-  Reason for working 21 in parallel: hardware enumeration + graceful degradation is software-layer,
-  independent of enclosure/mounting decisions in Phase 20
+Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE (VERIFICATION PASS)
+  All 5 plans done. Post-review follow-ups landed:
+    - GpsdClient TPV → hw_state.report_present("gps")
+    - Inline HARDWARE panel replaced with top-bar HW button + full-screen modal
+  4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Last activity: 2026-04-21 -- Phase 21 execution started (Wave 1)
+Last activity: 2026-04-21 -- Phase 21 verified and closed
 
-Progress: [██████████] 97%
+Progress: [██████████] 100%
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
