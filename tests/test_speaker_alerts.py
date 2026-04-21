@@ -651,3 +651,141 @@ def test_health_check_no_announcement_when_no_recovery() -> None:
 
     mock_speaker.speak_service_recovered.assert_not_called()
     mock_buzzer.beep_service_recovered.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# HW-03 / HW-04: speak_hardware_missing / speak_hardware_restored tests
+# ---------------------------------------------------------------------------
+
+
+def test_cached_messages_contains_10_hardware_keys() -> None:
+    """All 10 hardware TTS keys are present in _CACHED_MESSAGES with non-empty strings."""
+    expected_keys = [
+        "hw_imu_missing",
+        "hw_imu_restored",
+        "hw_camera_front_missing",
+        "hw_camera_front_restored",
+        "hw_power_missing",
+        "hw_power_restored",
+        "hw_gps_missing",
+        "hw_gps_restored",
+        "hw_environment_missing",
+        "hw_environment_restored",
+    ]
+    for key in expected_keys:
+        assert key in speaker._CACHED_MESSAGES, f"Missing key: {key}"
+        assert speaker._CACHED_MESSAGES[key], f"Empty value for key: {key}"
+
+
+def test_speak_hardware_missing_critical_enqueues() -> None:
+    """speak_hardware_missing critical tier enqueues the hw_imu_missing text."""
+    speaker.set_boot_start_time(0.0)  # past grace period
+    with (
+        patch.object(speaker, "_should_alert", return_value=True),
+        patch.object(speaker, "_enqueue") as mock_enqueue,
+    ):
+        speaker.speak_hardware_missing("imu", "critical")
+
+    mock_enqueue.assert_called_once_with(speaker._CACHED_MESSAGES["hw_imu_missing"])
+
+
+def test_speak_hardware_missing_important_enqueues() -> None:
+    """speak_hardware_missing important tier enqueues for power and gps roles."""
+    with (
+        patch.object(speaker, "_should_alert", return_value=True),
+        patch.object(speaker, "_enqueue") as mock_enqueue,
+    ):
+        speaker.speak_hardware_missing("power", "important")
+    mock_enqueue.assert_called_once_with(speaker._CACHED_MESSAGES["hw_power_missing"])
+
+    with (
+        patch.object(speaker, "_should_alert", return_value=True),
+        patch.object(speaker, "_enqueue") as mock_enqueue2,
+    ):
+        speaker.speak_hardware_missing("gps", "important")
+    mock_enqueue2.assert_called_once_with(speaker._CACHED_MESSAGES["hw_gps_missing"])
+
+
+def test_speak_hardware_missing_best_effort_silent_except_env() -> None:
+    """best_effort tier is silent for non-environment roles, speaks for environment."""
+    with (
+        patch.object(speaker, "_should_alert", return_value=True),
+        patch.object(speaker, "_enqueue") as mock_enqueue,
+    ):
+        speaker.speak_hardware_missing("magnetometer", "best_effort")
+    mock_enqueue.assert_not_called()
+
+    with (
+        patch.object(speaker, "_should_alert", return_value=True),
+        patch.object(speaker, "_enqueue") as mock_enqueue2,
+    ):
+        speaker.speak_hardware_missing("environment", "best_effort")
+    mock_enqueue2.assert_called_once_with(speaker._CACHED_MESSAGES["hw_environment_missing"])
+
+
+def test_speak_hardware_missing_unknown_role_uses_fallback() -> None:
+    """Unknown role uses fallback text rather than a cached key."""
+    with (
+        patch.object(speaker, "_should_alert", return_value=True),
+        patch.object(speaker, "_enqueue") as mock_enqueue,
+    ):
+        speaker.speak_hardware_missing("weirdrole", "critical")
+
+    mock_enqueue.assert_called_once_with("weirdrole offline, Michael.")
+
+
+def test_speak_hardware_restored_tier_gating() -> None:
+    """speak_hardware_restored mirrors the same tier gating as speak_hardware_missing."""
+    # critical speaks
+    with (
+        patch.object(speaker, "_should_alert", return_value=True),
+        patch.object(speaker, "_enqueue") as mock_enqueue,
+    ):
+        speaker.speak_hardware_restored("imu", "critical")
+    mock_enqueue.assert_called_once_with(speaker._CACHED_MESSAGES["hw_imu_restored"])
+
+    # important speaks
+    with (
+        patch.object(speaker, "_should_alert", return_value=True),
+        patch.object(speaker, "_enqueue") as mock_enqueue2,
+    ):
+        speaker.speak_hardware_restored("gps", "important")
+    mock_enqueue2.assert_called_once_with(speaker._CACHED_MESSAGES["hw_gps_restored"])
+
+    # best_effort silent for non-environment
+    with (
+        patch.object(speaker, "_should_alert", return_value=True),
+        patch.object(speaker, "_enqueue") as mock_enqueue3,
+    ):
+        speaker.speak_hardware_restored("light", "best_effort")
+    mock_enqueue3.assert_not_called()
+
+    # best_effort speaks for environment
+    with (
+        patch.object(speaker, "_should_alert", return_value=True),
+        patch.object(speaker, "_enqueue") as mock_enqueue4,
+    ):
+        speaker.speak_hardware_restored("environment", "best_effort")
+    mock_enqueue4.assert_called_once_with(speaker._CACHED_MESSAGES["hw_environment_restored"])
+
+
+def test_speak_hardware_missing_respects_should_alert() -> None:
+    """speak_hardware_missing returns silently when _should_alert returns False."""
+    with (
+        patch.object(speaker, "_should_alert", return_value=False),
+        patch.object(speaker, "_enqueue") as mock_enqueue,
+    ):
+        speaker.speak_hardware_missing("imu", "critical")
+
+    mock_enqueue.assert_not_called()
+
+
+def test_speak_hardware_restored_respects_should_alert() -> None:
+    """speak_hardware_restored returns silently when _should_alert returns False."""
+    with (
+        patch.object(speaker, "_should_alert", return_value=False),
+        patch.object(speaker, "_enqueue") as mock_enqueue,
+    ):
+        speaker.speak_hardware_restored("imu", "critical")
+
+    mock_enqueue.assert_not_called()
