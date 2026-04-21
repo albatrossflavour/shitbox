@@ -24,9 +24,13 @@
     .bg-yellow-600 { background: #ca8a04; color: #000; }
     .bg-green-700 { background: #15803d; color: #fff; }
     .bg-gray-700 { background: #374151; color: #9ca3af; }
-    .hw-panel { /* follows existing .card sizing */ }
     .hw-banner { background: #da3633; color: #fff; font-weight: 600; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px; }
     .hw-row { display: grid; grid-template-columns: 24px 1fr auto auto 48px; gap: 12px; align-items: center; padding: 4px 0; }
+    .hw-row-lg { grid-template-columns: 36px 1fr auto auto 72px; gap: 20px; padding: 10px 0; border-bottom: 1px solid #21262d; }
+    .hw-row-lg .hw-glyph { font-size: 28px; }
+    .hw-row-lg .hw-label { font-size: 26px; }
+    .hw-row-lg .hw-state { font-size: 22px; }
+    .hw-row-lg .hw-since { font-size: 18px; }
     .hw-glyph { font-size: 18px; }
     .hw-label { font-size: 18px; font-weight: 600; color: #e6edf3; }
     .hw-state { font-size: 18px; font-weight: 400; }
@@ -87,6 +91,12 @@
               style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
                      color: #e6edf3; font-size: 28px; font-weight: 700;
                      padding: 8px 14px; border-radius: 4px; min-height: 52px;">Fuel</button>
+      <button @click="openHardwareModal()"
+              :class="hwBadgeClass()"
+              :title="hwStatusTitle()"
+              style="cursor: pointer; border: 1px solid #30363d;
+                     font-size: 28px; font-weight: 700;
+                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">HW</button>
       <span class="badge" x-show="successMsg" x-text="successMsg"
             style="background: #238636; color: #fff;"></span>
     </div>
@@ -146,28 +156,6 @@
       </div>
     </div>
   </main>
-
-  <!-- HARDWARE panel (Phase 21, HW-02/HW-03): sits between main and footer -->
-  <div class="card hw-panel" style="flex-shrink: 0; padding: 8px 12px; overflow-y: auto; max-height: 200px;">
-    <div class="text-gray-400" style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">HARDWARE</div>
-    <div x-show="criticalMissing()" class="hw-banner"
-         x-text="'CRITICAL: ' + criticalMissing() + ' OFFLINE'"></div>
-    <template x-for="row in sortedHardware()" :key="row.role">
-      <div class="hw-row" :class="'hw-' + row.state + ' hw-tier-' + row.tier">
-        <span class="hw-glyph" x-text="stateGlyph(row.state)"></span>
-        <span class="hw-label" x-text="row.label"></span>
-        <span class="badge" :class="'badge-' + row.tier" x-text="row.tier"></span>
-        <span class="hw-state" x-text="stateText(row.state)"></span>
-        <span class="hw-since" x-text="sinceText(row.since_ms)"></span>
-      </div>
-    </template>
-    <div x-show="hardware.length === 0" class="hw-empty">
-      No hardware manifest — check config.yaml
-    </div>
-    <div x-show="hardware.length > 0" class="hw-rollup"
-         x-text="`${beRollup().present} best_effort present / ${beRollup().total} declared`">
-    </div>
-  </div>
 
   <!-- BOTTOM STRIP: 5-item event ticker + timelapse thumbnail (h: 130px) -->
   <footer class="card" style="height: 130px; flex-shrink: 0; padding: 6px 10px; overflow: hidden; display: flex; gap: 8px;">
@@ -389,6 +377,42 @@
     </div>
   </div>
 
+  <!-- Hardware status modal (full screen) -->
+  <div x-show="showHardwareModal" x-cloak
+       @keydown.escape.window="showHardwareModal = false"
+       style="position: fixed; inset: 0; background: #0d1117; z-index: 1000;
+              display: flex; flex-direction: column; padding: 48px; gap: 20px;">
+
+    <h2 style="font-size: 39px; font-weight: 600; margin: 0; color: #e6edf3; flex-shrink: 0;">Hardware</h2>
+
+    <div x-show="criticalMissing()" class="hw-banner" style="font-size: 26px; flex-shrink: 0;"
+         x-text="'CRITICAL: ' + criticalMissing() + ' OFFLINE'"></div>
+
+    <div style="flex: 1; overflow-y: auto; padding-right: 8px;">
+      <template x-for="row in sortedHardware()" :key="row.role">
+        <div class="hw-row hw-row-lg" :class="'hw-' + row.state + ' hw-tier-' + row.tier">
+          <span class="hw-glyph" x-text="stateGlyph(row.state)"></span>
+          <span class="hw-label" x-text="row.label"></span>
+          <span class="badge" :class="'badge-' + row.tier" x-text="row.tier"></span>
+          <span class="hw-state" x-text="stateText(row.state)"></span>
+          <span class="hw-since" x-text="sinceText(row.since_ms)"></span>
+        </div>
+      </template>
+      <div x-show="hardware.length === 0" class="hw-empty" style="font-size: 22px; padding: 12px 0;">
+        No hardware manifest — check config.yaml
+      </div>
+    </div>
+
+    <div x-show="hardware.length > 0" class="hw-rollup" style="font-size: 18px; flex-shrink: 0;"
+         x-text="`${beRollup().present} best_effort present / ${beRollup().total} declared`"></div>
+
+    <div style="display: flex; justify-content: flex-end; flex-shrink: 0;">
+      <button @click="showHardwareModal = false"
+              style="background: #1f6feb; color: #fff; padding: 16px 32px; font-size: 35px;
+                     border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Close</button>
+    </div>
+  </div>
+
   <script src="/static/vendor/leaflet.js"></script>
   <script>
     // Set page dimensions to match the actual screen.
@@ -436,6 +460,7 @@
         // Kiosk additions
         showMap: false,
         showTimelapse: false,
+        showHardwareModal: false,
         timelapseUrl: null,
         alertOverlay: null,
         _alertTimer: null,
@@ -775,6 +800,25 @@
         flashSuccess(msg) {
           this.successMsg = msg;
           setTimeout(() => { this.successMsg = ''; }, 3000);
+        },
+        openHardwareModal() { this.showHardwareModal = true; },
+        hwBadgeClass() {
+          const h = this.hardware;
+          if (!h.length) return 'bg-gray-700';
+          if (h.some(r => r.tier === 'critical' && r.state === 'missing')) return 'bg-red-700';
+          if (h.some(r => r.tier === 'important' && r.state === 'missing')) return 'bg-yellow-600';
+          if (h.some(r => r.state === 'degraded')) return 'bg-yellow-600';
+          return 'bg-green-700';
+        },
+        hwStatusTitle() {
+          const crit = this.criticalMissing();
+          if (crit) return 'CRITICAL: ' + crit + ' OFFLINE';
+          const imp = this.hardware
+            .filter(r => r.tier === 'important' && r.state === 'missing')
+            .map(r => r.label).join(', ');
+          if (imp) return 'Important: ' + imp + ' offline';
+          if (!this.hardware.length) return 'Hardware manifest not loaded';
+          return 'All hardware present';
         },
         // Hardware panel helpers (Phase 21, HW-02/HW-03)
         criticalMissing() {
