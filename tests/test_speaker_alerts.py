@@ -669,8 +669,8 @@ def test_cached_messages_contains_10_hardware_keys() -> None:
         "hw_power_restored",
         "hw_gps_missing",
         "hw_gps_restored",
-        "hw_env_missing",
-        "hw_env_restored",
+        "hw_environment_missing",
+        "hw_environment_restored",
     ]
     for key in expected_keys:
         assert key in speaker._CACHED_MESSAGES, f"Missing key: {key}"
@@ -720,7 +720,7 @@ def test_speak_hardware_missing_best_effort_silent_except_env() -> None:
         patch.object(speaker, "_enqueue") as mock_enqueue2,
     ):
         speaker.speak_hardware_missing("environment", "best_effort")
-    mock_enqueue2.assert_called_once_with(speaker._CACHED_MESSAGES["hw_env_missing"])
+    mock_enqueue2.assert_called_once_with(speaker._CACHED_MESSAGES["hw_environment_missing"])
 
 
 def test_speak_hardware_missing_unknown_role_uses_fallback() -> None:
@@ -766,7 +766,7 @@ def test_speak_hardware_restored_tier_gating() -> None:
         patch.object(speaker, "_enqueue") as mock_enqueue4,
     ):
         speaker.speak_hardware_restored("environment", "best_effort")
-    mock_enqueue4.assert_called_once_with(speaker._CACHED_MESSAGES["hw_env_restored"])
+    mock_enqueue4.assert_called_once_with(speaker._CACHED_MESSAGES["hw_environment_restored"])
 
 
 def test_speak_hardware_missing_respects_should_alert() -> None:

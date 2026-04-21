@@ -63,6 +63,17 @@ _CACHED_MESSAGES: dict[str, str] = {
     "capture_rough_road": "Brace yourself Michael, the road is rough here.",
     "capture_manual": "Recording now, Michael. As you wish.",
     "capture_end": "Recording saved, Michael.",
+    # Hardware presence alerts (HW-03 / HW-04)
+    "hw_imu_missing": "Michael, I've lost the IMU. Event detection is down.",
+    "hw_imu_restored": "IMU back with me, Michael.",
+    "hw_camera_front_missing": "Michael, the front camera is offline. I can't record.",
+    "hw_camera_front_restored": "Front camera restored, Michael.",
+    "hw_power_missing": "Michael, I've lost the power monitor.",
+    "hw_power_restored": "Power monitor back, Michael.",
+    "hw_gps_missing": "Michael, I've lost GPS.",
+    "hw_gps_restored": "GPS fix restored, Michael.",
+    "hw_environment_missing": "Environment sensor isn't responding, Michael.",
+    "hw_environment_restored": "Environment sensor back, Michael.",
 }
 
 
@@ -459,6 +470,32 @@ def speak_health_alarm() -> None:
     if not _should_alert():
         return
     _enqueue("Michael, something isn't quite right. I'd appreciate a look.")
+
+
+def speak_hardware_missing(role: str, tier: str) -> None:
+    """Announce a device going MISSING. Tier governs whether we speak at all at
+    this transition — best_effort is log-only unless role == 'environment'
+    (the canonical BME680 acceptance case). Critical re-nag cadence is
+    HardwareSupervisor's responsibility; this function always speaks when gated.
+    """
+    if not _should_alert():
+        return
+    if tier == "best_effort" and role != "environment":
+        return
+    key = f"hw_{role}_missing"
+    text = _CACHED_MESSAGES.get(key, f"{role} offline, Michael.")
+    _enqueue(text)
+
+
+def speak_hardware_restored(role: str, tier: str) -> None:
+    """Announce a device recovering. Same tier gating as speak_hardware_missing."""
+    if not _should_alert():
+        return
+    if tier == "best_effort" and role != "environment":
+        return
+    key = f"hw_{role}_restored"
+    text = _CACHED_MESSAGES.get(key, f"{role} restored, Michael.")
+    _enqueue(text)
 
 
 def speak_i2c_lockup() -> None:
