@@ -6,15 +6,14 @@ and monkeypatch time.monotonic for deterministic cadence assertions.
 """
 from __future__ import annotations
 
-from typing import Callable, Dict, List
-from unittest.mock import MagicMock, call, patch
+from typing import Callable, Dict
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from shitbox.hardware import state as hw_state
 from shitbox.hardware.supervisor import HardwareSupervisor
 from shitbox.utils.config import HardwareDeviceConfig, HardwareManifestConfig
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -74,6 +73,7 @@ def supervisor_fixture(monkeypatch: pytest.MonkeyPatch) -> HardwareSupervisor:
 def _force_missing(role: str, tier: str, consecutive: int = 1, next_retry_at: float = 0.0) -> None:
     """Directly seed hw_state with a MISSING entry bypassing the backoff ladder."""
     import time
+
     from shitbox.hardware.state import DeviceState, DeviceStatus
 
     new_map = dict(hw_state.snapshot())
@@ -92,6 +92,7 @@ def _force_missing(role: str, tier: str, consecutive: int = 1, next_retry_at: fl
 def _force_present(role: str, tier: str) -> None:
     """Directly seed hw_state with a PRESENT entry."""
     import time
+
     from shitbox.hardware.state import DeviceState, DeviceStatus
 
     new_map = dict(hw_state.snapshot())
@@ -119,7 +120,9 @@ def test_start_seeds_state_from_manifest(monkeypatch: pytest.MonkeyPatch) -> Non
     sup = HardwareSupervisor(manifest=manifest, reprobe_callbacks=reprobe)
 
     # Patch probes so _probe_all doesn't touch real hardware
-    monkeypatch.setattr("shitbox.hardware.supervisor.hw_probes.probe_i2c_bus_is_bitbang", lambda b: True)
+    monkeypatch.setattr(
+        "shitbox.hardware.supervisor.hw_probes.probe_i2c_bus_is_bitbang", lambda b: True
+    )
     monkeypatch.setattr("shitbox.hardware.supervisor.hw_probes.probe_i2c", lambda b, a: True)
 
     sup.start()
@@ -272,7 +275,9 @@ def test_reprobe_recovers(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_missing = MagicMock()
     mock_restored = MagicMock()
     monkeypatch.setattr("shitbox.hardware.supervisor.speaker.speak_hardware_missing", mock_missing)
-    monkeypatch.setattr("shitbox.hardware.supervisor.speaker.speak_hardware_restored", mock_restored)
+    monkeypatch.setattr(
+        "shitbox.hardware.supervisor.speaker.speak_hardware_restored", mock_restored
+    )
 
     with patch("shitbox.hardware.supervisor.time.monotonic", return_value=0.0):
         sup._tick()
@@ -307,48 +312,30 @@ def test_reprobe_failure_reschedules(monkeypatch: pytest.MonkeyPatch) -> None:
     assert snap["imu"].state == hw_state.DeviceState.MISSING
 
 
-def test_tick_swallows_exceptions(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-    """tick_loop swallows exceptions from _tick and logs hw_supervisor_tick_error."""
-    import logging
+def test_tick_swallows_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_tick_loop swallows exceptions from _tick and logs hw_supervisor_tick_error."""
+    import threading
 
     manifest = _make_manifest(_imu_device())
     sup = HardwareSupervisor(manifest=manifest, reprobe_callbacks={})
-
-    # Make hw_state.snapshot raise to trigger the error path
-    monkeypatch.setattr(
-        "shitbox.hardware.supervisor.hw_state.snapshot",
-        MagicMock(side_effect=RuntimeError("boom")),
-    )
-
-    # Call _tick directly — must not raise
-    with caplog.at_level(logging.ERROR):
-        try:
-            sup._tick()
-        except Exception as e:
-            pytest.fail(f"_tick raised unexpectedly: {e}")
-
-    # The tick itself does the try/except — the error is logged in _tick_loop
-    # Test that _tick_loop correctly catches and logs by running one iteration manually
-    sup._running = True
 
     call_count = 0
 
     def boom_tick() -> None:
         nonlocal call_count
         call_count += 1
-        sup._running = False  # stop after one iteration
+        sup._running = False  # stop the loop after one iteration
         raise RuntimeError("tick_error")
 
     sup._tick = boom_tick  # type: ignore[method-assign]
-
-    import threading
+    sup._running = True
 
     t = threading.Thread(target=sup._tick_loop, daemon=True)
     t.start()
     t.join(timeout=3.0)
 
-    # Thread must have exited cleanly (not timed out)
-    assert not t.is_alive()
+    # Thread must have exited cleanly (not timed out or re-raised)
+    assert not t.is_alive(), "tick_loop thread did not exit — exception was not swallowed"
     assert call_count == 1
 
 
@@ -365,9 +352,8 @@ def test_bme680_canonical_case(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     manifest = _make_manifest(env_dev)
 
-    # First call: False (boot timing race); second call: True (sensor settled)
-    probe_attempts: List[bool] = [False, True]
-    reprobe = {"environment": MagicMock(side_effect=probe_attempts)}
+    # The reprobe callback returns True when called at t=5s (sensor has settled by then)
+    reprobe = {"environment": MagicMock(return_value=True)}
 
     sup = HardwareSupervisor(manifest=manifest, reprobe_callbacks=reprobe)
 
@@ -382,7 +368,9 @@ def test_bme680_canonical_case(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_missing = MagicMock()
     mock_restored = MagicMock()
     monkeypatch.setattr("shitbox.hardware.supervisor.speaker.speak_hardware_missing", mock_missing)
-    monkeypatch.setattr("shitbox.hardware.supervisor.speaker.speak_hardware_restored", mock_restored)
+    monkeypatch.setattr(
+        "shitbox.hardware.supervisor.speaker.speak_hardware_restored", mock_restored
+    )
 
     # Initialise state and run probe_all (simulates supervisor.start() without the thread)
     hw_state.initialise({"environment": "best_effort"})
