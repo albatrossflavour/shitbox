@@ -18,6 +18,7 @@ import asyncio
 import json
 import queue
 import threading
+import time
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 import structlog
@@ -26,8 +27,47 @@ from fastapi.responses import StreamingResponse  # noqa: F401  # kept for API sy
 from sse_starlette.sse import EventSourceResponse
 
 from shitbox.dashboard.snapshot import read_snapshot
+from shitbox.hardware import state as hw_state
 
 log = structlog.get_logger(__name__)
+
+_HARDWARE_LABELS: Dict[str, str] = {
+    "imu": "IMU",
+    "camera_front": "Front Cam",
+    "power": "Power",
+    "gps": "GPS",
+    "environment": "Environment",
+    "magnetometer": "Magnetometer",
+    "light": "Ambient Light",
+    "oled": "OLED",
+    "temp_exterior": "Exterior Probe",
+    "temp_engine_bay": "Engine Bay Probe",
+    "camera_cabin": "Cabin Cam",
+    "audio_mic": "USB Mic",
+    "button": "Button",
+    "display_hdmi": "HDMI",
+}
+
+
+def _hardware_label(role: str) -> str:
+    return _HARDWARE_LABELS.get(role, role.replace("_", " ").title())
+
+
+def _hardware_payload() -> List[Dict[str, Any]]:
+    now = time.time()
+    out = []
+    for st in hw_state.snapshot().values():
+        last_seen = st.last_seen if st.last_seen > 0 else None
+        since_ms = int((now - st.last_seen) * 1000) if st.last_seen > 0 else None
+        out.append({
+            "role": st.role,
+            "label": _hardware_label(st.role),
+            "tier": st.tier,
+            "state": st.state.value,
+            "last_seen": last_seen,
+            "since_ms": since_ms,
+        })
+    return out
 
 MAX_CLIENTS: int = 8
 KEEPALIVE_SECONDS: int = 15
@@ -146,6 +186,7 @@ async def sse_slow(request: Request) -> Response:
                             "event_count": snap["event_count_today"],
                             "active_driver": snap.get("active_driver"),
                             "recording_active": snap.get("recording_active", False),
+                            "hardware": _hardware_payload(),
                         },
                         default=str,
                     ),
