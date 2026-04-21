@@ -15,7 +15,7 @@ estimated_loc: 420
 
 must_haves:
   truths:
-    - "UnifiedEngine calls hw_state.init(config.hardware) at __init__ and constructs HardwareSupervisor(manifest, reprobe_callbacks) — no HardwareState instance, no hw_state= kwarg threading"
+    - "UnifiedEngine calls hw_state.initialise({d.role: d.criticality for d in config.hardware.devices}) at __init__ and constructs HardwareSupervisor(manifest, reprobe_callbacks) — no HardwareState instance, no hw_state= kwarg threading"
     - "Every collector and both VideoRingBuffer instances receive a role= kwarg matching their manifest device role (only new kwarg added by Plan 03)"
     - "Any single collector setup() failure during start() is caught by _start_service_graceful, logged, and MUST NOT prevent other collectors or services from starting"
     - "IMU sampler setup() failure at boot is logged but MUST NOT call _force_reboot() — reboot remains reachable only from the runtime i2c_max_resets ladder (pitfall 5)"
@@ -24,7 +24,7 @@ must_haves:
     - "The daemon boots with zero hardware present and logs 'unified_engine_started' (HW-05)"
   artifacts:
     - path: "src/shitbox/events/engine.py"
-      provides: "hw_state.init() call, HardwareSupervisor instantiation, graceful collector start helper, role kwargs, reprobe dispatch"
+      provides: "hw_state.initialise() call, HardwareSupervisor instantiation, graceful collector start helper, role kwargs, reprobe dispatch"
       contains: "HardwareSupervisor"
     - path: "tests/test_engine_boot.py"
       provides: "HW-05 boot tests — all critical missing, IMU setup failure non-fatal"
@@ -35,8 +35,8 @@ must_haves:
   key_links:
     - from: "src/shitbox/events/engine.py"
       to: "src/shitbox/hardware/state.py (module-level)"
-      via: "hw_state.init(config.hardware) at __init__; no instance, module IS the singleton (D-04)"
-      pattern: "hw_state\\.init\\("
+      via: "hw_state.initialise({role: tier}) at __init__; no instance, module IS the singleton (D-04)"
+      pattern: "hw_state\\.initialise\\("
     - from: "src/shitbox/events/engine.py"
       to: "src/shitbox/hardware/supervisor.py"
       via: "self.supervisor = HardwareSupervisor(config.hardware, reprobe_callbacks)"
