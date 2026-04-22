@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: unknown
-stopped_at: "Phase 22 UAT gaps #2/#3/#4 flipped to passed; 22-UAT.md status: partial → resolved; awaiting verifier rerun"
-last_updated: "2026-04-22T10:59:09.592Z"
-last_activity: 2026-04-22 -- Phase --phase execution started
+status: ready_to_plan
+stopped_at: Phase 23 complete (verification closure); Phase 24 next (waits on prints)
+last_updated: "2026-04-22T11:02:33.617Z"
+last_activity: 2026-04-22 Phase 23 executed and verified
 progress:
   total_phases: 13
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 46
-  completed_plans: 42
-  percent: 91
+  completed_plans: 43
+  percent: 93
 ---
 
 # Project State
@@ -22,28 +22,28 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase --phase — 23
+**Current focus:** Phase 23 complete; Phase 24 next (Phase 20 Physical Integration Completion, waits on prints)
 
 ## Current Position
 
-Phase: --phase (23) — EXECUTING
-Plan: 1 of --name
-  IMU-02 retargeted from ~100 Hz to 25 Hz (commits 1e577bc → bd49055 on phase branch)
-  Test suite: 361 passed, 1 skipped on macOS dev laptop
-  22-UAT: all 4 gaps closed (status: resolved) — Gap #1/#3 via 22-04 driver-cache sync, Gap #2 via 22-07 spec retarget + 5af6485 Pi UAT, Gap #4 via 22-06 generate_events_json extension
-  Pending: gsd-verifier rerun (auto_zero_accepted on first stationary window still awaiting real-car GPS lock; poll-rate already Pi-UAT confirmed)
-  Traceability: IMU-02 row Complete in REQUIREMENTS.md (Pi UAT confirmed, commit 5af6485)
+Phase: 23 (verification-closure-and-traceability-sweep) — COMPLETE (VERIFICATION PASS)
+  All 3 plans done:
+    - 23-01: 18-VERIFICATION.md created (8 Phase 18 requirements satisfied)
+    - 23-02: NARR-08b corrected in 19-VERIFICATION.md (stale BLOCKED → SATISFIED, score 11/11)
+    - 23-03: REQUIREMENTS.md traceability refreshed (17 checkboxes + 19 rows flipped); ROADMAP.md Phase 21/22 rows updated
+  23-VERIFICATION.md: 5/5 success criteria VERIFIED; one informational note re IMU-02 checkbox/table mismatch (pre-existing Phase 22 Pi UAT deferral, out of scope for this phase).
 
-Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE (VERIFICATION PASS)
-  All 5 plans done. Post-review follow-ups landed:
+Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — COMPLETE
+  7/7 plans; verified 2026-04-22 with deferred Pi UAT on IMU-02 sustained poll rate.
 
-    - GpsdClient TPV → hw_state.report_present("gps")
-    - Inline HARDWARE panel replaced with top-bar HW button + full-screen modal
-  4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
+Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
+  5/5 plans; verified 2026-04-21. 4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Last activity: 2026-04-22 -- Phase --phase execution started
+Next: Phase 24 (Phase 20 Physical Integration Completion) waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24.
 
-Progress: [██████████] 100%
+Last activity: 2026-04-22 Phase 23 executed and verified
+
+Progress: 8/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
@@ -112,8 +112,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-22T09:42:00Z
-Stopped at: Phase 22 UAT gaps #2/#3/#4 flipped to passed; 22-UAT.md status: partial → resolved; awaiting verifier rerun
+Last session: 2026-04-22T11:02:33.611Z
+Stopped at: Phase 23 complete (verification closure and traceability sweep)
 Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)
