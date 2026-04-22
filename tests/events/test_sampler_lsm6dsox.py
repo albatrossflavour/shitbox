@@ -54,12 +54,40 @@ def _make_sampler(
     )
 
 
+class _FakeLSM6DSOX(MagicMock):
+    """MagicMock subclass that simulates the Adafruit driver's range-setter
+    side effect: assigning ``accelerometer_range`` also updates
+    ``_cached_accel_range`` (same for gyro). The real library does this in
+    the property setter — without it the cache-alignment tests can't
+    distinguish "setter called" from "cache aligned".
+    """
+
+    @property
+    def accelerometer_range(self):  # type: ignore[override]
+        return self._cached_accel_range
+
+    @accelerometer_range.setter
+    def accelerometer_range(self, value):
+        # Real driver does: self._accel_range = value (RWBits masked RMW);
+        # self._cached_accel_range = value; sleep(0.2). The cache update is
+        # the only behaviour the tests care about.
+        self._cached_accel_range = value
+
+    @property
+    def gyro_range(self):  # type: ignore[override]
+        return self._cached_gyro_range
+
+    @gyro_range.setter
+    def gyro_range(self, value):
+        self._cached_gyro_range = value
+
+
 def _make_fake_lsm6dsox(
     accel: tuple = (9.81, 0.0, 0.0),
     gyro: tuple = (0.0, 0.0, 0.0),
 ) -> MagicMock:
     """Build a mock that looks like adafruit_lsm6ds.lsm6dsox.LSM6DSOX."""
-    sensor = MagicMock()
+    sensor = _FakeLSM6DSOX()
     sensor.acceleration = accel  # m/s²
     sensor.gyro = gyro           # rad/s
     # Seed the Adafruit driver's range cache to the constructor defaults — the
