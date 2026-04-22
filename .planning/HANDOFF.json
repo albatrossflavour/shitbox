@@ -44,15 +44,8 @@
     {"decision": "castle_fan_arch_upper dropped (parked module)", "rationale": "43 mm decorative ring centred at z=51.5 dipped 3 mm below the seam (z=30), forcing supports under the upper print. Fan APERTURE and mounting screw holes remain in pi_case_fan_cutout — fan still works, just no decorative ring.", "phase": "20-01"},
     {"decision": "TOWER_OD = 12 (was 14)", "rationale": "From prior session — kept. 3.4 mm margin between Pi standoff boss and tower centre. Now also hosts the 4.1 mm magnet pockets with 3.95 mm of PETG sleeve around each.", "phase": "20-01"}
   ],
-  "uncommitted_files": [
-    ".planning/HANDOFF.json (THIS update)",
-    ".planning/phases/20-physical-integration/.continue-here.md (THIS update)",
-    ".planning/ROADMAP.md (prior session — leftover)",
-    ".planning/STATE.md (prior session — leftover)",
-    "src/shitbox/events/engine.py (NOT this session — Grafana-refactor leftover, do not bundle)",
-    "src/shitbox/sync/timelapse_compiler.py (NOT this session — leftover, do not bundle)",
-    ".planning/phases/22-imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c/.gitkeep (untracked — Phase 22 stub, keep)"
-  ],
+  "uncommitted_files": [],
+  "clean_base_as_of": "2026-04-22T10:50:00+10:00 — working tree is clean. Pause artefacts (HANDOFF + .continue-here) are committed. Prior-session leftovers landed as separate coherent commits: 99b5330 (Phase 22 stub), db9ab36 (bezel FRONT_Y_PAD fix), e7cb555 (timelapse title card with reverse-geocoded location).",
   "next_action": "When the print comes off the Bambu (ETA 2026-04-22 ~16:11): (1) push a single 4×2 N35 magnet into one of the tray's tower pockets and verify it seats with light thumb pressure, no PETG deformation. If too loose, glue. If won't go in, drill out 0.1 mm. (2) Mock-fit the Pi 5 stack in the tray: confirm HDMI cable angle, USB-C clearance, GX12 + SMA bulkhead, M4 flange holes line up to plywood. (3) Install all 8 magnets with consistent polarity (4 tray same pole up, 4 lid opposite pole down — MARK BEFORE INSTALL). (4) Snap upper on, feel for satisfying click + lateral resistance from the alignment tab.",
   "context_notes": "Session resumed from prior pause where the magnet rewire was the only remaining SCAD edit. Executed that, then user pushed back on three more print-complexity issues spotted in OpenSCAD preview: alignment lip overhang on upper, gate arch overhang on gatehouse, and fan ring dipping below seam. Each fix was a deletion or geometry move, not a new feature. Result is a much print-friendlier upper (only fan aperture + lid crenellations + corner battlements + heater shield + arrow slits remain on the upper). Tray gained the alignment tab. Total this-session changes: 5 deletions/moves, 0 new geometry. STL Genus dropped 136 → 92 over the session — measurable simplification. 6 hr print kicked off ~10:11 local on Bambu P1S in PETG.",
   "pi_case_file_invariants": {
