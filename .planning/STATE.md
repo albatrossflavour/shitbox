@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: in_progress
-stopped_at: Phase 22 UAT gaps closed; awaiting verifier rerun
-last_updated: "2026-04-22T09:42:00Z"
-last_activity: 2026-04-22 — Phase 22 UAT gaps #2/#3/#4 flipped to passed (all 4 gaps closed)
+status: unknown
+stopped_at: "Phase 22 UAT gaps #2/#3/#4 flipped to passed; 22-UAT.md status: partial → resolved; awaiting verifier rerun"
+last_updated: "2026-04-22T10:59:09.592Z"
+last_activity: 2026-04-22 -- Phase --phase execution started
 progress:
-  total_phases: 11
+  total_phases: 13
   completed_phases: 7
-  total_plans: 43
+  total_plans: 46
   completed_plans: 42
-  percent: 98
+  percent: 91
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 22 — IMU signal quality (gap closure 22-07: retarget IMU-02 to 25 Hz)
+**Current focus:** Phase --phase — 23
 
 ## Current Position
 
-Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — AWAITING VERIFICATION
-Plan: 7/7 complete (22-07 gap closure landed; SUMMARY.md present for all)
+Phase: --phase (23) — EXECUTING
+Plan: 1 of --name
   IMU-02 retargeted from ~100 Hz to 25 Hz (commits 1e577bc → bd49055 on phase branch)
   Test suite: 361 passed, 1 skipped on macOS dev laptop
   22-UAT: all 4 gaps closed (status: resolved) — Gap #1/#3 via 22-04 driver-cache sync, Gap #2 via 22-07 spec retarget + 5af6485 Pi UAT, Gap #4 via 22-06 generate_events_json extension
@@ -41,7 +41,7 @@ Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE (VERIFICATI
     - Inline HARDWARE panel replaced with top-bar HW button + full-screen modal
   4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Last activity: 2026-04-22 — Phase 22 UAT gaps all closed (status: resolved); awaiting verifier rerun
+Last activity: 2026-04-22 -- Phase --phase execution started
 
 Progress: [██████████] 100%
 
@@ -148,4 +148,4 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
 
-**Planned Phase:** 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — 7 plans — 2026-04-22T06:16:49.089Z
+**Planned Phase:** 23 (Verification Closure and Traceability Sweep) — 3 plans — 2026-04-22T10:38:33.864Z

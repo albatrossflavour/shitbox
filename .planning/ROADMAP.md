@@ -381,7 +381,12 @@ Plans:
 
 **Gap Closure:** Closes audit gaps from `.planning/v2.0-MILESTONE-AUDIT.md` (Phase 18 verification missing; Phase 19 NARR-08b stale blocker; ROADMAP + REQUIREMENTS table drift).
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 23-01-PLAN.md, generate 18-VERIFICATION.md (eight Phase 18 requirements flip to satisfied)
+- [ ] 23-02-PLAN.md, correct NARR-08b stale BLOCKED entry in 19-VERIFICATION.md
+- [ ] 23-03-PLAN.md, refresh REQUIREMENTS.md traceability plus ROADMAP.md progress table
 
 **UI hint**: no
 
@@ -459,6 +464,6 @@ Plans:
 | 20. Physical Integration | v2.0 | 0/3 | Not started | — |
 | 21. Hardware Inventory and Graceful Degradation | v2.0 | 0/5 | Not started | — |
 | 22. IMU Signal Quality and Rollover Detection | v2.0 | 7/7 | Awaiting verification | — |
-| 23. Verification Closure and Traceability Sweep | v2.0 | TBD | Not started | — |
+| 23. Verification Closure and Traceability Sweep | v2.0 | 0/3 | In progress | — |
 | 24. Phase 20 Physical Integration Completion | v2.0 | TBD | Not started (waits on prints) | — |
 | 25. Milestone v2.0 Nyquist Validation Sweep | v2.0 | TBD | Not started | — |
