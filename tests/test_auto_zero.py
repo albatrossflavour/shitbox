@@ -2,11 +2,12 @@
 
 Tests the stationary auto-zero state machine wired into the 1 Hz telemetry
 loop. The state machine pulls stationary windows from the IMU ring buffer
-(to reach the 750-sample floor; 22-07 retarget — 25 Hz x 30 s = 750 samples;
-acceptance floor per IMU-02 is 10 Hz) and applies six guards:
+(to reach the 600-sample floor; 22-07 retarget set 750 = 25 Hz x 30 s, lowered
+to 600 = 20 Hz x 30 s after Pi UAT showed steady ~22 sps with spike windows
+down to ~18; acceptance floor per IMU-02 stays at 10 Hz) and applies six guards:
 
   - GPS fix + speed gate
-  - Minimum sample count (750)
+  - Minimum sample count (600)
   - Per-sample raw combined-g reject (per IMU-05 + RESEARCH Pitfall 5)
   - Per-axis window stddev reject
   - Absolute offset plausibility cap (applies even during bootstrap)
@@ -389,15 +390,17 @@ def test_per_sample_motion_rejected(engine_for_auto_zero) -> None:
 
 
 def test_minimum_sample_count_enforced(engine_for_auto_zero) -> None:
-    """Fewer than 750 samples in window rejects with insufficient_samples.
+    """Fewer than 600 samples in window rejects with insufficient_samples.
 
-    22-07: floor rescaled from 2500 to 750 after retarget from 100 Hz -> 25 Hz.
+    22-07: floor was rescaled 2500 -> 750 (25 Hz x 30 s) on retarget from 100 Hz.
+    Pi UAT showed loop sustains ~22 sps (88% of 25 Hz target), so 750 blocked
+    auto-zero in normal operation. Floor lowered to 600 = 20 Hz x 30 s.
     """
     engine = engine_for_auto_zero
     engine._autozero_bootstrap_done = True
     engine._current_accel_offsets = (0.27, -0.08, 1.02)
 
-    window = _make_window(600, ax=0.28, ay=-0.07, az=1.025, jitter=0.005)
+    window = _make_window(450, ax=0.28, ay=-0.07, az=1.025, jitter=0.005)
     engine.ring_buffer.get_window.return_value = window
 
     _advance_to_window(engine)
@@ -409,8 +412,8 @@ def test_minimum_sample_count_enforced(engine_for_auto_zero) -> None:
                if c.args and c.args[0] == "auto_zero_rejected"]
     hit = [c for c in rejects if c.kwargs.get("reason") == "insufficient_samples"]
     assert len(hit) == 1
-    assert hit[0].kwargs.get("sample_count") == 600
-    assert hit[0].kwargs.get("min_required") == 750
+    assert hit[0].kwargs.get("sample_count") == 450
+    assert hit[0].kwargs.get("min_required") == 600
 
 
 def test_gps_no_fix_never_triggers(engine_for_auto_zero) -> None:

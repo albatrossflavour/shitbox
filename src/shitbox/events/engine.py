@@ -1821,9 +1821,11 @@ class UnifiedEngine:
 
         Implements IMU-05 guards:
           - GPS fix AND speed below stationary gate (both required)
-          - Minimum 750 samples in window (pulled from ~25 Hz ring buffer over
-            `auto_zero_window_seconds`; floor scales linearly with configured rate,
-            22-07 retarget from 100 Hz)
+          - Minimum 600 samples in window (= 20 Hz x 30 s — sized to actual
+            sustained Pi rate ~22 Hz, not the 25 Hz configured target. Pi UAT
+            on 2026-04-22 showed steady ~22 sps with spike windows down to ~18,
+            so the previous 750 floor (25 x 30) blocked auto-zero in normal
+            operation; 600 catches a real degraded window without being noise.)
           - Per-sample raw combined-g reject (any sample magnitude > motion_reject_g)
           - Per-axis window stddev reject (any stddev > motion_stddev_g)
           - Absolute offset plausibility cap (max abs > max_abs_g)
@@ -1860,13 +1862,15 @@ class UnifiedEngine:
         # Reset counter for the next attempt (regardless of outcome).
         self._stationary_elapsed_s = 0.0
 
-        # Pull the window from the ring buffer. 750-sample floor at 25 Hz over 30 s
-        # (22-07 retarget; see REQUIREMENTS.md IMU-02 and 22-poll-rate-baseline-analysis.md).
-        # Acceptance floor per IMU-02 is 10 Hz (300 samples over 30 s would still satisfy
-        # the spec but the code pins the 25 Hz default expectation). A gap here indicates
-        # a ring-buffer or sensor issue.
+        # Pull the window from the ring buffer. 600-sample floor = 20 Hz x 30 s,
+        # sized to observed sustained rate (~22 sps) rather than the 25 Hz configured
+        # target. Pi UAT on 2026-04-22 showed the 750 floor (target x window) blocked
+        # auto-zero during normal operation because the loop runs ~12% behind whatever
+        # target you give it (88% efficiency). Acceptance floor per IMU-02 stays at
+        # 10 Hz; this 600 keeps healthy operation passing while still rejecting truly
+        # degraded ring-buffer or sensor conditions.
         samples = self.ring_buffer.get_window(cfg.auto_zero_window_seconds)
-        min_samples = 750
+        min_samples = 600
         if len(samples) < min_samples:
             log.info(
                 "auto_zero_rejected",
