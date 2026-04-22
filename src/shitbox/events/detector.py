@@ -127,6 +127,12 @@ class DetectorConfig:
     pre_event_seconds: float = 5.0
     post_event_seconds: float = 10.0
 
+    # Application poll rate (Hz). Mirrored from LSM6DSOXConfig.sample_rate_hz by
+    # engine wiring so the detector's rolling-window sizes match the ring buffer's
+    # fill rate. Default aligns with LSM6DSOXConfig default (25 Hz per 22-07).
+    # Placed at end of dataclass for positional-arg call-site safety.
+    sample_rate_hz: float = 25.0
+
 
 class EventDetector:
     """Detects driving events from high-rate IMU data.
@@ -164,11 +170,16 @@ class EventDetector:
         # Stats
         self.events_detected: Dict[EventType, int] = {t: 0 for t in EventType}
 
-        # Rolling window for rough road detection
+        # Rolling window for rough road detection. Sized from ms window * Hz / 1000
+        # so it scales with the application poll rate (22-07). Pre-22-07 this hardcoded
+        # a /10 divisor assuming 100 Hz, which silently broke at any other rate.
+        # max(1, ...) prevents a zero-size window if someone configures a pathological
+        # <1 Hz rate with a <1 s window.
         self._az_window: List[float] = []
-        self._az_window_size = int(
-            self.config.rough_road_window_ms / 10
-        )  # Assuming ~100 Hz
+        self._az_window_size = max(
+            1,
+            int(self.config.rough_road_window_ms * self.config.sample_rate_hz / 1000.0),
+        )
 
     def process_sample(self, sample: IMUSample) -> Optional[Event]:
         """Process a new sample and check for events.

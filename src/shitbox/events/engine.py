@@ -88,7 +88,8 @@ class EngineConfig:
     """Configuration for the unified engine."""
 
     # High-rate IMU sampling (LSM6DSOX via circuitpython)
-    imu_sample_rate_hz: float = 104.0
+    # 22-07 retarget: 104.0 -> 25.0 Hz; matches LSM6DSOXConfig and config.yaml defaults.
+    imu_sample_rate_hz: float = 25.0
     ring_buffer_seconds: float = 30.0
     accel_offset_x: float = 0.0
     accel_offset_y: float = 0.0
@@ -431,6 +432,12 @@ class UnifiedEngine:
             on_sample=self._on_imu_sample,
         )
 
+        # 22-07: detector's rolling-window sizes (e.g. _az_window_size for ROUGH_ROAD)
+        # must scale with the application poll rate. Mirror imu_sample_rate_hz onto
+        # the DetectorConfig so the two stay in lock-step, regardless of where
+        # config.detector was constructed (default_factory or future from_yaml_config
+        # wiring). This is the one source-of-truth invariant from 22-07's plan.
+        config.detector.sample_rate_hz = config.imu_sample_rate_hz
         self.detector = EventDetector(
             ring_buffer=self.ring_buffer,
             config=config.detector,
@@ -1814,7 +1821,9 @@ class UnifiedEngine:
 
         Implements IMU-05 guards:
           - GPS fix AND speed below stationary gate (both required)
-          - Minimum 2500 samples in window (pulled from 100 Hz ring buffer)
+          - Minimum 750 samples in window (pulled from ~25 Hz ring buffer over
+            `auto_zero_window_seconds`; floor scales linearly with configured rate,
+            22-07 retarget from 100 Hz)
           - Per-sample raw combined-g reject (any sample magnitude > motion_reject_g)
           - Per-axis window stddev reject (any stddev > motion_stddev_g)
           - Absolute offset plausibility cap (max abs > max_abs_g)
@@ -1851,11 +1860,13 @@ class UnifiedEngine:
         # Reset counter for the next attempt (regardless of outcome).
         self._stationary_elapsed_s = 0.0
 
-        # Pull the window from the 100 Hz ring buffer. 2500-sample floor at
-        # 100 Hz over 30 s is expected; a gap here indicates a ring-buffer or
-        # sensor issue (Checker Issue 3).
+        # Pull the window from the ring buffer. 750-sample floor at 25 Hz over 30 s
+        # (22-07 retarget; see REQUIREMENTS.md IMU-02 and 22-poll-rate-baseline-analysis.md).
+        # Acceptance floor per IMU-02 is 10 Hz (300 samples over 30 s would still satisfy
+        # the spec but the code pins the 25 Hz default expectation). A gap here indicates
+        # a ring-buffer or sensor issue.
         samples = self.ring_buffer.get_window(cfg.auto_zero_window_seconds)
-        min_samples = 2500
+        min_samples = 750
         if len(samples) < min_samples:
             log.info(
                 "auto_zero_rejected",

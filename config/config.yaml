@@ -103,7 +103,13 @@ sensors:
     enabled: true
     i2c_bus: 1
     address: 0x6A
-    sample_rate_hz: 104.0       # application poll rate; sensor runs at 208 Hz internally after phase 22
+    # Application poll rate, retargeted 22-07 from 104 -> 25 Hz.
+    # Sensor ODR stays at 208 Hz internally (CTRL1_XL=0x52, CTRL2_G=0x54) for
+    # aliasing suppression via LPF2 at ODR/10. Documented acceptance floor is 10 Hz
+    # (REQUIREMENTS.md IMU-02) -- values at or above 10 Hz satisfy the requirement;
+    # 25 Hz leaves margin for detector sustain gates
+    # (ROLLOVER 150 ms = 3-4 samples, BIG_CORNER 300 ms = 7-8, HARD_BRAKE 200 ms = 5).
+    sample_rate_hz: 25.0
     accel_offset_x: 0.0          # seed; auto-zero overwrites via trip_state
     accel_offset_y: 0.0
     accel_offset_z: 0.0
