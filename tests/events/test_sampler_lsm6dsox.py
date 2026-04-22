@@ -581,3 +581,125 @@ def test_setup_preserves_ctrl1_xl_and_ctrl2_g_after_cache_sync() -> None:
         f"FS_G (CTRL2_G bits [3:2]) != 0b01 (RANGE_500_DPS) in final write "
         f"0x{last_ctrl2_g:02X}. Got 0b{((last_ctrl2_g >> 2) & 0x03):02b}."
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 22 / plan 22-05: _sample_loop instrumentation
+#
+# Addresses UAT gap 2 (diagnostics only): real 30 s auto-zero windows return
+# 1810-2421 samples where 100 Hz would give ~3000. Root cause is unknown —
+# candidates include I2C contention, driver getter overhead, ring buffer
+# append lock, or on_sample callback cost. This plan ships two structlog
+# lines so we can baseline each candidate on live hardware before prescribing
+# a fix.
+#
+#   sampler_read_rate        — every 10 s window, observed samples/sec
+#   sampler_timing_snapshot  — every Nth sample, per-stage latency breakdown
+#
+# Pacing (absolute-schedule loop at sampler.py lines 236-309) is NOT altered
+# by this plan — instrumentation is bolted on, not a refactor.
+# ---------------------------------------------------------------------------
+
+
+def test_sample_loop_emits_rate_log_every_10_seconds() -> None:
+    """_sample_loop emits ``sampler_read_rate`` at a fixed 10 s cadence.
+
+    Drives the loop under a mocked ``time.perf_counter`` that advances 10 ms
+    per call and flips ``_running`` once the simulated clock passes 11.0 s.
+    Captures structlog output and asserts at least one event has
+    ``event == "sampler_read_rate"`` carrying the expected field set
+    (``samples_per_second``, ``target_hz``, ``window_seconds``,
+    ``samples_dropped_delta``).
+    """
+    import structlog.testing
+
+    buf = RingBuffer(max_seconds=15.0, sample_rate_hz=100.0)
+    sampler = HighRateSampler(ring_buffer=buf, sample_rate_hz=100.0)
+    fake_sensor, _ = _fake_sensor_with_i2c_spy()
+    sampler._lsm6dsox = fake_sensor
+
+    clock = {"t": 0.0}
+
+    def fake_perf_counter() -> float:
+        clock["t"] += 0.01
+        if clock["t"] >= 11.0:
+            sampler._running = False
+        return clock["t"]
+
+    def fake_sleep(seconds: float) -> None:
+        # No-op — perf_counter drives the simulated clock.
+        pass
+
+    sampler._running = True
+    with patch("shitbox.events.sampler.time.perf_counter", side_effect=fake_perf_counter), \
+         patch("shitbox.events.sampler.time.sleep", side_effect=fake_sleep), \
+         structlog.testing.capture_logs() as captured:
+        sampler._sample_loop()
+
+    rate_logs = [e for e in captured if e.get("event") == "sampler_read_rate"]
+    assert len(rate_logs) >= 1, (
+        f"Expected at least one sampler_read_rate event after simulating "
+        f"11 s of loop time; captured events: "
+        f"{[e.get('event') for e in captured]}"
+    )
+
+    event = rate_logs[0]
+    for key in ("samples_per_second", "target_hz", "window_seconds", "samples_dropped_delta"):
+        assert key in event, (
+            f"sampler_read_rate event missing '{key}'. Got keys: {list(event.keys())}"
+        )
+
+
+def test_sample_loop_emits_timing_snapshot_every_100_samples() -> None:
+    """_sample_loop emits ``sampler_timing_snapshot`` every 100 completed samples.
+
+    Drives the loop long enough that ``samples_total`` crosses 100 and then
+    200; asserts at least two ``sampler_timing_snapshot`` events fire with
+    the expected per-stage latency keys.
+    """
+    import structlog.testing
+
+    buf = RingBuffer(max_seconds=15.0, sample_rate_hz=100.0)
+    sampler = HighRateSampler(ring_buffer=buf, sample_rate_hz=100.0)
+    fake_sensor, _ = _fake_sensor_with_i2c_spy()
+    sampler._lsm6dsox = fake_sensor
+
+    # Advance the clock by 10 ms per perf_counter call. At this rate the loop
+    # crosses ~200 samples well before the 3.0 s safety stop fires.
+    clock = {"t": 0.0}
+
+    def fake_perf_counter() -> float:
+        clock["t"] += 0.01
+        if clock["t"] >= 3.0:
+            sampler._running = False
+        return clock["t"]
+
+    def fake_sleep(seconds: float) -> None:
+        pass
+
+    sampler._running = True
+    with patch("shitbox.events.sampler.time.perf_counter", side_effect=fake_perf_counter), \
+         patch("shitbox.events.sampler.time.sleep", side_effect=fake_sleep), \
+         structlog.testing.capture_logs() as captured:
+        sampler._sample_loop()
+
+    snapshot_logs = [e for e in captured if e.get("event") == "sampler_timing_snapshot"]
+    assert len(snapshot_logs) >= 2, (
+        f"Expected at least two sampler_timing_snapshot events (one at the "
+        f"100th sample, one at the 200th). samples_total at loop exit: "
+        f"{sampler.samples_total}. Captured events: "
+        f"{[e.get('event') for e in captured]}"
+    )
+
+    for event in snapshot_logs:
+        for key in (
+            "i2c_read_ms",
+            "ring_buffer_append_ms",
+            "on_sample_callback_ms",
+            "total_cycle_ms",
+            "samples_total",
+        ):
+            assert key in event, (
+                f"sampler_timing_snapshot event missing '{key}'. "
+                f"Got keys: {list(event.keys())}"
+            )
