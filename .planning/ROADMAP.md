@@ -348,8 +348,8 @@ Plans:
 
 Plans:
 - [x] 22-01-sampler-register-config-PLAN.md — LSM6DSOX CTRL1_XL / CTRL2_G / CTRL8_XL register programming (ODR 208 Hz, LPF2 cutoff ~20.8 Hz, FS ±500 dps), AN5272 settle, sampler update_offsets() API, config scaffolding for auto-zero. (IMU-01, IMU-02)
-- [ ] 22-02-rollover-detection-PLAN.md — New ROLLOVER EventType (gx/gy > 250 dps for 150 ms), peak_gx/gy/gz on Event, BIG_CORNER OR-semantics adding gz yaw-rate gate, VIDEO_CAPTURE_EVENTS wiring. (IMU-03, IMU-04)
-- [ ] 22-03-stationary-auto-zero-PLAN.md — Stationary-window state machine (GPS fix + speed<1 km/h), bootstrap-accept-first rule, tolerance/motion/plausibility gates, trip_state persistence, boot-time offset reload. (IMU-05, IMU-06)
+- [x] 22-02-rollover-detection-PLAN.md — New ROLLOVER EventType (gx/gy > 250 dps for 150 ms), peak_gx/gy/gz on Event, BIG_CORNER OR-semantics adding gz yaw-rate gate, VIDEO_CAPTURE_EVENTS wiring. (IMU-03, IMU-04)
+- [x] 22-03-stationary-auto-zero-PLAN.md — Stationary-window state machine (GPS fix + speed<1 km/h), bootstrap-accept-first rule, tolerance/motion/plausibility gates, trip_state persistence, boot-time offset reload. (IMU-05, IMU-06)
 
 ---
 
