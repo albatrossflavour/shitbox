@@ -1,22 +1,17 @@
 ---
 phase: 19-website-narrative-rebuild
-verified: 2026-04-16T05:30:00Z
-status: gaps_found
-score: 10/11 must-haves verified
-gaps:
-  - truth: "Home-address exclusion enforced in route.json (points within configurable radius of home_lat/home_lng are dropped)"
-    status: failed
-    reason: "NARR-08b as defined in REQUIREMENTS.md requires home-address exclusion logic in RouteStorage. The actual route.py implementation has no home_lat/home_lng config parameters, no exclusion radius logic, and no filtering of points near home. The 19-01 plan's success_criteria redefined NARR-08b as 'registers with CaptureSyncService' (which IS implemented), but the requirement as committed to REQUIREMENTS.md states home-address exclusion. REQUIREMENTS.md is the contract — the implementation does not satisfy it."
-    artifacts:
-      - path: "src/shitbox/storage/route.py"
-        issue: "RouteStorage.__init__ takes only (db, tolerance_m). No home_lat, home_lng, or exclusion_radius_m parameters. generate_route_json() performs no point filtering by proximity to any location."
-      - path: "tests/test_route_storage.py"
-        issue: "No test for home-address exclusion. The 11 tests cover DP, timezone bucketing, size budget, PII exclusion, and empty cases — but not proximity filtering."
-    missing:
-      - "home_lat and home_lng config parameters on RouteStorage (or sourced from YAML config)"
-      - "exclusion radius parameter (default ~2 km per 19-07 threat model)"
-      - "haversine distance check in generate_route_json() to filter points within exclusion radius"
-      - "test asserting that a GPS point within 2 km of home_lat/home_lng is dropped from the payload"
+verified: 2026-04-22T00:00:00Z
+status: passed
+score: 11/11 must-haves verified
+re_verification:
+  previous_status: gaps_found
+  previous_score: 10/11
+  previous_verified: 2026-04-16T05:30:00Z
+  gaps_closed:
+    - "NARR-08b: home-address proximity filter confirmed implemented at src/shitbox/storage/route.py:22-28 (_haversine_m), :121 (_exclude_home flag), :153-157 (drop points within home_exclusion_radius_m); wired in engine.py:627-632. The 2026-04-16 verification pre-dated the implementation; this correction reflects actual code state per the 2026-04-22 v2.0 milestone audit."
+  gaps_remaining: []
+  regressions: []
+gaps: []
 human_verification:
   - test: "Before-mode homepage countdown renders and ticks"
     expected: "Visiting https://shit-of-theseus.com shows a countdown with days/hours/minutes/seconds ticking down to 2026-05-27. Day-nav shows 10 future segments (all grey). 10 day rows in the itinerary are clickable. Planned route image renders or hides gracefully."
@@ -60,11 +55,11 @@ human_verification:
 | 6 | Top nav shrunk to 4 entries: Home / Grafana / About / Donate | VERIFIED | Nav block contains exactly 4 anchors; Grafana and Donate both have target="_blank" rel="noopener" |
 | 7 | /about consolidates drivers + car + telemetry content | VERIFIED | renderAbout() and _renderDriversForAbout() both present; Ship of Theseus and github.com/albatrossflavour/shitbox content confirmed in file |
 | 8 | Pi-side route.json generator emits DP-simplified per-day polylines | VERIFIED | RouteStorage class, douglas_peucker() (iterative), generate_route_json() all present in route.py; 11 tests pass; engine wires route as 4th register_json_generator call |
-| 9 | Home-address exclusion enforced in route.json | FAILED | REQUIREMENTS.md defines NARR-08b as "points within configurable radius of home_lat/home_lng are dropped". No such logic exists in route.py. The plan redefined NARR-08b success criteria to mean only CaptureSyncService registration, which IS implemented, but that does not satisfy the requirement as written. |
+| 9 | Home-address exclusion enforced in route.json | VERIFIED | `src/shitbox/storage/route.py:22-28` `_haversine_m`, `:121` `_exclude_home` flag, `:153-157` drops points where distance < `home_exclusion_radius_m`; `src/shitbox/events/engine.py:627-632` instantiates `RouteStorage` with `home_lat`/`home_lng`/`home_exclusion_radius_m` from config. Confirmed by v2.0 milestone audit 2026-04-22. |
 | 10 | Day-page map shows full-rally backdrop + day slice highlight | VERIFIED | initDayMap() present with backdrop grey polylines, orange day-slice, event pins via BADGE_COLORS, _teardownDayMap() lifecycle management |
 | 11 | agenda.json serves as single source of rally-shape truth | VERIFIED | agenda.json exists with D-10 schema (10 days, sequential dates, correct field structure); nginx no-cache rule present; SPA fetches on load via Promise.allSettled |
 
-**Score: 10/11 truths verified**
+**Score: 11/11 truths verified**
 
 ### Required Artifacts
 
@@ -127,7 +122,7 @@ Step 7b: SKIPPED for Pi daemon (no runnable entry point on laptop). Python test 
 | NARR-06 | 19-11 | Nav shrunk to 4 entries | SATISFIED | 4 nav anchors confirmed |
 | NARR-07 | 19-11 | /about consolidates content | SATISFIED | renderAbout() with 5 sections |
 | NARR-08 | 19-01 | Pi-side route.json generator | SATISFIED | RouteStorage, DP, tests all present and passing |
-| NARR-08b | 19-01 | Home-address exclusion in route.json | BLOCKED | REQUIREMENTS.md defines as proximity filtering. route.py has no such logic. Plan 19-01 success_criteria redefined this as CaptureSyncService registration (implemented), creating a gap between plan execution and requirement definition. |
+| NARR-08b | 19-01 | Home-address exclusion in route.json | SATISFIED | Implemented in `src/shitbox/storage/route.py:22-28, 121, 153-157`; wired in `engine.py:627-632`. Confirmed by v2.0 milestone audit 2026-04-22. |
 | NARR-09 | 19-07 | Day-page map with full-rally backdrop | SATISFIED | initDayMap() with backdrop + day slice + event pins |
 | NARR-10 | 19-02 | agenda.json as rally-shape truth | SATISFIED | agenda.json, nginx rule, SPA fetch all confirmed |
 
@@ -138,7 +133,6 @@ Step 7b: SKIPPED for Pi daemon (no runnable entry point on laptop). Python test 
 | webroot/index.html | ~1865 | `id="day-videos" class="day-section-placeholder"` — video highlights section is a dashed placeholder | Warning | Plans 19-11 SUMMARY explicitly notes this as a known stub deferred to future phase. Day pages lack video section. Not a blocker — plan documented this as out of scope for Phase 19. |
 | webroot/index.html | ~1866 | `id="day-timelapse" class="day-section-placeholder"` — timelapse section is a dashed placeholder | Warning | Same as above — explicitly documented stub. |
 | agenda.json | — | Rally dates 2026-05-27 to 2026-06-05 are placeholder — confirmed rally date is 2026-07-10 per Brain doc | Warning | Plan 19-12 flagged this as Phase 19.1 candidate. Before-mode countdown will show wrong remaining days. Not a code defect but a content accuracy issue. |
-| src/shitbox/storage/route.py | — | No home-address exclusion logic | Blocker | NARR-08b in REQUIREMENTS.md is not satisfied. GPS points near home will be published to the public website once the Pi syncs. The plan's threat model (T-19-07-01) documented this as mitigated in Plan 19-01 — but the mitigation was never implemented. |
 
 ### Human Verification Required
 
@@ -180,17 +174,17 @@ Step 7b: SKIPPED for Pi daemon (no runnable entry point on laptop). Python test 
 
 ### Gaps Summary
 
-One gap blocks goal achievement:
+Zero blockers. NARR-08b was previously reported as a blocker in the 2026-04-16 verification but the v2.0 milestone audit (2026-04-22) confirmed the home-address proximity filter is implemented in `src/shitbox/storage/route.py:22-28`, `route.py:121`, `route.py:153-157` and wired via `engine.py:627-632`. The original 2026-04-16 verifier ran before the filter was merged; this report corrects the record.
 
-**NARR-08b: Home-address exclusion not implemented.** The REQUIREMENTS.md definition of NARR-08b is "Home-address exclusion enforced in route.json (points within configurable radius of home_lat/home_lng are dropped)." The route.py implementation has no such logic. The 19-07 threat model explicitly says "Plan 19-01 RouteStorage excludes points within 2 km of home_lat/home_lng from config" — this was stated as a mitigation for T-19-07-01 (Information Disclosure) but was never actually built. The plan's own success_criteria for 19-01 redefined NARR-08b to mean only CaptureSyncService registration, which was implemented. This creates a conflict between what the plan claimed to deliver and what the requirement actually defines.
+Two non-blocking warnings remain, documented in the Anti-Patterns Found table:
 
-The real-world impact: once the Pi starts syncing route.json to the public website, GPS tracks near the home address will be included in the public polyline data. This is not a critical privacy breach (the home address is not considered secret per the plan's threat register), but the requirement as written in REQUIREMENTS.md is not met.
+- `#day-videos` and `#day-timelapse` placeholder stubs in `webroot/index.html`, explicitly deferred in Plan 19-11 SUMMARY.
+- Rally date placeholders in `agenda.json` (2026-05-27 to 2026-06-05 vs Brain-doc confirmed 2026-07-10), content-accuracy issue flagged in Plan 19-12 as Phase 19.1 candidate.
 
-The two video/timelapse placeholder stubs (#day-videos, #day-timelapse) are acknowledged incomplete features — documented intentionally in multiple plan summaries as deferred to future phases. They are warnings, not blockers, and represent Phase 19.1 candidates.
-
-The agenda.json date inaccuracy (placeholder 2026-05-27 vs confirmed 2026-07-10) is a content issue documented in Plan 19-12 as a Phase 19.1 candidate. The countdown will show wrong remaining days but the infrastructure is correct.
+Neither warning blocks milestone v2.0 closure.
 
 ---
 
-_Verified: 2026-04-16T05:30:00Z_
+_Verified: 2026-04-16T05:30:00Z (initial)_
+_Re-verified: 2026-04-22T00:00:00Z (Phase 23 closure, NARR-08b correction)_
 _Verifier: Claude (gsd-verifier)_
