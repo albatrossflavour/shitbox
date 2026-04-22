@@ -431,6 +431,22 @@ class EventStorage:
                 "peak_g": meta.get("peak_value"),
                 "duration_ms": meta.get("duration_ms"),
             }
+            # Per-axis accel peaks (written by Event.to_dict for all event types; silently
+            # missing from this feed pre-phase-22 — additive restore). Rounded to 3 decimals
+            # for wire cleanliness. `is not None` so that a legit 0.0 g reading still surfaces.
+            if meta.get("peak_ax") is not None:
+                entry["peak_ax"] = round(float(meta["peak_ax"]), 3)
+            if meta.get("peak_ay") is not None:
+                entry["peak_ay"] = round(float(meta["peak_ay"]), 3)
+            if meta.get("peak_az") is not None:
+                entry["peak_az"] = round(float(meta["peak_az"]), 3)
+            # Per-axis gyro peaks (added in 22-02 for ROLLOVER and BIG_CORNER; snapshot at peak).
+            if meta.get("peak_gx") is not None:
+                entry["peak_gx"] = round(float(meta["peak_gx"]), 3)
+            if meta.get("peak_gy") is not None:
+                entry["peak_gy"] = round(float(meta["peak_gy"]), 3)
+            if meta.get("peak_gz") is not None:
+                entry["peak_gz"] = round(float(meta["peak_gz"]), 3)
             if meta.get("speed_kmh") is not None:
                 entry["speed_kmh"] = meta["speed_kmh"]
             if meta.get("lat") is not None:
