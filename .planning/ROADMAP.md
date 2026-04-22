@@ -41,6 +41,10 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [x] **Phase 19: Website Narrative Rebuild** - Day-centric IA with before/live/archive modes, timeline spine, progress-bar day nav (completed 2026-04-17)
 - [ ] **Phase 20: Physical Integration** - 3D-printed enclosures for Pi, screen, and camera; dash mounting; system verification
 - [ ] **Phase 21: Hardware Inventory and Graceful Degradation** - Per-device manifest, boot-time presence validation, graceful handling of missing/lost I2C and USB devices, TTS/OLED/UI status
+- [ ] **Phase 22: IMU Signal Quality and Rollover Detection** - LSM6DSOX register programming, ROLLOVER event type, stationary auto-zero (awaiting final milestone verifier)
+- [ ] **Phase 23: Verification Closure and Traceability Sweep** - Formal verify Phase 18, correct stale NARR-08b note, refresh REQUIREMENTS.md + ROADMAP.md tables (gap closure)
+- [ ] **Phase 24: Phase 20 Physical Integration Completion** - Finish deferred 20-03 Task 3 (OpenSCAD review + Pi boot verify), produce 20-VERIFICATION.md (gap closure, waits on prints)
+- [ ] **Phase 25: Milestone v2.0 Nyquist Validation Sweep** - `/gsd-validate-phase` across phases 12/13/17/18/19/20/21 (gap closure)
 
 ## Phase Details
 
@@ -357,6 +361,78 @@ Plans:
 
 ---
 
+---
+
+### Phase 23: Verification Closure and Traceability Sweep
+
+**Goal:** Close the paperwork gaps preventing v2.0 milestone from passing — run the formal verifier pass against Phase 18 (all code wired per integration checker), correct the stale NARR-08b BLOCKED note in Phase 19 VERIFICATION.md, and refresh the REQUIREMENTS.md traceability table + ROADMAP.md progress table to reflect actual state.
+
+**Depends on:** Phase 22 complete (milestone audit produced)
+
+**Requirements:** (verification artefacts only) NOTE-03, FUEL-03, DRVR-04, DRVR-05, WEB-01, WEB-02, WEB-03, WEB-04, NARR-08b — code already satisfies them per the integration checker; this phase produces paperwork.
+
+**Success Criteria** (what must be TRUE):
+
+  1. `.planning/phases/18-website-revamp/18-VERIFICATION.md` exists with status `passed` for all eight Phase 18 requirements
+  2. `.planning/phases/19-website-narrative-rebuild/19-VERIFICATION.md` no longer lists NARR-08b as BLOCKED; reflects the home-address proximity filter as implemented at `src/shitbox/storage/route.py:22-28, 121, 153-157`
+  3. REQUIREMENTS.md traceability table shows Status `Complete` for every requirement whose VERIFICATION.md reports `satisfied`
+  4. REQUIREMENTS.md checkbox list matches the traceability table's Status column
+  5. ROADMAP.md progress table shows Phase 21 `Complete`, Phase 22 `Verified`, with correct completion dates
+
+**Gap Closure:** Closes audit gaps from `.planning/v2.0-MILESTONE-AUDIT.md` (Phase 18 verification missing; Phase 19 NARR-08b stale blocker; ROADMAP + REQUIREMENTS table drift).
+
+**Plans:** TBD
+
+**UI hint**: no
+
+---
+
+### Phase 24: Phase 20 Physical Integration Completion
+
+**Goal:** Finish the deferred third task of plan 20-03 — OpenSCAD visual review of all four SCAD designs plus full system boot verification with the Pi installed in the car — then produce 20-VERIFICATION.md to close PHYS-01..04.
+
+**Depends on:** Phase 20 (existing SCAD files), physical 3D prints complete and fitted.
+
+**Requirements:** PHYS-01, PHYS-02, PHYS-03, PHYS-04
+
+**Success Criteria** (what must be TRUE):
+
+  1. All four SCAD files (Pi stack, screen bezel, VESA backplate, camera cradle) visually reviewed; rendered previews or in-situ photos captured
+  2. Physical prints test-fitted to the real hardware; any geometry errors documented and corrected
+  3. Full system boots in installed in-car configuration with every declared sensor present per `HardwareState`
+  4. `.planning/phases/20-physical-integration/20-VERIFICATION.md` exists with status `passed` for PHYS-01..04
+
+**Gap Closure:** Closes plan 20-03 Task 3 deferral and PHYS-01..04 unverified state.
+
+**Plans:** TBD (deferred — waits on prints)
+
+**UI hint**: no
+
+---
+
+### Phase 25: Milestone v2.0 Nyquist Validation Sweep
+
+**Goal:** Bring every executed v2.0 phase (12, 13, 17, 18, 19, 20, 21) to Nyquist compliance by running `/gsd-validate-phase` against each, filling any test coverage gaps the auditor identifies, and flipping `nyquist_compliant: true` + `wave_0_complete: true` in each VALIDATION.md.
+
+**Depends on:** Phase 23 (Phase 18 verified) for the phase-18 validate; Phase 24 (Phase 20 verified) for the phase-20 validate. Phases 12/13/17/19/21 can be validated independently.
+
+**Requirements:** (validation artefacts only — no new behavioural requirements)
+
+**Success Criteria** (what must be TRUE):
+
+  1. `.planning/phases/12-*/VALIDATION.md` has `nyquist_compliant: true` and `wave_0_complete: true`
+  2. Same for phases 13, 17, 18, 19, 20, 21
+  3. Any auditor-identified test coverage gaps have corresponding tests landed in the repo
+  4. Auditor-emitted REVIEW.md for each validated phase shows no BLOCK-severity findings
+
+**Gap Closure:** Closes the Nyquist audit gap (7 phases partial → compliant).
+
+**Plans:** TBD
+
+**UI hint**: no
+
+---
+
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
@@ -383,3 +459,6 @@ Plans:
 | 20. Physical Integration | v2.0 | 0/3 | Not started | — |
 | 21. Hardware Inventory and Graceful Degradation | v2.0 | 0/5 | Not started | — |
 | 22. IMU Signal Quality and Rollover Detection | v2.0 | 7/7 | Awaiting verification | — |
+| 23. Verification Closure and Traceability Sweep | v2.0 | TBD | Not started | — |
+| 24. Phase 20 Physical Integration Completion | v2.0 | TBD | Not started (waits on prints) | — |
+| 25. Milestone v2.0 Nyquist Validation Sweep | v2.0 | TBD | Not started | — |
