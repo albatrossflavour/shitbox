@@ -17,6 +17,7 @@ sampler thread never runs with stale config seeds.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,7 +25,6 @@ import pytest
 # IMPORTANT: IMUSample is exported from ring_buffer, not sampler (Checker Issue 8).
 from shitbox.events.ring_buffer import IMUSample, RingBuffer  # noqa: F401
 from shitbox.storage.database import Database  # noqa: F401
-
 
 # ---------------------------------------------------------------------------
 # Task 1 tests (config wiring) — these pass as soon as Task 1 lands
@@ -88,8 +88,6 @@ def test_engine_config_loads_auto_zero_from_yaml() -> None:
     from shitbox.utils.config import load_config
 
     # Load the repo's config.yaml explicitly so we don't pick up a CWD surprise.
-    from pathlib import Path
-
     yaml_path = Path(__file__).resolve().parents[1] / "config" / "config.yaml"
     config = load_config(str(yaml_path))
     engine_cfg = EngineConfig.from_yaml_config(config)
@@ -159,8 +157,6 @@ def engine_for_auto_zero():
     with just the attributes `_maybe_auto_zero` and `_load_persisted_offsets`
     need. The real engine wires these into the same attribute names.
     """
-    from types import SimpleNamespace
-
     from shitbox.events.engine import EngineConfig, UnifiedEngine
 
     cfg = EngineConfig(
