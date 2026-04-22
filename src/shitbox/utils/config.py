@@ -48,7 +48,8 @@ class LSM6DSOXConfig:
     enabled: bool = True
     i2c_bus: int = 1
     address: int = 0x6A
-    sample_rate_hz: float = 104.0  # application poll rate; sensor ODR is 208 Hz internally after phase 22
+    # application poll rate; sensor ODR is 208 Hz internally after phase 22
+    sample_rate_hz: float = 104.0
     accel_offset_x: float = 0.0   # g, subtracted after unit conversion
     accel_offset_y: float = 0.0
     accel_offset_z: float = 0.0

@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from shitbox.events.ring_buffer import RingBuffer
+from shitbox.events.ring_buffer import IMUSample, RingBuffer
 from shitbox.events.sampler import HighRateSampler
 
 
@@ -278,3 +278,55 @@ def test_update_offsets_replaces_all_three() -> None:
     assert sampler._accel_offset_x == 1.0
     assert sampler._accel_offset_y == 2.0
     assert sampler._accel_offset_z == 3.0
+
+
+def test_sample_loop_rate() -> None:
+    """IMU-02: the application poll rate remains ~100 Hz after Phase 22.
+
+    Drives ``_sample_loop`` for 1 simulated second under a monotonic fake
+    ``time.perf_counter`` and asserts approximately 100 reads occurred.
+    Register reconfiguration in setup() does NOT change loop pacing —
+    this test fails if a future edit changes sample_rate_hz or
+    restructures pacing so the poll rate drifts outside 95-110 Hz.
+    """
+    buf = RingBuffer(max_seconds=5.0, sample_rate_hz=100.0)
+    sampler = HighRateSampler(ring_buffer=buf, sample_rate_hz=100.0)
+    fake_sensor, _ = _fake_sensor_with_i2c_spy()
+    sampler._lsm6dsox = fake_sensor
+
+    # Monotonic clock: each call advances 10 ms. Once the simulated clock
+    # passes 1.0 s, flip `_running` so the next `while self._running:` check
+    # exits the loop. Polling the stop flag from inside `perf_counter` (rather
+    # than from `fake_sleep`) is required because when we're running at the
+    # target rate the loop's sleep_time is zero or negative — `time.sleep` is
+    # not invoked every iteration, so a sleep-side stop never fires.
+    clock = {"t": 0.0}
+
+    def fake_perf_counter() -> float:
+        clock["t"] += 0.01
+        if clock["t"] >= 1.0:
+            sampler._running = False
+        return clock["t"]
+
+    def fake_sleep(seconds: float) -> None:
+        # No-op — we drive time via perf_counter above.
+        pass
+
+    read_count = {"n": 0}
+    original_read = sampler._read_sample
+
+    def counting_read() -> IMUSample:
+        read_count["n"] += 1
+        return original_read()
+
+    sampler._running = True
+    with patch("shitbox.events.sampler.time.perf_counter", side_effect=fake_perf_counter), \
+         patch("shitbox.events.sampler.time.sleep", side_effect=fake_sleep), \
+         patch.object(sampler, "_read_sample", side_effect=counting_read):
+        sampler._sample_loop()
+
+    assert 95 <= read_count["n"] <= 110, (
+        f"IMU-02 regression: expected ~100 reads in 1 simulated second "
+        f"at sample_rate_hz=100.0, got {read_count['n']}. Check _sample_loop "
+        f"pacing and sampler config sample_rate_hz."
+    )
