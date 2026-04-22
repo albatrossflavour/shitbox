@@ -559,6 +559,7 @@ class UnifiedEngine:
                 captures_dir=config.captures_dir,
                 fps=config.timelapse_compile_fps,
                 intro_video=config.video_buffer_intro_video,
+                db_path=config.database_path,
             )
 
         # Capture sync (rsync to NAS)

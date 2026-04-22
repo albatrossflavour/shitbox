@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import threading
 import time
 from datetime import date, datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from shitbox.utils.logging import get_logger
 
@@ -33,13 +34,23 @@ class TimelapseCompiler:
 
     OUTPUT_FPS = 24
     MAX_SECONDS = 120
+    TITLE_CARD_SECONDS = 2.5
 
-    def __init__(self, captures_dir: str, fps: int = 24, intro_video: str = "") -> None:
+    def __init__(
+        self,
+        captures_dir: str,
+        fps: int = 24,
+        intro_video: str = "",
+        db_path: str = "",
+    ) -> None:
         self._captures_dir = Path(captures_dir)
         self._fps = fps  # kept for compatibility; dynamic fps overrides per compile
         self._intro_video = intro_video
+        self._db_path = db_path
         self._thread: Optional[threading.Thread] = None
         self._running = False
+        self._geocoder: Any = None
+        self._geocoder_tried = False
 
     def start(self) -> None:
         """Kick off background compilation and day-rollover watcher."""
@@ -53,6 +64,136 @@ class TimelapseCompiler:
     def stop(self) -> None:
         """Stop the day-rollover watcher."""
         self._running = False
+
+    def _first_gps_fix(self, day: str) -> Optional[tuple[float, float, str]]:
+        """Return (lat, lon, timestamp_utc) of the first GPS fix on ``day``, or None."""
+        if not self._db_path:
+            return None
+        try:
+            conn = sqlite3.connect(f"file:{self._db_path}?mode=ro", uri=True, timeout=5)
+            conn.row_factory = sqlite3.Row
+            try:
+                row = conn.execute(
+                    "SELECT timestamp_utc, latitude, longitude FROM readings "
+                    "WHERE sensor_type='gps' AND latitude IS NOT NULL "
+                    "AND longitude IS NOT NULL AND substr(timestamp_utc,1,10)=? "
+                    "ORDER BY timestamp_utc ASC LIMIT 1",
+                    (day,),
+                ).fetchone()
+            finally:
+                conn.close()
+            if row is None:
+                return None
+            return float(row["latitude"]), float(row["longitude"]), row["timestamp_utc"]
+        except Exception as exc:
+            log.debug("timelapse_first_gps_query_failed", date=day, error=str(exc))
+            return None
+
+    def _resolve_place_name(self, lat: float, lon: float) -> Optional[str]:
+        """Reverse-geocode (lat, lon) to a place name. Lazy-inits the library."""
+        if not self._geocoder_tried:
+            self._geocoder_tried = True
+            try:
+                import reverse_geocoder as rg  # type: ignore[import-untyped]
+                self._geocoder = rg
+            except Exception as exc:
+                log.debug("timelapse_geocoder_unavailable", error=str(exc))
+                self._geocoder = None
+        if self._geocoder is None:
+            return None
+        try:
+            results = self._geocoder.search((lat, lon))
+            if not results:
+                return None
+            r = results[0]
+            name = r.get("name", "") or ""
+            admin1 = r.get("admin1", "") or ""
+            if name and admin1:
+                return f"{name}, {admin1}"
+            return name or None
+        except Exception as exc:
+            log.debug("timelapse_geocode_failed", error=str(exc))
+            return None
+
+    @staticmethod
+    def _escape_drawtext(s: str) -> str:
+        """Escape characters that are special to ffmpeg drawtext ``text=`` values."""
+        return s.replace("\\", r"\\").replace(":", r"\:").replace("'", r"\'")
+
+    def _generate_title_card(
+        self, day: str, output_dir: Path, start_mtime: Optional[float]
+    ) -> Optional[Path]:
+        """Render a title card MP4 announcing the day's start. Returns path or None."""
+        card_path = output_dir / "timelapse.card.mp4"
+
+        try:
+            dt = datetime.strptime(day, "%Y-%m-%d")
+        except ValueError:
+            return None
+        date_line = dt.strftime("%A, %-d %B %Y")
+
+        location: Optional[str] = None
+        time_line: Optional[str] = None
+        gps = self._first_gps_fix(day)
+        if gps is not None:
+            lat, lon, ts = gps
+            location = self._resolve_place_name(lat, lon)
+            try:
+                fix_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                time_line = fix_dt.astimezone().strftime("%H:%M")
+            except Exception:
+                pass
+
+        if time_line is None and start_mtime is not None:
+            time_line = datetime.fromtimestamp(start_mtime).strftime("%H:%M")
+
+        filters = [
+            "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(date_line) + "'"
+            ":fontsize=44:fontcolor=0xf0dbb8:x=(w-text_w)/2:y=h/2-120",
+        ]
+        if location:
+            filters.append(
+                "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(location) + "'"
+                ":fontsize=72:fontcolor=white:x=(w-text_w)/2:y=h/2-40"
+            )
+        if time_line:
+            filters.append(
+                "drawtext=font=DejaVu Sans:text='"
+                + self._escape_drawtext("Started " + time_line)
+                + "':fontsize=36:fontcolor=0xc9d1d9:x=(w-text_w)/2:y=h/2+60"
+            )
+        filters.append(
+            "drawtext=font=DejaVu Sans:text='shit-of-theseus.com'"
+            ":fontsize=22:fontcolor=0x8b949e:x=(w-text_w)/2:y=h-60"
+        )
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "lavfi",
+            "-i", f"color=0x0d1117:size=1280x720:rate=24:duration={self.TITLE_CARD_SECONDS}",
+            "-vf", ",".join(filters),
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+            "-an",
+            str(card_path),
+        ]
+        try:
+            r = subprocess.run(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=60
+            )
+            if r.returncode == 0 and card_path.exists() and card_path.stat().st_size > 0:
+                log.info(
+                    "timelapse_title_card_generated",
+                    date=day,
+                    location=location,
+                    time=time_line,
+                )
+                return card_path
+            stderr = r.stderr.decode()[-400:] if r.stderr else ""
+            log.warning("timelapse_title_card_failed", date=day, stderr=stderr)
+        except Exception as exc:
+            log.error("timelapse_title_card_error", date=day, error=str(exc))
+        card_path.unlink(missing_ok=True)
+        return None
 
     def _run(self) -> None:
         """Compile pending days at startup, then watch for day rollover."""
@@ -198,20 +339,36 @@ class TimelapseCompiler:
                     tmp_intro.unlink(missing_ok=True)
 
                 if intro_ok:
-                    cmd = [
-                        "ffmpeg", "-y",
-                        "-i", str(tmp_intro),
-                        "-i", str(tmp_frames),
-                        "-filter_complex", "[0:v][1:v]concat=n=2:v=1[out]",
+                    # Title card — sits between the static intro and the live footage
+                    # so the viewer lands gently with a date/location/time marker.
+                    first_frame_mtime = frames[0].stat().st_mtime if frames else None
+                    tmp_card = self._generate_title_card(day, output_dir, first_frame_mtime)
+
+                    clips = [tmp_intro]
+                    if tmp_card is not None:
+                        clips.append(tmp_card)
+                    clips.append(tmp_frames)
+                    n = len(clips)
+                    concat_filter = (
+                        "".join(f"[{i}:v]" for i in range(n)) + f"concat=n={n}:v=1[out]"
+                    )
+
+                    cmd = ["ffmpeg", "-y"]
+                    for clip in clips:
+                        cmd.extend(["-i", str(clip)])
+                    cmd.extend([
+                        "-filter_complex", concat_filter,
                         "-map", "[out]",
                         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast",
                         str(tmp_path),
-                    ]
+                    ])
                     try:
                         result = subprocess.run(
                             cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=300
                         )
                         tmp_intro.unlink(missing_ok=True)
+                        if tmp_card is not None:
+                            tmp_card.unlink(missing_ok=True)
                         if result.returncode != 0 or not tmp_path.exists():
                             stderr = result.stderr.decode()[-500:] if result.stderr else ""
                             log.warning("timelapse_intro_concat_failed", date=day, stderr=stderr,
@@ -223,6 +380,8 @@ class TimelapseCompiler:
                     except Exception as exc:
                         log.error("timelapse_intro_concat_error", date=day, error=str(exc))
                         tmp_intro.unlink(missing_ok=True)
+                        if tmp_card is not None:
+                            tmp_card.unlink(missing_ok=True)
                         tmp_path.unlink(missing_ok=True)
                         tmp_frames.rename(tmp_path)
                 else:
