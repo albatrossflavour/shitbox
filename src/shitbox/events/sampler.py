@@ -9,6 +9,7 @@ from typing import Callable, Optional
 try:
     import board
     import busio
+    from adafruit_lsm6ds import AccelRange, GyroRange
     from adafruit_lsm6ds.lsm6dsox import LSM6DSOX
 
     _HAS_LSM6DS = True
@@ -16,11 +17,20 @@ except ImportError:
     # Dev-laptop fallback: bind stand-in namespaces so tests can patch
     # ``shitbox.events.sampler.busio.I2C`` and ``shitbox.events.sampler.LSM6DSOX``
     # without a ``create=True`` on every patch. Production code guards on
-    # ``_HAS_LSM6DS`` before using any of these.
+    # ``_HAS_LSM6DS`` before using any of these. AccelRange / GyroRange use
+    # the same integer constants the real library pins (see
+    # adafruit_lsm6ds/__init__.py) so tests can assert against them directly.
     import types
 
     board = types.SimpleNamespace(SCL=None, SDA=None)  # type: ignore[assignment]
     busio = types.SimpleNamespace(I2C=None)  # type: ignore[assignment]
+    AccelRange = types.SimpleNamespace(  # type: ignore[assignment,misc]
+        RANGE_2G=0, RANGE_16G=1, RANGE_4G=2, RANGE_8G=3,
+    )
+    GyroRange = types.SimpleNamespace(  # type: ignore[assignment,misc]
+        RANGE_250_DPS=0, RANGE_500_DPS=1, RANGE_1000_DPS=2,
+        RANGE_2000_DPS=3, RANGE_125_DPS=4,
+    )
 
     def LSM6DSOX(*args, **kwargs):  # type: ignore[no-redef]
         raise ImportError("adafruit-circuitpython-lsm6ds not installed")
@@ -150,13 +160,40 @@ class HighRateSampler:
             _write_register(sensor, REG_CTRL1_XL, CTRL1_XL_VALUE)  # ODR=208 Hz, LPF2_XL_EN=1
             _write_register(sensor, REG_CTRL2_G,  CTRL2_G_VALUE)   # ODR=208 Hz, FS=+/-500 dps
             _write_register(sensor, REG_CTRL8_XL, CTRL8_XL_VALUE)  # HPCF_XL=ODR/10, fast-settle
+            # Phase 22 plan 22-04: sync the Adafruit driver's range cache to match
+            # the hardware state produced by the direct writes above.
+            # _cached_accel_range / _cached_gyro_range are used by the .acceleration
+            # and .gyro property getters to scale raw counts. Without this sync, the
+            # cache stays at constructor defaults (+/-4g / +/-250 dps) and readings
+            # are off by a 2x scale factor — the root cause of the UAT gap-1
+            # stationary mean_z=1.9997 symptom and the gap-3 halved-gyro consequence.
+            #
+            # These setters use RWBits(2, REG, 2), which masks off only the FS bits
+            # [3:2]. Our direct CTRL1_XL=0x52 write already set FS_XL = 0b00
+            # (RANGE_2G), so the underlying register write is a no-op; LPF2_XL_EN
+            # (bit 1) and ODR_XL (bits [7:4]) are preserved through the RMW. Same
+            # logic for CTRL2_G: FS_G = 0b01 already matches RANGE_500_DPS, ODR_G
+            # preserved.
+            #
+            # ORDERING NOTE (load-bearing): each setter calls sleep(0.2) internally.
+            # Our AN5272 50 ms settle MUST remain the LAST time.sleep in setup() — it
+            # guards the filter chain, not the range cache. Both setter calls go
+            # BEFORE the existing 50 ms sleep.
+            sensor.accelerometer_range = AccelRange.RANGE_2G
+            sensor.gyro_range = GyroRange.RANGE_500_DPS
+            log.debug(
+                "lsm6dsox_driver_cache_synced",
+                accel_range="RANGE_2G",
+                gyro_range="RANGE_500_DPS",
+            )
             # AN5272 (STMicroelectronics LSM6DSOX app note): worst-case LPF2 settling
             # is 8/ODR seconds after filter reconfiguration. At 208 Hz that is ~38.5 ms.
             # Fast-settle mode (CTRL8_XL bit 3) converges in 2 samples (~9.6 ms) but the
             # conservative pad keeps the detector from seeing transients. DO NOT REMOVE
             # this sleep or reorder it before the register writes — without it running
-            # AFTER all three writes, the first ~8 samples can falsely trigger
-            # HARD_BRAKE/HIGH_G at boot. The Task 2 unit test pins this ordering.
+            # AFTER all three writes (AND the property setters that follow), the first
+            # ~8 samples can falsely trigger HARD_BRAKE/HIGH_G at boot. The Task 2 /
+            # plan 22-04 Task 3 unit tests pin this ordering as the LAST time.sleep.
             time.sleep(FILTER_SETTLE_SECONDS)
             self._lsm6dsox = sensor
             log.info("lsm6dsox_initialised", sample_rate_hz=self.sample_rate_hz)
