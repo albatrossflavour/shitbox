@@ -43,15 +43,23 @@ class GPSConfig:
 
 @dataclass
 class LSM6DSOXConfig:
-    """LSM6DSOX accel+gyro (replaces MPU6050)."""
+    """LSM6DSOX accel+gyro (replaces MPU6050). Also carries auto-zero config (Phase 22)."""
 
     enabled: bool = True
     i2c_bus: int = 1
     address: int = 0x6A
-    sample_rate_hz: float = 104.0  # LSM6DSOX Rate.RATE_104_HZ default
+    # application poll rate; sensor ODR is 208 Hz internally after phase 22
+    sample_rate_hz: float = 104.0
     accel_offset_x: float = 0.0   # g, subtracted after unit conversion
     accel_offset_y: float = 0.0
     accel_offset_z: float = 0.0
+    # Phase 22 auto-zero (IMU-05, IMU-06) — canonical field names
+    auto_zero_enabled: bool = True
+    auto_zero_stationary_kmh: float = 1.0
+    auto_zero_window_seconds: float = 30.0
+    auto_zero_tolerance_g: float = 0.05
+    auto_zero_max_abs_g: float = 0.5
+    auto_zero_motion_reject_g: float = 0.2
 
 
 @dataclass

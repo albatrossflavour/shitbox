@@ -103,10 +103,17 @@ sensors:
     enabled: true
     i2c_bus: 1
     address: 0x6A
-    sample_rate_hz: 104.0
-    accel_offset_x: 0.0
+    sample_rate_hz: 104.0       # application poll rate; sensor runs at 208 Hz internally after phase 22
+    accel_offset_x: 0.0          # seed; auto-zero overwrites via trip_state
     accel_offset_y: 0.0
     accel_offset_z: 0.0
+    # Phase 22 auto-zero (IMU-05, IMU-06)
+    auto_zero_enabled: true
+    auto_zero_stationary_kmh: 1.0
+    auto_zero_window_seconds: 30.0
+    auto_zero_tolerance_g: 0.05
+    auto_zero_max_abs_g: 0.5
+    auto_zero_motion_reject_g: 0.2
 
   lis3mdl: # LIS3MDL magnetometer at 0x1C
     enabled: true
