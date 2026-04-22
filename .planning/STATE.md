@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: in_progress
-stopped_at: context exhaustion at 91% (2026-04-22)
-last_updated: "2026-04-22T09:22:27.092Z"
-last_activity: 2026-04-22 — Phase 22 gap closure (22-07) executing
+stopped_at: Phase 22 UAT gaps closed; awaiting verifier rerun
+last_updated: "2026-04-22T09:42:00Z"
+last_activity: 2026-04-22 — Phase 22 UAT gaps #2/#3/#4 flipped to passed (all 4 gaps closed)
 progress:
   total_phases: 11
   completed_phases: 7
@@ -30,8 +30,9 @@ Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — AWA
 Plan: 7/7 complete (22-07 gap closure landed; SUMMARY.md present for all)
   IMU-02 retargeted from ~100 Hz to 25 Hz (commits 1e577bc → bd49055 on phase branch)
   Test suite: 361 passed, 1 skipped on macOS dev laptop
-  Pending: gsd-verifier rerun + Pi UAT (samples_per_second >= 25 over 3×10 s windows; auto_zero_accepted on first stationary window)
-  Traceability: IMU-02 row stays Pending until Pi UAT confirms — verifier owns the flip
+  22-UAT: all 4 gaps closed (status: resolved) — Gap #1/#3 via 22-04 driver-cache sync, Gap #2 via 22-07 spec retarget + 5af6485 Pi UAT, Gap #4 via 22-06 generate_events_json extension
+  Pending: gsd-verifier rerun (auto_zero_accepted on first stationary window still awaiting real-car GPS lock; poll-rate already Pi-UAT confirmed)
+  Traceability: IMU-02 row Complete in REQUIREMENTS.md (Pi UAT confirmed, commit 5af6485)
 
 Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE (VERIFICATION PASS)
   All 5 plans done. Post-review follow-ups landed:
@@ -40,7 +41,7 @@ Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE (VERIFICATI
     - Inline HARDWARE panel replaced with top-bar HW button + full-screen modal
   4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Last activity: 2026-04-22 — Phase 22 gap closure (22-07) executing
+Last activity: 2026-04-22 — Phase 22 UAT gaps all closed (status: resolved); awaiting verifier rerun
 
 Progress: [██████████] 100%
 
@@ -111,8 +112,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-22T09:22:27.087Z
-Stopped at: context exhaustion at 91% (2026-04-22)
+Last session: 2026-04-22T09:42:00Z
+Stopped at: Phase 22 UAT gaps #2/#3/#4 flipped to passed; 22-UAT.md status: partial → resolved; awaiting verifier rerun
 Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)
