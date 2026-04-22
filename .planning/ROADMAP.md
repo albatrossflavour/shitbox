@@ -353,6 +353,7 @@ Plans:
 - [x] 22-04-driver-cache-alignment-PLAN.md — [gap closure, blocker] Sync Adafruit driver's `_cached_accel_range` / `_cached_gyro_range` to match direct CTRL1_XL/CTRL2_G register writes; closes UAT gaps 1 & 3 (stationary mean_z=1.9997 and halved gyro readings). (IMU-01, IMU-02)
 - [x] 22-05-application-poll-rate-fix-PLAN.md — [gap closure, major] Diagnostics-only instrumentation (`sampler_read_rate` every 10 s, `sampler_timing_snapshot` every 100 samples) on sample loop — addresses UAT gap 2 by producing evidence for follow-up root-cause fix. (IMU-02)
 - [x] 22-06-events-json-gyro-fields-PLAN.md — [gap closure, minor] Extend `EventStorage.generate_events_json()` to copy peak_ax/ay/az and peak_gx/gy/gz to the website-facing feed; closes UAT gap 4. (IMU-04)
+- [x] 22-07-PLAN.md — [gap closure, major] Retarget IMU-02 application poll rate from ~100 Hz to 25 Hz: config + dataclass defaults to 25.0 Hz, auto-zero floor rescaled to 750 samples, EventDetector rate-aware (`_az_window_size = ms * Hz / 1000`), REQUIREMENTS.md IMU-02 rewritten with 10 Hz acceptance floor; closes UAT/VERIFICATION gap 2 at the spec level (Pi UAT confirms). (IMU-02)
 
 ---
 
@@ -381,4 +382,4 @@ Plans:
 | 19. Website Narrative Rebuild | v2.0 | 12/12 | Complete   | 2026-04-17 |
 | 20. Physical Integration | v2.0 | 0/3 | Not started | — |
 | 21. Hardware Inventory and Graceful Degradation | v2.0 | 0/5 | Not started | — |
-| 22. IMU Signal Quality and Rollover Detection | v2.0 | 3/6 | In progress | — |
+| 22. IMU Signal Quality and Rollover Detection | v2.0 | 7/7 | Awaiting verification | — |

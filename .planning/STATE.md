@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: in-progress
-stopped_at: context exhaustion at 90% (2026-04-22)
-last_updated: "2026-04-22T06:16:49.099Z"
-last_activity: 2026-04-22 -- Phase 22 gap-closure plan 22-07 written (IMU-02 retarget)
+status: in_progress
+stopped_at: null
+last_updated: "2026-04-22T07:30:00.000Z"
+last_activity: 2026-04-22 — Phase 22 plan 22-07 complete; awaiting verifier + Pi UAT
 progress:
   total_phases: 11
-  completed_phases: 7
-  total_plans: 43
-  completed_plans: 41
-  percent: 95
+  completed_phases: 6
+  total_plans: 44
+  completed_plans: 43
+  percent: 97
 ---
 
 # Project State
@@ -22,14 +22,16 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 22 — imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c
+**Current focus:** Phase 22 — IMU signal quality (gap closure 22-07: retarget IMU-02 to 25 Hz)
 
 ## Current Position
 
-Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — EXECUTING
-Plan: 1 of 3
-  Plan: 1 of 3 started, remaining work blocked on physical prints coming off the machine
-  Resume after: prints complete and mock-fit done in-car
+Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — AWAITING VERIFICATION
+Plan: 7/7 complete (22-07 gap closure landed; SUMMARY.md present for all)
+  IMU-02 retargeted from ~100 Hz to 25 Hz (commits 1e577bc → bd49055 on phase branch)
+  Test suite: 361 passed, 1 skipped on macOS dev laptop
+  Pending: gsd-verifier rerun + Pi UAT (samples_per_second >= 25 over 3×10 s windows; auto_zero_accepted on first stationary window)
+  Traceability: IMU-02 row stays Pending until Pi UAT confirms — verifier owns the flip
 
 Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE (VERIFICATION PASS)
   All 5 plans done. Post-review follow-ups landed:
@@ -38,7 +40,7 @@ Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE (VERIFICATI
     - Inline HARDWARE panel replaced with top-bar HW button + full-screen modal
   4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Last activity: 2026-04-22 -- Phase 22 execution started
+Last activity: 2026-04-22 — Phase 22 gap closure (22-07) executing
 
 Progress: [██████████] 100%
 
