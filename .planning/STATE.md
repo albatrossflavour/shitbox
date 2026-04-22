@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: executing
-stopped_at: context exhaustion at 91% (2026-04-22)
-last_updated: "2026-04-22T00:33:39.464Z"
-last_activity: 2026-04-21 -- Phase 21 verified and closed
+status: in-progress
+last_updated: "2026-04-22T02:50:38.348Z"
+last_activity: 2026-04-22 -- Phase 22 execution started
 progress:
   total_phases: 11
   completed_phases: 6
-  total_plans: 36
+  total_plans: 39
   completed_plans: 35
-  percent: 97
+  percent: 90
 ---
 
 # Project State
@@ -22,11 +21,12 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 20 — physical-integration (resumed 2026-04-21 after Phase 21 close)
+**Current focus:** Phase 22 — imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c
 
 ## Current Position
 
-Phase: 20 (physical-integration) — PAUSED (3D prints queued on Bambu P1S)
+Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — EXECUTING
+Plan: 1 of 3
   Plan: 1 of 3 started, remaining work blocked on physical prints coming off the machine
   Resume after: prints complete and mock-fit done in-car
 
@@ -37,7 +37,7 @@ Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE (VERIFICATI
     - Inline HARDWARE panel replaced with top-bar HW button + full-screen modal
   4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Last activity: 2026-04-21 -- Phase 21 verified and closed
+Last activity: 2026-04-22 -- Phase 22 execution started
 
 Progress: [██████████] 100%
 
@@ -144,4 +144,4 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
 
-**Planned Phase:** 21 (Hardware Inventory and Graceful Degradation) — 5 plans — 2026-04-21T01:38:39.545Z
+**Planned Phase:** 22 (IMU Signal Quality and Rollover Detection) — 3 plans — 2026-04-22T02:24:33.817Z
