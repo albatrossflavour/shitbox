@@ -207,10 +207,12 @@ def _advance_to_window(engine) -> None:
 def test_bootstrap_first_accept_is_unconditional(engine_for_auto_zero) -> None:
     """First accept after boot bypasses the tolerance gate (IMU-06 bootstrap)."""
     engine = engine_for_auto_zero
-    engine._current_accel_offsets = (0.3, -0.1, 1.05)  # static calibration miss
+    # Seed is in residual (gravity-corrected) space on Z — see engine._maybe_auto_zero.
+    engine._current_accel_offsets = (0.3, -0.1, 0.05)  # static calibration miss
     engine._autozero_bootstrap_done = False
 
-    # Synthetic window of 3000 quiet samples with mean (0.01, 0.005, 1.002).
+    # Synthetic window of 3000 quiet samples with raw mean (0.01, 0.005, 1.002).
+    # Accept path stores (mean_x, mean_y, mean_z - 1.0) so az residual = 0.002.
     window = _make_window(3000, ax=0.01, ay=0.005, az=1.002, jitter=0.005)
     engine.ring_buffer.get_window.return_value = window
 
@@ -218,12 +220,12 @@ def test_bootstrap_first_accept_is_unconditional(engine_for_auto_zero) -> None:
     with patch("shitbox.events.engine.log") as mock_log:
         engine._maybe_auto_zero()
 
-    # Sampler pushed the new offsets
+    # Sampler pushed the new offsets (Z is gravity-corrected residual).
     engine.sampler.update_offsets.assert_called_once()
     ax, ay, az = engine.sampler.update_offsets.call_args.args
     assert ax == pytest.approx(0.01, abs=1e-6)
     assert ay == pytest.approx(0.005, abs=1e-6)
-    assert az == pytest.approx(1.002, abs=1e-6)
+    assert az == pytest.approx(0.002, abs=1e-6)
 
     # Persisted to trip_state on all three axes
     persist_keys = {c.args[0] for c in engine.database.set_trip_state.call_args_list}
@@ -242,7 +244,8 @@ def test_post_bootstrap_tolerance_rejects_large_delta(engine_for_auto_zero) -> N
     """After bootstrap, delta > tolerance triggers tolerance-reject."""
     engine = engine_for_auto_zero
     engine._autozero_bootstrap_done = True
-    engine._current_accel_offsets = (0.27, -0.08, 1.02)
+    # Z offset in residual space: 0.02 == 1.02 g raw mean minus gravity.
+    engine._current_accel_offsets = (0.27, -0.08, 0.02)
 
     # x moved from 0.27 -> 0.50 (delta 0.23 g, way over 0.05 tolerance)
     window = _make_window(3000, ax=0.50, ay=-0.08, az=1.02, jitter=0.005)
@@ -264,9 +267,10 @@ def test_post_bootstrap_small_delta_accepted(engine_for_auto_zero) -> None:
     """After bootstrap, delta within tolerance accepts cleanly."""
     engine = engine_for_auto_zero
     engine._autozero_bootstrap_done = True
-    engine._current_accel_offsets = (0.27, -0.08, 1.02)
+    # Z offset in residual space: 0.02 == 1.02 g raw mean minus gravity.
+    engine._current_accel_offsets = (0.27, -0.08, 0.02)
 
-    # All deltas well under 0.05 tolerance
+    # All deltas well under 0.05 tolerance. Raw mean az = 1.025 g → residual 0.025.
     window = _make_window(3000, ax=0.28, ay=-0.07, az=1.025, jitter=0.005)
     engine.ring_buffer.get_window.return_value = window
 
@@ -277,14 +281,14 @@ def test_post_bootstrap_small_delta_accepted(engine_for_auto_zero) -> None:
     ax, ay, az = engine.sampler.update_offsets.call_args.args
     assert ax == pytest.approx(0.28, abs=1e-6)
     assert ay == pytest.approx(-0.07, abs=1e-6)
-    assert az == pytest.approx(1.025, abs=1e-6)
+    assert az == pytest.approx(0.025, abs=1e-6)
 
 
 def test_window_stddev_rejected(engine_for_auto_zero) -> None:
     """Sustained vibration (high window stddev) triggers motion_stddev reject."""
     engine = engine_for_auto_zero
     engine._autozero_bootstrap_done = True
-    engine._current_accel_offsets = (0.27, -0.08, 1.02)
+    engine._current_accel_offsets = (0.27, -0.08, 0.02)
 
     # Build a window with x stddev ~0.25 g: jitter alternates +/-0.25 on x only.
     # Keep per-sample magnitude below the per-sample gate (0.2 g).
@@ -369,7 +373,7 @@ def test_per_sample_motion_rejected(engine_for_auto_zero) -> None:
     """One sample with combined-g magnitude > threshold triggers motion_sample reject."""
     engine = engine_for_auto_zero
     engine._autozero_bootstrap_done = True
-    engine._current_accel_offsets = (0.27, -0.08, 1.02)
+    engine._current_accel_offsets = (0.27, -0.08, 0.02)
 
     # Quiet window with one injected bump.
     bump = _make_sample(ax=0.25, ay=0.0, az=0.0, timestamp=15.0)  # |a| = 0.25 > 0.2
@@ -398,7 +402,7 @@ def test_minimum_sample_count_enforced(engine_for_auto_zero) -> None:
     """
     engine = engine_for_auto_zero
     engine._autozero_bootstrap_done = True
-    engine._current_accel_offsets = (0.27, -0.08, 1.02)
+    engine._current_accel_offsets = (0.27, -0.08, 0.02)
 
     window = _make_window(450, ax=0.28, ay=-0.07, az=1.025, jitter=0.005)
     engine.ring_buffer.get_window.return_value = window
@@ -503,7 +507,7 @@ def test_persistence_rollback_on_failure(engine_for_auto_zero) -> None:
 
     engine = engine_for_auto_zero
     engine._autozero_bootstrap_done = True
-    engine._current_accel_offsets = (0.27, -0.08, 1.02)
+    engine._current_accel_offsets = (0.27, -0.08, 0.02)
 
     window = _make_window(3000, ax=0.28, ay=-0.07, az=1.025, jitter=0.005)
     engine.ring_buffer.get_window.return_value = window
@@ -519,16 +523,17 @@ def test_persistence_rollback_on_failure(engine_for_auto_zero) -> None:
     with patch("shitbox.events.engine.log") as mock_log:
         engine._maybe_auto_zero()
 
-    # Sampler called at least twice: once with new, once rolled back to prev
+    # Sampler called at least twice: once with new, once rolled back to prev.
+    # All values in residual (gravity-corrected) space on Z.
     calls = engine.sampler.update_offsets.call_args_list
     assert len(calls) >= 2
     first = calls[0].args
     rollback = calls[-1].args
-    assert first == pytest.approx((0.28, -0.07, 1.025), abs=1e-6)
-    assert rollback == pytest.approx((0.27, -0.08, 1.02), abs=1e-6)
+    assert first == pytest.approx((0.28, -0.07, 0.025), abs=1e-6)
+    assert rollback == pytest.approx((0.27, -0.08, 0.02), abs=1e-6)
 
     # In-memory state rolled back
-    assert engine._current_accel_offsets == pytest.approx((0.27, -0.08, 1.02), abs=1e-6)
+    assert engine._current_accel_offsets == pytest.approx((0.27, -0.08, 0.02), abs=1e-6)
 
     # Persist-failure log emitted
     fails = [c for c in mock_log.error.call_args_list

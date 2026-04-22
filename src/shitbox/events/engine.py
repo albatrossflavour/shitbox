@@ -1935,9 +1935,12 @@ class UnifiedEngine:
         # the car's installed orientation; the cap applies to drift-from-
         # gravity on z, not raw z. That matches the plan's test 10
         # behaviour (reject mean (0.9, 0.1, 1.05) — x=0.9 is the offender
-        # not z=1.05 which is ~gravity).
-        z_drift = mean_z - 1.0
-        if max(abs(mean_x), abs(mean_y), abs(z_drift)) > cfg.auto_zero_max_abs_g:
+        # not z=1.05 which is ~gravity). residual_z is also what we persist
+        # — the sampler subtracts accel_offset_z raw from every read, so the
+        # stored value must be the gravity-corrected bias residual or
+        # stationary reads lose gravity entirely.
+        residual_z = mean_z - 1.0
+        if max(abs(mean_x), abs(mean_y), abs(residual_z)) > cfg.auto_zero_max_abs_g:
             log.warning(
                 "auto_zero_rejected",
                 reason="implausible",
@@ -1948,11 +1951,13 @@ class UnifiedEngine:
             return
 
         # Gate 6: tolerance against current live offsets (skipped on bootstrap).
+        # Compared in residual (gravity-corrected) space on Z because that's
+        # the space _current_accel_offsets lives in.
         if self._autozero_bootstrap_done:
             cur_x, cur_y, cur_z = self._current_accel_offsets
             dx = abs(mean_x - cur_x)
             dy = abs(mean_y - cur_y)
-            dz = abs(mean_z - cur_z)
+            dz = abs(residual_z - cur_z)
             if max(dx, dy, dz) > cfg.auto_zero_tolerance_g:
                 log.info(
                     "auto_zero_rejected",
@@ -1966,11 +1971,11 @@ class UnifiedEngine:
         # Accept path with rollback on persistence failure (T-22-06).
         prev_offsets = self._current_accel_offsets
         try:
-            self.sampler.update_offsets(mean_x, mean_y, mean_z)
-            self._current_accel_offsets = (mean_x, mean_y, mean_z)
+            self.sampler.update_offsets(mean_x, mean_y, residual_z)
+            self._current_accel_offsets = (mean_x, mean_y, residual_z)
             self.database.set_trip_state("accel_offset_x", mean_x)
             self.database.set_trip_state("accel_offset_y", mean_y)
-            self.database.set_trip_state("accel_offset_z", mean_z)
+            self.database.set_trip_state("accel_offset_z", residual_z)
         except Exception as e:
             # Rollback so the next window starts from a known-good baseline.
             self._current_accel_offsets = prev_offsets
@@ -1983,7 +1988,7 @@ class UnifiedEngine:
                 error=str(e),
                 attempted_x=round(mean_x, 4),
                 attempted_y=round(mean_y, 4),
-                attempted_z=round(mean_z, 4),
+                attempted_z=round(residual_z, 4),
             )
             return
 
@@ -1993,7 +1998,7 @@ class UnifiedEngine:
             "auto_zero_accepted",
             ax=round(mean_x, 4),
             ay=round(mean_y, 4),
-            az=round(mean_z, 4),
+            az=round(residual_z, 4),
             bootstrap=was_bootstrap,
             sample_count=n,
         )
