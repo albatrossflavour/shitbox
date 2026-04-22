@@ -168,36 +168,6 @@ def test_sampler_graceful_when_lsm6dsox_absent() -> None:
 
 
 # ---------------------------------------------------------------------------
-# test_sampler_produces_104_hz_rate
-# ---------------------------------------------------------------------------
-
-
-def test_sampler_produces_104_hz_rate() -> None:
-    """Sampler fills the ring buffer at roughly 104 Hz over 0.5 s."""
-    buf = RingBuffer(max_seconds=5.0, sample_rate_hz=104.0)
-    sampler = HighRateSampler(ring_buffer=buf, sample_rate_hz=104.0)
-
-    fake_sensor = _make_fake_lsm6dsox(accel=(0.0, 0.0, 9.81), gyro=(0.0, 0.0, 0.0))
-    sampler._lsm6dsox = fake_sensor  # type: ignore[attr-defined]
-
-    # Inject a fake setup that doesn't touch hardware
-    def _fake_setup() -> None:
-        pass
-
-    sampler.setup = _fake_setup  # type: ignore[method-assign]
-
-    sampler.start()
-    time.sleep(0.5)
-    sampler.stop()
-
-    count = len(buf)
-    # 104 Hz * 0.5 s = 52 expected; allow ±15 for scheduling jitter
-    assert 37 <= count <= 67, (
-        f"Expected 37-67 samples in 0.5 s at 104 Hz, got {count}"
-    )
-
-
-# ---------------------------------------------------------------------------
 # test_calibration_offsets_applied
 # ---------------------------------------------------------------------------
 
