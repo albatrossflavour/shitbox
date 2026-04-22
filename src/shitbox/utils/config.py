@@ -60,6 +60,11 @@ class LSM6DSOXConfig:
     auto_zero_tolerance_g: float = 0.05
     auto_zero_max_abs_g: float = 0.5
     auto_zero_motion_reject_g: float = 0.2
+    # window-stddev gate; distinct from per-sample auto_zero_motion_reject_g
+    # (see IMU-05 / 22-RESEARCH Pitfall 5). A sustained 0.5 g DC bias with low
+    # jitter would pass stddev but still trip per-sample — these are independent
+    # guards layered in sequence.
+    auto_zero_motion_stddev_g: float = 0.20
 
 
 @dataclass
