@@ -350,9 +350,9 @@ Plans:
 - [x] 22-01-sampler-register-config-PLAN.md — LSM6DSOX CTRL1_XL / CTRL2_G / CTRL8_XL register programming (ODR 208 Hz, LPF2 cutoff ~20.8 Hz, FS ±500 dps), AN5272 settle, sampler update_offsets() API, config scaffolding for auto-zero. (IMU-01, IMU-02)
 - [x] 22-02-rollover-detection-PLAN.md — New ROLLOVER EventType (gx/gy > 250 dps for 150 ms), peak_gx/gy/gz on Event, BIG_CORNER OR-semantics adding gz yaw-rate gate, VIDEO_CAPTURE_EVENTS wiring. (IMU-03, IMU-04)
 - [x] 22-03-stationary-auto-zero-PLAN.md — Stationary-window state machine (GPS fix + speed<1 km/h), bootstrap-accept-first rule, tolerance/motion/plausibility gates, trip_state persistence, boot-time offset reload. (IMU-05, IMU-06)
-- [ ] 22-04-driver-cache-alignment-PLAN.md — [gap closure, blocker] Sync Adafruit driver's `_cached_accel_range` / `_cached_gyro_range` to match direct CTRL1_XL/CTRL2_G register writes; closes UAT gaps 1 & 3 (stationary mean_z=1.9997 and halved gyro readings). (IMU-01, IMU-02)
-- [ ] 22-05-application-poll-rate-fix-PLAN.md — [gap closure, major] Absolute-schedule catch-up sample loop + 10 s `sampler_read_rate` instrumentation + bounded-catchup stall recovery; closes UAT gap 2 (ring buffer 1810-2421 samples over 30 s vs 3000 target). (IMU-02)
-- [ ] 22-06-events-json-gyro-fields-PLAN.md — [gap closure, minor] Extend `EventStorage.generate_events_json()` to copy peak_ax/ay/az and peak_gx/gy/gz to the website-facing feed; closes UAT gap 4. (IMU-04)
+- [x] 22-04-driver-cache-alignment-PLAN.md — [gap closure, blocker] Sync Adafruit driver's `_cached_accel_range` / `_cached_gyro_range` to match direct CTRL1_XL/CTRL2_G register writes; closes UAT gaps 1 & 3 (stationary mean_z=1.9997 and halved gyro readings). (IMU-01, IMU-02)
+- [x] 22-05-application-poll-rate-fix-PLAN.md — [gap closure, major] Diagnostics-only instrumentation (`sampler_read_rate` every 10 s, `sampler_timing_snapshot` every 100 samples) on sample loop — addresses UAT gap 2 by producing evidence for follow-up root-cause fix. (IMU-02)
+- [x] 22-06-events-json-gyro-fields-PLAN.md — [gap closure, minor] Extend `EventStorage.generate_events_json()` to copy peak_ax/ay/az and peak_gx/gy/gz to the website-facing feed; closes UAT gap 4. (IMU-04)
 
 ---
 
