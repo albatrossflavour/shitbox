@@ -73,6 +73,24 @@ CTRL8_XL_VALUE = 0x28
 # 50 ms is the comfortable pad; fast-settle halves it anyway. See setup().
 FILTER_SETTLE_SECONDS = 0.05
 
+# Plan 22-05: poll-rate diagnostics. We observe ~60-80 Hz app poll rate on real
+# hardware where the target is 100 Hz (UAT gap 2). Root cause is unknown —
+# could be I2C contention, Adafruit getter overhead, ring buffer append lock,
+# or on_sample callback cost. These two constants drive the two structlog
+# diagnostic lines `_sample_loop` emits:
+#
+#   sampler_read_rate        — once per _RATE_LOG_INTERVAL_SECONDS window,
+#                              observed samples_per_second + dropped delta.
+#   sampler_timing_snapshot  — once every _TIMING_SNAPSHOT_EVERY_N_SAMPLES
+#                              successful reads, per-stage latency breakdown.
+#
+# The timing snapshot is guarded by a modulo check so the four extra
+# time.perf_counter() calls only fire on every 100th iteration — important
+# because the IMU-02 `test_sample_loop_rate` pins the per-iteration perf_counter
+# count (see tests/events/test_sampler_lsm6dsox.py::test_sample_loop_rate).
+_TIMING_SNAPSHOT_EVERY_N_SAMPLES = 100  # ~1 Hz at 100 Hz target rate
+_RATE_LOG_INTERVAL_SECONDS = 10.0
+
 
 def _write_register(sensor: object, reg_addr: int, value: int) -> None:
     """Write a single byte to an LSM6DSOX control register.
@@ -277,6 +295,13 @@ class HighRateSampler:
             return
 
         next_sample_time = time.perf_counter()
+        # Plan 22-05: fixed-cadence rate instrumentation. `rate_window_samples`
+        # counts successful reads in the current 10 s window; baseline of
+        # `samples_dropped` at window start lets us emit the per-window drop
+        # delta rather than the lifetime counter.
+        last_rate_log = next_sample_time
+        rate_window_samples = 0
+        rate_window_dropped_baseline = self.samples_dropped
 
         while self._running:
             now = time.perf_counter()
@@ -295,14 +320,47 @@ class HighRateSampler:
             try:
                 if self._lsm6dsox is None:
                     raise OSError("sensor is None — I2C reinit failed")
+                # Plan 22-05: only time every Nth read. The unconditional
+                # `perf_counter` calls in the simpler target shape would break
+                # the IMU-02 `test_sample_loop_rate` pin, so we gate the four
+                # timestamps behind the same modulo check that decides whether
+                # to emit `sampler_timing_snapshot`. Non-snapshot iterations do
+                # exactly one perf_counter call, matching pre-22-05 behaviour.
+                do_timing = (
+                    (self.samples_total + 1) % _TIMING_SNAPSHOT_EVERY_N_SAMPLES == 0
+                )
+
+                t_read_start = time.perf_counter() if do_timing else 0.0
                 sample = self._read_sample()
+                t_read_done = time.perf_counter() if do_timing else 0.0
+
                 self.ring_buffer.append(sample)
+                t_append_done = time.perf_counter() if do_timing else 0.0
+
                 self.samples_total += 1
+                rate_window_samples += 1
                 self._consecutive_failures = 0
                 hw_state.report_present(self.role)
 
                 if self.on_sample:
                     self.on_sample(sample)
+                t_callback_done = time.perf_counter() if do_timing else 0.0
+
+                if do_timing:
+                    log.info(
+                        "sampler_timing_snapshot",
+                        i2c_read_ms=round((t_read_done - t_read_start) * 1000.0, 3),
+                        ring_buffer_append_ms=round(
+                            (t_append_done - t_read_done) * 1000.0, 3
+                        ),
+                        on_sample_callback_ms=round(
+                            (t_callback_done - t_append_done) * 1000.0, 3
+                        ),
+                        total_cycle_ms=round(
+                            (t_callback_done - t_read_start) * 1000.0, 3
+                        ),
+                        samples_total=self.samples_total,
+                    )
 
             except OSError as e:
                 log.error("sample_read_error", error=str(e))
@@ -342,6 +400,25 @@ class HighRateSampler:
             except Exception as e:
                 log.error("sample_read_error", error=str(e))
                 self._consecutive_failures += 1
+
+            # Plan 22-05: periodic rate log at fixed 10 s cadence. Uses `now`
+            # captured at loop top — no extra perf_counter call. Window is
+            # windowed: `rate_window_samples` counts successful reads in this
+            # window; `samples_dropped_delta` is dropped count change since
+            # the window began.
+            if now - last_rate_log >= _RATE_LOG_INTERVAL_SECONDS:
+                elapsed = now - last_rate_log
+                dropped_delta = self.samples_dropped - rate_window_dropped_baseline
+                log.info(
+                    "sampler_read_rate",
+                    samples_per_second=round(rate_window_samples / elapsed, 2),
+                    target_hz=self.sample_rate_hz,
+                    window_seconds=round(elapsed, 2),
+                    samples_dropped_delta=dropped_delta,
+                )
+                rate_window_samples = 0
+                rate_window_dropped_baseline = self.samples_dropped
+                last_rate_log = now
 
             next_sample_time += self.sample_interval
 
