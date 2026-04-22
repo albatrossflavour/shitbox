@@ -16,6 +16,28 @@ import pytest
 from shitbox.events.ring_buffer import IMUSample, RingBuffer
 from shitbox.events.sampler import HighRateSampler
 
+try:
+    from adafruit_lsm6ds import AccelRange, GyroRange
+except ImportError:
+    # Dev-laptop fallback: the library pins these as plain integer class
+    # attributes (see adafruit_lsm6ds/__init__.py). Stand-in namespaces let
+    # the cache-alignment tests run without the real library present.
+    import types
+
+    AccelRange = types.SimpleNamespace(  # type: ignore[assignment,misc]
+        RANGE_2G=0,
+        RANGE_16G=1,
+        RANGE_4G=2,
+        RANGE_8G=3,
+    )
+    GyroRange = types.SimpleNamespace(  # type: ignore[assignment,misc]
+        RANGE_250_DPS=0,
+        RANGE_500_DPS=1,
+        RANGE_1000_DPS=2,
+        RANGE_2000_DPS=3,
+        RANGE_125_DPS=4,
+    )
+
 
 def _make_sampler(
     ax_offset: float = 0.0,
@@ -40,6 +62,12 @@ def _make_fake_lsm6dsox(
     sensor = MagicMock()
     sensor.acceleration = accel  # m/s²
     sensor.gyro = gyro           # rad/s
+    # Seed the Adafruit driver's range cache to the constructor defaults — the
+    # state real hardware presents BEFORE any property setter runs. Without
+    # these explicit assignments, MagicMock auto-creates Mock sentinels and
+    # the cache-alignment tests (22-04) would fail for the wrong reason.
+    sensor._cached_accel_range = AccelRange.RANGE_4G
+    sensor._cached_gyro_range = GyroRange.RANGE_250_DPS
     return sensor
 
 
@@ -330,3 +358,130 @@ def test_sample_loop_rate() -> None:
         f"at sample_rate_hz=100.0, got {read_count['n']}. Check _sample_loop "
         f"pacing and sampler config sample_rate_hz."
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 22 / plan 22-04: driver cache alignment after direct register writes
+#
+# Closes UAT gaps 1 and 3. The Adafruit LSM6DS driver caches
+# `_cached_accel_range` / `_cached_gyro_range` at constructor defaults
+# (±4g / ±250 dps). Our direct CTRL1_XL=0x52 / CTRL2_G=0x54 writes put the
+# hardware at ±2g / ±500 dps but leave the driver caches stale, so
+# .acceleration applies a 2x scale factor and .gyro halves the real rate.
+# The fix (plan 22-04 Task 2) calls the property setters AFTER the direct
+# writes to sync the caches.
+# ---------------------------------------------------------------------------
+
+
+def test_setup_syncs_accel_range_cache_to_2g() -> None:
+    """After setup(), sensor._cached_accel_range == AccelRange.RANGE_2G.
+
+    Before Task 2: driver cache stays at the constructor default RANGE_4G
+    set by _make_fake_lsm6dsox, so .acceleration would return 2x the real g
+    (the stationary mean_z=1.9997 symptom in UAT gap 1).
+    """
+    sampler = _make_sampler()
+    fake_sensor, _ = _fake_sensor_with_i2c_spy()
+    # Helper seeds RANGE_4G by default — assert that starting state explicitly.
+    assert fake_sensor._cached_accel_range == AccelRange.RANGE_4G
+    assert fake_sensor._cached_accel_range == 2  # integer double-guard
+
+    with patch("shitbox.events.sampler.busio.I2C"), \
+         patch("shitbox.events.sampler.LSM6DSOX", return_value=fake_sensor), \
+         patch("shitbox.events.sampler._HAS_LSM6DS", True), \
+         patch("shitbox.events.sampler.time.sleep"):
+        sampler.setup()
+
+    assert fake_sensor._cached_accel_range == AccelRange.RANGE_2G, (
+        "setup() did not sync the Adafruit driver's accel range cache. "
+        f"Expected RANGE_2G, got {fake_sensor._cached_accel_range}. "
+        "Fix: set sensor.accelerometer_range = AccelRange.RANGE_2G after "
+        "the direct CTRL1_XL=0x52 write."
+    )
+    assert fake_sensor._cached_accel_range == 0  # integer double-guard
+
+
+def test_setup_syncs_gyro_range_cache_to_500dps() -> None:
+    """After setup(), sensor._cached_gyro_range == GyroRange.RANGE_500_DPS.
+
+    Before Task 2: driver cache stays at the constructor default
+    RANGE_250_DPS, so .gyro halves every rotation rate (UAT gap 3).
+    """
+    sampler = _make_sampler()
+    fake_sensor, _ = _fake_sensor_with_i2c_spy()
+    assert fake_sensor._cached_gyro_range == GyroRange.RANGE_250_DPS
+    assert fake_sensor._cached_gyro_range == 0  # integer double-guard
+
+    with patch("shitbox.events.sampler.busio.I2C"), \
+         patch("shitbox.events.sampler.LSM6DSOX", return_value=fake_sensor), \
+         patch("shitbox.events.sampler._HAS_LSM6DS", True), \
+         patch("shitbox.events.sampler.time.sleep"):
+        sampler.setup()
+
+    assert fake_sensor._cached_gyro_range == GyroRange.RANGE_500_DPS, (
+        "setup() did not sync the Adafruit driver's gyro range cache. "
+        f"Expected RANGE_500_DPS, got {fake_sensor._cached_gyro_range}. "
+        "Fix: set sensor.gyro_range = GyroRange.RANGE_500_DPS after "
+        "the direct CTRL2_G=0x54 write."
+    )
+    assert fake_sensor._cached_gyro_range == 1  # integer double-guard
+
+
+def test_acceleration_returns_correct_g_after_setup() -> None:
+    """End-to-end scaling regression: 9.80665 m/s² on Z returns ~1.0 g after setup().
+
+    This is the real regression guard for UAT gap 1. The existing
+    test_acceleration_converted_from_m_s2_to_g bypasses setup() and never
+    touches the driver-cache path. This test runs setup() end-to-end, so
+    the 2x scale bug would fail it in a way no existing test catches.
+
+    We simulate the Adafruit driver's actual behaviour: .acceleration returns
+    raw counts scaled by the range indicated by _cached_accel_range. If the
+    cache is still at RANGE_4G while hardware is at RANGE_2G, the driver
+    multiplies by the ±4g scale factor on ±2g raw data, returning 2x the
+    real value — the UAT mean_z=1.9997 symptom exactly.
+    """
+    sampler = _make_sampler()
+    # Hardware is at RANGE_2G (CTRL1_XL=0x52). A stationary IMU reads ~1.0 g
+    # along Z — i.e. ~9.80665 m/s² of ACTUAL acceleration. We simulate the
+    # driver's scaling: if cache is stale at RANGE_4G, it applies the ±4g
+    # scale factor to the same raw register value and returns 2x.
+    fake_sensor, _ = _fake_sensor_with_i2c_spy()
+
+    # Adafruit scale table (m/s²/LSB, roughly):
+    #   RANGE_2G  -> 0.061 mg/LSB  ->  0.000598325 m/s² per count
+    #   RANGE_4G  -> 0.122 mg/LSB  ->  0.00119665  m/s² per count  (2x)
+    # Simulate using simple multipliers rather than hunting exact LSB values:
+    _SCALE = {
+        AccelRange.RANGE_2G: 1.0,
+        AccelRange.RANGE_4G: 2.0,  # this is the 2x bug
+        AccelRange.RANGE_8G: 4.0,
+        AccelRange.RANGE_16G: 8.0,
+    }
+    # "Actual" stationary reading at RANGE_2G (one g along Z).
+    _actual_accel = (0.0, 0.0, 9.80665)
+
+    def _scaled_accel() -> tuple:
+        factor = _SCALE.get(fake_sensor._cached_accel_range, 1.0)
+        return tuple(v * factor for v in _actual_accel)
+
+    # Replace the static tuple with a PropertyMock bound to the cache state.
+    type(fake_sensor).acceleration = property(lambda _self: _scaled_accel())
+    fake_sensor.gyro = (0.0, 0.0, 0.0)
+
+    with patch("shitbox.events.sampler.busio.I2C"), \
+         patch("shitbox.events.sampler.LSM6DSOX", return_value=fake_sensor), \
+         patch("shitbox.events.sampler._HAS_LSM6DS", True), \
+         patch("shitbox.events.sampler.time.sleep"):
+        sampler.setup()
+
+    sample = sampler._read_sample()
+
+    # On a stationary IMU the scaled reading is 1.0 g along gravity, not 2.0.
+    assert sample.az == pytest.approx(1.0, abs=0.01), (
+        f"Expected az=1.0 g from 9.80665 m/s² input after setup(), got {sample.az}. "
+        "If this reads ~2.0 the Adafruit driver cache is stuck at RANGE_4G "
+        "while hardware is at RANGE_2G — plan 22-04 fix missing."
+    )
+    assert sample.ax == pytest.approx(0.0, abs=0.01)
+    assert sample.ay == pytest.approx(0.0, abs=0.01)
