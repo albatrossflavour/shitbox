@@ -114,6 +114,8 @@ sensors:
     auto_zero_tolerance_g: 0.05
     auto_zero_max_abs_g: 0.5
     auto_zero_motion_reject_g: 0.2
+    # Added by 22-03 (IMU-05 per-sample + stddev guards):
+    auto_zero_motion_stddev_g: 0.20
 
   lis3mdl: # LIS3MDL magnetometer at 0x1C
     enabled: true

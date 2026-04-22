@@ -93,6 +93,16 @@ class EngineConfig:
     accel_offset_y: float = 0.0
     accel_offset_z: float = 0.0
 
+    # Auto-zero (thermal drift compensation) — IMU-05, IMU-06.
+    # Field names are authoritative per REQUIREMENTS.md IMU-05.
+    auto_zero_enabled: bool = True
+    auto_zero_stationary_kmh: float = 1.0   # speed gate; GPS fix also required
+    auto_zero_window_seconds: float = 30.0  # window length; pulled from ring buffer
+    auto_zero_tolerance_g: float = 0.05     # max |new-current| per axis, post-bootstrap
+    auto_zero_motion_reject_g: float = 0.2  # per-sample raw combined-g reject
+    auto_zero_motion_stddev_g: float = 0.20  # per-axis window stddev reject
+    auto_zero_max_abs_g: float = 0.5        # absolute offset plausibility cap
+
     # Low-rate telemetry
     telemetry_interval_seconds: float = 1.0
     gps_enabled: bool = True
@@ -253,6 +263,14 @@ class EngineConfig:
             accel_offset_y=config.sensors.lsm6dsox.accel_offset_y,
             accel_offset_z=config.sensors.lsm6dsox.accel_offset_z,
             imu_sample_rate_hz=config.sensors.lsm6dsox.sample_rate_hz,
+            # Auto-zero (IMU-05, IMU-06) — 1:1 pass-through from LSM6DSOXConfig
+            auto_zero_enabled=config.sensors.lsm6dsox.auto_zero_enabled,
+            auto_zero_stationary_kmh=config.sensors.lsm6dsox.auto_zero_stationary_kmh,
+            auto_zero_window_seconds=config.sensors.lsm6dsox.auto_zero_window_seconds,
+            auto_zero_tolerance_g=config.sensors.lsm6dsox.auto_zero_tolerance_g,
+            auto_zero_motion_reject_g=config.sensors.lsm6dsox.auto_zero_motion_reject_g,
+            auto_zero_motion_stddev_g=config.sensors.lsm6dsox.auto_zero_motion_stddev_g,
+            auto_zero_max_abs_g=config.sensors.lsm6dsox.auto_zero_max_abs_g,
             # v2 sensor configs
             temperature=config.sensors.temperature,
             light=config.sensors.light,
