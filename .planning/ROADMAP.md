@@ -462,8 +462,8 @@ Plans:
 | 18. Website Revamp | v2.0 | 5/5 | Complete    | 2026-04-11 |
 | 19. Website Narrative Rebuild | v2.0 | 12/12 | Complete   | 2026-04-17 |
 | 20. Physical Integration | v2.0 | 0/3 | Not started | — |
-| 21. Hardware Inventory and Graceful Degradation | v2.0 | 0/5 | Not started | — |
-| 22. IMU Signal Quality and Rollover Detection | v2.0 | 7/7 | Awaiting verification | — |
+| 21. Hardware Inventory and Graceful Degradation | v2.0 | 5/5 | Complete | 2026-04-21 |
+| 22. IMU Signal Quality and Rollover Detection | v2.0 | 7/7 | Verified | 2026-04-22 |
 | 23. Verification Closure and Traceability Sweep | v2.0 | 0/3 | In progress | — |
 | 24. Phase 20 Physical Integration Completion | v2.0 | TBD | Not started (waits on prints) | — |
 | 25. Milestone v2.0 Nyquist Validation Sweep | v2.0 | TBD | Not started | — |

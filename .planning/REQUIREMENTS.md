@@ -6,35 +6,35 @@
 
 - [x] **DISP-01**: User can view a fullscreen kiosk layout on the 7" touchscreen showing speed, G-force circle, temperatures, GPS status, and sync status
 - [x] **DISP-02**: User can see a live event ticker scrolling recent events with event type and peak G value
-- [ ] **DISP-03**: Display shows the currently active driver, pulled live from driver tracking
+- [x] **DISP-03**: Display shows the currently active driver, pulled live from driver tracking
 - [x] **DISP-04**: Critical events (high G, thermal alerts, undervoltage) trigger visible alert overlays on the display
 
 ### Field Notes (NOTE)
 
 - [x] **NOTE-01**: User can compose a field note from the Pi UI using a keyboard, with DTS and GPS location auto-captured
 - [x] **NOTE-02**: User can optionally pin a field note to an existing event
-- [ ] **NOTE-03**: Field notes sync to shit-of-theseus.com and display in a blog/notes section
+- [x] **NOTE-03**: Field notes sync to shit-of-theseus.com and display in a blog/notes section
 
 ### Refueling Log (FUEL)
 
 - [x] **FUEL-01**: User can log a fuel stop with volume and location from the Pi UI
 - [x] **FUEL-02**: System calculates and tracks fuel efficiency (km/L) per stop and as a running cumulative average
-- [ ] **FUEL-03**: Fuel stop locations and efficiency data sync to the website map; cost data never syncs
+- [x] **FUEL-03**: Fuel stop locations and efficiency data sync to the website map; cost data never syncs
 
 ### Driver Tracking (DRVR)
 
 - [x] **DRVR-01**: User can set and change the active driver from the Pi UI
 - [x] **DRVR-02**: System tracks driving time and calculates percentage per driver across the rally
 - [x] **DRVR-03**: Driver is attributed to events — who was driving when an event occurred
-- [ ] **DRVR-04**: Website shows a "who's in charge" widget on the homepage with current driver and running percentages
-- [ ] **DRVR-05**: Website shows per-driver stats including driving time, percentage, and event attribution
+- [x] **DRVR-04**: Website shows a "who's in charge" widget on the homepage with current driver and running percentages
+- [x] **DRVR-05**: Website shows per-driver stats including driving time, percentage, and event attribution
 
 ### Website (WEB)
 
-- [ ] **WEB-01**: Website integrates field notes as a blog/notes section with timestamp and location
-- [ ] **WEB-02**: Website shows fuel stop pins as a Leaflet map layer with efficiency data
-- [ ] **WEB-03**: Website shows driver stats page with time percentages and event attribution
-- [ ] **WEB-04**: Grafana graph layouts improved; iframe kiosk iframe issues resolved; metric coverage improved with v2.0 sensors
+- [x] **WEB-01**: Website integrates field notes as a blog/notes section with timestamp and location
+- [x] **WEB-02**: Website shows fuel stop pins as a Leaflet map layer with efficiency data
+- [x] **WEB-03**: Website shows driver stats page with time percentages and event attribution
+- [x] **WEB-04**: Grafana graph layouts improved; iframe kiosk iframe issues resolved; metric coverage improved with v2.0 sensors
 
 ### Sensor Calibration (CAL)
 
@@ -80,9 +80,9 @@
 
 ### Hardware Inventory and Graceful Degradation (HW)
 
-- [ ] **HW-01**: A top-level `hardware:` block in `config.yaml` declares every expected device with `role`, `bus`, `address`/`path`, and `criticality`, and loads cleanly into a typed dataclass via `load_config()`
-- [ ] **HW-02**: At boot, each declared device is probed and its presence (PRESENT / MISSING) is recorded in a central `HardwareState` object, which is visible to the dashboard and OLED within one status refresh
-- [ ] **HW-03**: Alert cadence follows the criticality tier — `critical` devices trigger repeated TTS plus red dashboard banner plus OLED invert; `important` devices trigger single TTS plus orange badge; `best_effort` devices log only
+- [x] **HW-01**: A top-level `hardware:` block in `config.yaml` declares every expected device with `role`, `bus`, `address`/`path`, and `criticality`, and loads cleanly into a typed dataclass via `load_config()`
+- [x] **HW-02**: At boot, each declared device is probed and its presence (PRESENT / MISSING) is recorded in a central `HardwareState` object, which is visible to the dashboard and OLED within one status refresh
+- [x] **HW-03**: Alert cadence follows the criticality tier — `critical` devices trigger repeated TTS plus red dashboard banner plus OLED invert; `important` devices trigger single TTS plus orange badge; `best_effort` devices log only
 - [x] **HW-04
 **: Any collector that loses contact with its device (setup failure, consecutive I2C errors, ffmpeg stall, USB disappearance) reports MISSING into `HardwareState` and is retried on exponential backoff (5s → 15s → 60s → 5-minute cap); recovery flips state back and speaks a positive-confirmation TTS. The BME680 cold-boot init failure documented in STATE.md (2026-04-10) is the canonical acceptance case and must resolve end-to-end via this path
 - [x] **HW-05
@@ -90,12 +90,12 @@
 
 ### IMU Signal Quality and Rollover Detection (IMU)
 
-- [ ] **IMU-01**: `HighRateSampler.setup()` configures the LSM6DSOX via direct register writes to `CTRL1_XL` (0x52 — ODR 208 Hz + FS ±2 g + LPF2_XL_EN=1), `CTRL2_G` (0x54 — ODR 208 Hz + FS ±500 dps), and `CTRL8_XL` (0x28 — HPCF_XL = ODR/10 ≈ 20.8 Hz cutoff + FASTSETTL_MODE_XL=1), followed by a 50 ms sleep citing ST app note AN5272 for filter settling. Register-write failures trigger `hw_state.report_degraded("imu")` and fall through to the existing I2C recovery ladder.
+- [x] **IMU-01**: `HighRateSampler.setup()` configures the LSM6DSOX via direct register writes to `CTRL1_XL` (0x52 — ODR 208 Hz + FS ±2 g + LPF2_XL_EN=1), `CTRL2_G` (0x54 — ODR 208 Hz + FS ±500 dps), and `CTRL8_XL` (0x28 — HPCF_XL = ODR/10 ≈ 20.8 Hz cutoff + FASTSETTL_MODE_XL=1), followed by a 50 ms sleep citing ST app note AN5272 for filter settling. Register-write failures trigger `hw_state.report_degraded("imu")` and fall through to the existing I2C recovery ladder.
 - [ ] **IMU-02**: The sample loop polls at the configured `sample_rate_hz` (default 25 Hz after 22-07 retarget; documented acceptance floor 10 Hz). The sensor runs internally at 208 Hz ODR with LPF2 cutoff at ODR/10, which suppresses aliasing well below the Nyquist of any configured poll rate down to the 10 Hz floor. The application poll rate was retargeted from ~100 Hz (inherited from the MPU6050 era) to 25 Hz on 2026-04-22 after baseline diagnostics (see `.planning/phases/22-imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c/22-poll-rate-baseline-analysis.md`) confirmed the detector's sustain-duration gates have comfortable margin at rates well below 100 Hz (ROLLOVER 150 ms = 3-4 samples at 25 Hz; BIG_CORNER 300 ms = 7-8; HARD_BRAKE / HIGH_G 200-300 ms = 5-8). `sample_rate_hz` in config is the application poll rate; sensor ODR is independent and stays at 208 Hz internally. Dropped-sample budget: up to 5% of expected samples per 10 s window is acceptable (informational — observable via `sampler_read_rate` structlog, not alarmed).
-- [ ] **IMU-03**: `EventType.ROLLOVER` is added to the detector enum. Sustained `|gx| > rollover_threshold_dps` OR `|gy| > rollover_threshold_dps` for `rollover_min_duration_ms` (default 250 dps / 150 ms) fires a ROLLOVER event. Transient spikes shorter than the minimum duration do not fire. The `Event` dataclass records `peak_gx`, `peak_gy`, `peak_gz` alongside the existing accel peaks. ROLLOVER is added to `VIDEO_CAPTURE_EVENTS` so rollovers trigger video capture.
-- [ ] **IMU-04**: `_check_big_corner` fires on EITHER `|ay| > big_corner_threshold_g` (existing) OR `|gz| > big_corner_yaw_dps` (default 60 dps), preserving the current `big_corner_min_duration_ms` gate. Yaw-rate path catches slow-tight corners that lateral-g alone misses.
-- [ ] **IMU-05**: Engine telemetry loop detects stationary windows (GPS speed < `auto_zero_stationary_kmh` for `auto_zero_window_seconds`, defaults 1.0 km/h / 30 s), computes mean accel over the window from the ring buffer, and applies tolerance-based rejection: if `max(|new_offset - stored|)` exceeds `auto_zero_tolerance_g` (0.05 g), reject with a structured warning. Plausibility guards: minimum 2500 samples, no raw sample exceeds `auto_zero_motion_reject_g` (0.2 g), and no resulting offset exceeds `auto_zero_max_abs_g` (0.5 g).
-- [ ] **IMU-06**: First stationary window after engine boot always accepts the new offset unconditionally (bootstrap rule — in-memory boolean resets on every daemon start). Accepted offsets are persisted via `Database.set_trip_state("accel_offset_x"/"y"/"z", value)` and reloaded at engine startup with fallback to `config.accel_offset_*` seed when `trip_state` is empty. The sampler's offsets are updated live via a new `HighRateSampler.update_offsets(x, y, z)` method without restarting the sampler thread.
+- [x] **IMU-03**: `EventType.ROLLOVER` is added to the detector enum. Sustained `|gx| > rollover_threshold_dps` OR `|gy| > rollover_threshold_dps` for `rollover_min_duration_ms` (default 250 dps / 150 ms) fires a ROLLOVER event. Transient spikes shorter than the minimum duration do not fire. The `Event` dataclass records `peak_gx`, `peak_gy`, `peak_gz` alongside the existing accel peaks. ROLLOVER is added to `VIDEO_CAPTURE_EVENTS` so rollovers trigger video capture.
+- [x] **IMU-04**: `_check_big_corner` fires on EITHER `|ay| > big_corner_threshold_g` (existing) OR `|gz| > big_corner_yaw_dps` (default 60 dps), preserving the current `big_corner_min_duration_ms` gate. Yaw-rate path catches slow-tight corners that lateral-g alone misses.
+- [x] **IMU-05**: Engine telemetry loop detects stationary windows (GPS speed < `auto_zero_stationary_kmh` for `auto_zero_window_seconds`, defaults 1.0 km/h / 30 s), computes mean accel over the window from the ring buffer, and applies tolerance-based rejection: if `max(|new_offset - stored|)` exceeds `auto_zero_tolerance_g` (0.05 g), reject with a structured warning. Plausibility guards: minimum 2500 samples, no raw sample exceeds `auto_zero_motion_reject_g` (0.2 g), and no resulting offset exceeds `auto_zero_max_abs_g` (0.5 g).
+- [x] **IMU-06**: First stationary window after engine boot always accepts the new offset unconditionally (bootstrap rule — in-memory boolean resets on every daemon start). Accepted offsets are persisted via `Database.set_trip_state("accel_offset_x"/"y"/"z", value)` and reloaded at engine startup with fallback to `config.accel_offset_*` seed when `trip_state` is empty. The sampler's offsets are updated live via a new `HighRateSampler.update_offsets(x, y, z)` method without restarting the sampler thread.
 
 ## Future Requirements
 
@@ -126,23 +126,23 @@
 |--------|-------|--------|
 | DISP-01 | Phase 17 | Complete |
 | DISP-02 | Phase 17 | Complete |
-| DISP-03 | Phase 17 | Pending |
+| DISP-03 | Phase 17 | Complete |
 | DISP-04 | Phase 17 | Complete |
 | NOTE-01 | Phase 12 | Complete |
 | NOTE-02 | Phase 12 | Complete |
-| NOTE-03 | Phase 18 | Pending |
+| NOTE-03 | Phase 18 | Complete |
 | FUEL-01 | Phase 12 | Complete |
 | FUEL-02 | Phase 12 | Complete |
-| FUEL-03 | Phase 18 | Pending |
+| FUEL-03 | Phase 18 | Complete |
 | DRVR-01 | Phase 13 | Complete |
 | DRVR-02 | Phase 13 | Complete |
 | DRVR-03 | Phase 13 | Complete |
-| DRVR-04 | Phase 18 | Pending |
-| DRVR-05 | Phase 18 | Pending |
-| WEB-01 | Phase 18 | Pending |
-| WEB-02 | Phase 18 | Pending |
-| WEB-03 | Phase 18 | Pending |
-| WEB-04 | Phase 18 | Pending |
+| DRVR-04 | Phase 18 | Complete |
+| DRVR-05 | Phase 18 | Complete |
+| WEB-01 | Phase 18 | Complete |
+| WEB-02 | Phase 18 | Complete |
+| WEB-03 | Phase 18 | Complete |
+| WEB-04 | Phase 18 | Complete |
 | CAL-01 | Phase 14 | Pending |
 | CAL-02 | Phase 14 | Pending |
 | VID-01 | Phase 16 | Pending |
@@ -167,14 +167,14 @@
 | PHYS-02 | Phase 20 | Pending |
 | PHYS-03 | Phase 20 | Pending |
 | PHYS-04 | Phase 20 | Pending |
-| HW-01 | Phase 21 | Pending |
-| HW-02 | Phase 21 | Pending |
-| HW-03 | Phase 21 | Pending |
-| HW-04 | Phase 21 | Pending |
-| HW-05 | Phase 21 | Pending |
-| IMU-01 | Phase 22 | Pending |
+| HW-01 | Phase 21 | Complete |
+| HW-02 | Phase 21 | Complete |
+| HW-03 | Phase 21 | Complete |
+| HW-04 | Phase 21 | Complete |
+| HW-05 | Phase 21 | Complete |
+| IMU-01 | Phase 22 | Complete |
 | IMU-02 | Phase 22 | Complete |
-| IMU-03 | Phase 22 | Pending |
-| IMU-04 | Phase 22 | Pending |
-| IMU-05 | Phase 22 | Pending |
-| IMU-06 | Phase 22 | Pending |
+| IMU-03 | Phase 22 | Complete |
+| IMU-04 | Phase 22 | Complete |
+| IMU-05 | Phase 22 | Complete |
+| IMU-06 | Phase 22 | Complete |
