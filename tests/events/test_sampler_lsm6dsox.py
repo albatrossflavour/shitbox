@@ -287,6 +287,16 @@ def test_setup_sleeps_after_register_writes() -> None:
 
     If a future edit removes the settle OR places it before the writes, the
     assertion on mock_sleep.call_args_list[-1] fails.
+
+    Plan 22-04 note: the real Adafruit range-setter properties call
+    `sleep(0.2)` internally, but those imports bind `time.sleep` directly
+    (`from time import sleep` at the top of adafruit_lsm6ds), so they do NOT
+    flow through `shitbox.events.sampler.time.sleep` and are NOT captured by
+    this mock. Our `_FakeLSM6DSOX` subclass (used by `_make_fake_lsm6dsox`)
+    models the setter as an attribute update only, with no sleep. Either way,
+    the invariant stays the same: the LAST sleep this module calls must be
+    the 0.05 s AN5272 settle — test passes whether or not setter sleeps leak
+    through, because they would appear EARLIER in the call list, not last.
     """
     sampler = _make_sampler()
     fake_sensor, fake_i2c = _fake_sensor_with_i2c_spy()
@@ -513,3 +523,61 @@ def test_acceleration_returns_correct_g_after_setup() -> None:
     )
     assert sample.ax == pytest.approx(0.0, abs=0.01)
     assert sample.ay == pytest.approx(0.0, abs=0.01)
+
+
+def test_setup_preserves_ctrl1_xl_and_ctrl2_g_after_cache_sync() -> None:
+    """Bit-field preservation regression (threat T-22-04-01).
+
+    Intent: the register-range property setters must NOT disturb LPF2_XL_EN
+    (CTRL1_XL bit 1), ODR_XL (CTRL1_XL bits [7:4]), or the FS_G field
+    (CTRL2_G bits [3:2]) — the whole reason plan 22-01 chose direct writes
+    in the first place was to protect LPF2_XL_EN from being clobbered by a
+    full-byte property write (22-RESEARCH Pitfall 2).
+
+    With mocked I2C, "the last byte written to CTRLx" and "the bits we care
+    about are still set" are equivalent. If a future Adafruit release swaps
+    RWBits for full-byte writes, or someone reorders setters BEFORE the
+    direct register writes, this test fails — the direct write would be
+    clobbered by the setter's RMW of stale bits.
+
+    We assert by bit mask, not exact byte, so the test stays valid through
+    any future hardware-in-loop migration where the read side may include
+    bits this test doesn't control.
+    """
+    sampler = _make_sampler()
+    fake_sensor, fake_i2c = _fake_sensor_with_i2c_spy()
+    with patch("shitbox.events.sampler.busio.I2C"), \
+         patch("shitbox.events.sampler.LSM6DSOX", return_value=fake_sensor), \
+         patch("shitbox.events.sampler._HAS_LSM6DS", True), \
+         patch("shitbox.events.sampler.time.sleep"):
+        sampler.setup()
+
+    # Partition writes by register address. Each payload is `bytearray([addr, value])`.
+    writes_by_reg: dict[int, list[int]] = {}
+    for c in fake_i2c.write.call_args_list:
+        payload = c.args[0]
+        reg_addr, value = payload[0], payload[1]
+        writes_by_reg.setdefault(reg_addr, []).append(value)
+
+    assert 0x10 in writes_by_reg, "No write to CTRL1_XL (0x10) observed"
+    assert 0x11 in writes_by_reg, "No write to CTRL2_G (0x11) observed"
+
+    # LAST write to each register is the one that determines final hardware state.
+    last_ctrl1_xl = writes_by_reg[0x10][-1]
+    last_ctrl2_g = writes_by_reg[0x11][-1]
+
+    # LPF2_XL_EN (CTRL1_XL bit 1) must be set.
+    assert (last_ctrl1_xl & 0x02) == 0x02, (
+        f"LPF2_XL_EN (CTRL1_XL bit 1) missing in final write 0x{last_ctrl1_xl:02X}. "
+        "Plan 22-04 Task 2 setters must NOT disturb this bit."
+    )
+    # ODR_XL (CTRL1_XL bits [7:4]) must be 0b0101 (208 Hz).
+    assert (last_ctrl1_xl & 0xF0) == 0x50, (
+        f"ODR_XL (CTRL1_XL bits [7:4]) != 0b0101 (208 Hz) in final write "
+        f"0x{last_ctrl1_xl:02X}. Got 0b{(last_ctrl1_xl >> 4):04b}."
+    )
+    # FS_G (CTRL2_G bits [3:2]) must be 0b01 (RANGE_500_DPS).
+    assert (last_ctrl2_g & 0x0C) == 0x04, (
+        f"FS_G (CTRL2_G bits [3:2]) != 0b01 (RANGE_500_DPS) in final write "
+        f"0x{last_ctrl2_g:02X}. Got 0b{((last_ctrl2_g >> 2) & 0x03):02b}."
+    )
