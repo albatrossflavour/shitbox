@@ -1,11 +1,12 @@
 """Auto-zero state machine tests. Phase 22 — IMU-05, IMU-06.
 
 Tests the stationary auto-zero state machine wired into the 1 Hz telemetry
-loop. The state machine pulls stationary windows from the 100 Hz IMU ring
-buffer (to reach the 2500-sample floor) and applies six guards:
+loop. The state machine pulls stationary windows from the IMU ring buffer
+(to reach the 750-sample floor; 22-07 retarget — 25 Hz x 30 s = 750 samples;
+acceptance floor per IMU-02 is 10 Hz) and applies six guards:
 
   - GPS fix + speed gate
-  - Minimum sample count (2500)
+  - Minimum sample count (750)
   - Per-sample raw combined-g reject (per IMU-05 + RESEARCH Pitfall 5)
   - Per-axis window stddev reject
   - Absolute offset plausibility cap (applies even during bootstrap)
@@ -388,12 +389,15 @@ def test_per_sample_motion_rejected(engine_for_auto_zero) -> None:
 
 
 def test_minimum_sample_count_enforced(engine_for_auto_zero) -> None:
-    """Fewer than 2500 samples in window rejects with insufficient_samples."""
+    """Fewer than 750 samples in window rejects with insufficient_samples.
+
+    22-07: floor rescaled from 2500 to 750 after retarget from 100 Hz -> 25 Hz.
+    """
     engine = engine_for_auto_zero
     engine._autozero_bootstrap_done = True
     engine._current_accel_offsets = (0.27, -0.08, 1.02)
 
-    window = _make_window(2000, ax=0.28, ay=-0.07, az=1.025, jitter=0.005)
+    window = _make_window(600, ax=0.28, ay=-0.07, az=1.025, jitter=0.005)
     engine.ring_buffer.get_window.return_value = window
 
     _advance_to_window(engine)
@@ -405,8 +409,8 @@ def test_minimum_sample_count_enforced(engine_for_auto_zero) -> None:
                if c.args and c.args[0] == "auto_zero_rejected"]
     hit = [c for c in rejects if c.kwargs.get("reason") == "insufficient_samples"]
     assert len(hit) == 1
-    assert hit[0].kwargs.get("sample_count") == 2000
-    assert hit[0].kwargs.get("min_required") == 2500
+    assert hit[0].kwargs.get("sample_count") == 600
+    assert hit[0].kwargs.get("min_required") == 750
 
 
 def test_gps_no_fix_never_triggers(engine_for_auto_zero) -> None:

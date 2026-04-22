@@ -111,3 +111,21 @@ def test_event_to_dict_includes_peak_gyro(detector: EventDetector) -> None:
     assert "peak_gy" in d
     assert "peak_gz" in d
     assert isinstance(d["peak_gx"], float)
+
+
+def test_detector_rough_road_window_size_scales_with_rate() -> None:
+    """Regression guard for 22-07: _az_window_size tracks sample_rate_hz.
+
+    At 25 Hz with a 1000 ms window, the rolling stddev window should hold 25
+    samples. Pre-22-07 this was hardcoded to ``rough_road_window_ms / 10`` and
+    produced 100 samples at every rate. Test pins the rate-aware calc across
+    three rates (10 Hz acceptance floor, 25 Hz default, 100 Hz legacy).
+    """
+    for rate_hz, expected in [(25.0, 25), (100.0, 100), (10.0, 10)]:
+        cfg = DetectorConfig(sample_rate_hz=rate_hz, rough_road_window_ms=1000)
+        buf = RingBuffer(max_seconds=5.0, sample_rate_hz=rate_hz)
+        det = EventDetector(ring_buffer=buf, config=cfg)
+        assert det._az_window_size == expected, (
+            f"Expected _az_window_size={expected} at {rate_hz} Hz x 1000 ms, "
+            f"got {det._az_window_size}"
+        )
