@@ -88,6 +88,15 @@
 - [x] **HW-05
 **: The daemon boots and runs its main loop even when `critical`-tier devices are absent — no systemd crash-loop, no boot refusal, regardless of what the probe reports
 
+### IMU Signal Quality and Rollover Detection (IMU)
+
+- [ ] **IMU-01**: `HighRateSampler.setup()` configures the LSM6DSOX via direct register writes to `CTRL1_XL` (0x52 — ODR 208 Hz + FS ±2 g + LPF2_XL_EN=1), `CTRL2_G` (0x54 — ODR 208 Hz + FS ±500 dps), and `CTRL8_XL` (0x28 — HPCF_XL = ODR/10 ≈ 20.8 Hz cutoff + FASTSETTL_MODE_XL=1), followed by a 50 ms sleep citing ST app note AN5272 for filter settling. Register-write failures trigger `hw_state.report_degraded("imu")` and fall through to the existing I2C recovery ladder.
+- [ ] **IMU-02**: The sample loop remains polling at ~100 Hz while the sensor runs internally at 208 Hz; the LPF2 cutoff at ODR/10 suppresses aliasing well below the 50 Hz Nyquist of the poll rate. `sample_rate_hz` in config stays the application poll rate, with an inline comment clarifying the sensor ODR is 208 Hz internally.
+- [ ] **IMU-03**: `EventType.ROLLOVER` is added to the detector enum. Sustained `|gx| > rollover_threshold_dps` OR `|gy| > rollover_threshold_dps` for `rollover_min_duration_ms` (default 250 dps / 150 ms) fires a ROLLOVER event. Transient spikes shorter than the minimum duration do not fire. The `Event` dataclass records `peak_gx`, `peak_gy`, `peak_gz` alongside the existing accel peaks. ROLLOVER is added to `VIDEO_CAPTURE_EVENTS` so rollovers trigger video capture.
+- [ ] **IMU-04**: `_check_big_corner` fires on EITHER `|ay| > big_corner_threshold_g` (existing) OR `|gz| > big_corner_yaw_dps` (default 60 dps), preserving the current `big_corner_min_duration_ms` gate. Yaw-rate path catches slow-tight corners that lateral-g alone misses.
+- [ ] **IMU-05**: Engine telemetry loop detects stationary windows (GPS speed < `auto_zero_stationary_kmh` for `auto_zero_window_seconds`, defaults 1.0 km/h / 30 s), computes mean accel over the window from the ring buffer, and applies tolerance-based rejection: if `max(|new_offset - stored|)` exceeds `auto_zero_tolerance_g` (0.05 g), reject with a structured warning. Plausibility guards: minimum 2500 samples, no raw sample exceeds `auto_zero_motion_reject_g` (0.2 g), and no resulting offset exceeds `auto_zero_max_abs_g` (0.5 g).
+- [ ] **IMU-06**: First stationary window after engine boot always accepts the new offset unconditionally (bootstrap rule — in-memory boolean resets on every daemon start). Accepted offsets are persisted via `Database.set_trip_state("accel_offset_x"/"y"/"z", value)` and reloaded at engine startup with fallback to `config.accel_offset_*` seed when `trip_state` is empty. The sampler's offsets are updated live via a new `HighRateSampler.update_offsets(x, y, z)` method without restarting the sampler thread.
+
 ## Future Requirements
 
 - Magnetometer (LIS3MDL) ellipsoid calibration — deferred; rough heading accuracy sufficient for current use; revisit if compass display is added
@@ -106,6 +115,10 @@
 - **OBD/ECU data**: 2001 Ford Laser is OBD-I only.
 - **Cable loom routing**: Full cable loom design (split tubing, connector choices for engine bay and exterior sensor runs) is deferred from Phase 20.
 - **Power distribution**: 12V fused circuit from car battery, buck converter placement, ignition-linked vs always-on, clean shutdown is deferred from Phase 20.
+- **LSM6DSOX MLC (Machine Learning Core)**: Deferred from Phase 22 — separate future discussion.
+- **On-chip FIFO + DRDY hardware interrupts (INT1/INT2)**: Deferred from Phase 22 — polling loop is sufficient for 100 Hz application rate.
+- **Gyro LPF1 (CTRL6_C FTYPE) tuning**: Deferred from Phase 22 — default ULTRA_LIGHT bandwidth is acceptable; revisit only if noise-driven false ROLLOVER triggers appear in field data.
+- **Website ROLLOVER badge styling**: Out of scope for Phase 22 (which produces the event). One-line `BADGE_COLORS` addition is a follow-up in the `home-ops` repo.
 
 ## Traceability
 
@@ -159,3 +172,9 @@
 | HW-03 | Phase 21 | Pending |
 | HW-04 | Phase 21 | Pending |
 | HW-05 | Phase 21 | Pending |
+| IMU-01 | Phase 22 | Pending |
+| IMU-02 | Phase 22 | Pending |
+| IMU-03 | Phase 22 | Pending |
+| IMU-04 | Phase 22 | Pending |
+| IMU-05 | Phase 22 | Pending |
+| IMU-06 | Phase 22 | Pending |
