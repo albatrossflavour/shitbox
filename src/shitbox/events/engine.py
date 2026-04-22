@@ -961,6 +961,7 @@ class UnifiedEngine:
         EventType.ROUGH_ROAD,
         EventType.MANUAL_CAPTURE,
         EventType.BOOT,
+        EventType.ROLLOVER,  # Phase 22 (IMU-03) - rollovers always save video
     }
 
     # Health watchdog
