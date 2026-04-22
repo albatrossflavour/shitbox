@@ -129,3 +129,15 @@ def test_detector_rough_road_window_size_scales_with_rate() -> None:
             f"Expected _az_window_size={expected} at {rate_hz} Hz x 1000 ms, "
             f"got {det._az_window_size}"
         )
+
+
+def test_rollover_event_triggers_video_capture() -> None:
+    """IMU-03 / 22-02-03: ROLLOVER is a member of VIDEO_CAPTURE_EVENTS.
+
+    Structural assertion — the engine's dispatch path at ``_on_event`` gates
+    video save on this set. Removing ROLLOVER silently regresses the "rollover
+    always records" contract from plan 22-02.
+    """
+    from shitbox.events.engine import UnifiedEngine
+
+    assert EventType.ROLLOVER in UnifiedEngine.VIDEO_CAPTURE_EVENTS
