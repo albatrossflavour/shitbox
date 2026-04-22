@@ -53,6 +53,11 @@ FRONT_LIP_IN   = 1.5;         // lip overhang onto black bezel
 BEZEL_TOL      = 0.2;         // snug pocket — walls grip the screen
 BACKPLATE_T    = 4.0;         // back shell floor
 SHELL_WALL     = 6.0;         // wall thickness: 4.2 insert OD + 0.9 wall each side
+FRONT_Y_PAD    = 1.0;         // extra Y padding on front bezel only (top + bottom).
+                              // Original SHELL_WALL/2 = 3 mm puts the countersink
+                              // edge exactly on the outer edge — any tolerance and
+                              // it breaks out. Front grows ±1 mm in Y, screws stay
+                              // aligned with the (already-printed) back's inserts.
 
 OUTER_W        = SCREEN_W + 2 * SHELL_WALL + BEZEL_TOL;   // 202.2
 OUTER_H        = SCREEN_H + 2 * SHELL_WALL + BEZEL_TOL;   // 127.2
@@ -106,19 +111,26 @@ if (PART == "front") {
 //   Front bezel (picture frame)
 // =====================================================
 module front_bezel() {
+    // Front bezel is 2 * FRONT_Y_PAD taller than the back in Y so the
+    // countersinks aren't bursting through the outer edge. Inner features
+    // (glass window + screw holes) shift up by FRONT_Y_PAD so they stay
+    // aligned with the back's heat-set insert positions. Front overhangs
+    // the back by FRONT_Y_PAD mm top and bottom — accepted, no reprint.
     difference() {
         // Solid frame plate, front face on the bed
-        cube([OUTER_W, OUTER_H, FRONT_LIP_T]);
-        // Glass window through the frame
-        glass_window();
-        // Four M3 clearance bores with countersinks on the front face
-        screw_positions() {
-            // Clearance bore through the frame
-            translate([0, 0, -0.1])
-                cylinder(d = M3_CLEARANCE_D, h = FRONT_LIP_T + 0.2);
-            // Countersink opens on the Z=0 face (front, bed side)
-            translate([0, 0, -0.1])
-                cylinder(d = M3_CSK_D, h = M3_CSK_DEPTH + 0.1);
+        cube([OUTER_W, OUTER_H + 2 * FRONT_Y_PAD, FRONT_LIP_T]);
+        translate([0, FRONT_Y_PAD, 0]) {
+            // Glass window through the frame
+            glass_window();
+            // Four M3 clearance bores with countersinks on the front face
+            screw_positions() {
+                // Clearance bore through the frame
+                translate([0, 0, -0.1])
+                    cylinder(d = M3_CLEARANCE_D, h = FRONT_LIP_T + 0.2);
+                // Countersink opens on the Z=0 face (front, bed side)
+                translate([0, 0, -0.1])
+                    cylinder(d = M3_CSK_D, h = M3_CSK_DEPTH + 0.1);
+            }
         }
     }
 }
