@@ -173,7 +173,7 @@
 | HW-04 | Phase 21 | Pending |
 | HW-05 | Phase 21 | Pending |
 | IMU-01 | Phase 22 | Pending |
-| IMU-02 | Phase 22 | Pending |
+| IMU-02 | Phase 22 | Complete |
 | IMU-03 | Phase 22 | Pending |
 | IMU-04 | Phase 22 | Pending |
 | IMU-05 | Phase 22 | Pending |
