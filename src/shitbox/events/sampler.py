@@ -9,11 +9,32 @@ from typing import Callable, Optional
 try:
     import board
     import busio
-    from adafruit_lsm6ds import Rate
+    from adafruit_lsm6ds import AccelRange, GyroRange
     from adafruit_lsm6ds.lsm6dsox import LSM6DSOX
 
     _HAS_LSM6DS = True
 except ImportError:
+    # Dev-laptop fallback: bind stand-in namespaces so tests can patch
+    # ``shitbox.events.sampler.busio.I2C`` and ``shitbox.events.sampler.LSM6DSOX``
+    # without a ``create=True`` on every patch. Production code guards on
+    # ``_HAS_LSM6DS`` before using any of these. AccelRange / GyroRange use
+    # the same integer constants the real library pins (see
+    # adafruit_lsm6ds/__init__.py) so tests can assert against them directly.
+    import types
+
+    board = types.SimpleNamespace(SCL=None, SDA=None)  # type: ignore[assignment]
+    busio = types.SimpleNamespace(I2C=None)  # type: ignore[assignment]
+    AccelRange = types.SimpleNamespace(  # type: ignore[assignment,misc]
+        RANGE_2G=0, RANGE_16G=1, RANGE_4G=2, RANGE_8G=3,
+    )
+    GyroRange = types.SimpleNamespace(  # type: ignore[assignment,misc]
+        RANGE_250_DPS=0, RANGE_500_DPS=1, RANGE_1000_DPS=2,
+        RANGE_2000_DPS=3, RANGE_125_DPS=4,
+    )
+
+    def LSM6DSOX(*args, **kwargs):  # type: ignore[no-redef]
+        raise ImportError("adafruit-circuitpython-lsm6ds not installed")
+
     _HAS_LSM6DS = False
 
 from shitbox.capture import buzzer, speaker
@@ -35,12 +56,64 @@ SDA_PIN = 2                            # GPIO2 = physical pin 3
 I2C_MAX_RESETS = 3                     # Maximum recovery attempts before forced reboot
 I2C_RESET_BACKOFF_SECONDS = [0, 2, 5]  # Seconds to wait before each attempt (index = attempt)
 
+# LSM6DSOX control register addresses (ref: STMicroelectronics lsm6dsox_reg.h;
+# Adafruit _LSM6DS_CTRL1_XL / CTRL2_G / CTRL8_XL constants — see 22-RESEARCH.md)
+REG_CTRL1_XL = 0x10  # Accel: ODR + FS + LPF2_XL_EN
+REG_CTRL2_G = 0x11   # Gyro:  ODR + FS
+REG_CTRL8_XL = 0x17  # Accel: LPF2 cutoff (HPCF_XL), fast-settle
+
+# Values derived in 22-RESEARCH.md "Register-Level Changes":
+# CTRL1_XL = ODR_XL=0b0101 (208 Hz) << 4 | FS_XL=0b00 (+/-2g) << 2 | LPF2_XL_EN=1 << 1 = 0x52
+CTRL1_XL_VALUE = 0x52
+# CTRL2_G  = ODR_G=0b0101 (208 Hz) << 4 | FS_G=0b01 (+/-500 dps) << 2 = 0x54
+CTRL2_G_VALUE = 0x54
+# CTRL8_XL = HPCF_XL=0b001 (ODR/10 ~= 20.8 Hz) << 5 | FASTSETTL_MODE_XL=1 << 3 = 0x28
+CTRL8_XL_VALUE = 0x28
+# AN5272: LPF2 filter settling is worst-case 8/ODR = ~38.5 ms at 208 Hz.
+# 50 ms is the comfortable pad; fast-settle halves it anyway. See setup().
+FILTER_SETTLE_SECONDS = 0.05
+
+# Plan 22-05: poll-rate diagnostics. We observe ~60-80 Hz app poll rate on real
+# hardware where the target is 100 Hz (UAT gap 2). Root cause is unknown —
+# could be I2C contention, Adafruit getter overhead, ring buffer append lock,
+# or on_sample callback cost. These two constants drive the two structlog
+# diagnostic lines `_sample_loop` emits:
+#
+#   sampler_read_rate        — once per _RATE_LOG_INTERVAL_SECONDS window,
+#                              observed samples_per_second + dropped delta.
+#   sampler_timing_snapshot  — once every _TIMING_SNAPSHOT_EVERY_N_SAMPLES
+#                              successful reads, per-stage latency breakdown.
+#
+# The timing snapshot is guarded by a modulo check so the four extra
+# time.perf_counter() calls only fire on every 100th iteration — important
+# because the IMU-02 `test_sample_loop_rate` pins the per-iteration perf_counter
+# count (see tests/events/test_sampler_lsm6dsox.py::test_sample_loop_rate).
+_TIMING_SNAPSHOT_EVERY_N_SAMPLES = 100  # ~1 Hz at 100 Hz target rate
+_RATE_LOG_INTERVAL_SECONDS = 10.0
+
+
+def _write_register(sensor: object, reg_addr: int, value: int) -> None:
+    """Write a single byte to an LSM6DSOX control register.
+
+    Uses the same ``with sensor.i2c_device as i2c:`` pattern the Adafruit
+    driver uses internally for MLC upload (ref:
+    adafruit_lsm6ds/__init__.py load_mlc). OSError/ValueError from this
+    call must be caught by the surrounding try/except in setup() so the
+    sampler falls through to the I2C recovery ladder and reports
+    degraded via hw_state (D-24 — graceful boot contract).
+    """
+    buf = bytearray([reg_addr, value & 0xFF])
+    with sensor.i2c_device as i2c:  # type: ignore[attr-defined]
+        i2c.write(buf)
+
 
 class HighRateSampler:
     """High-rate IMU sampler using LSM6DSOX.
 
-    Samples at ~104 Hz (LSM6DSOX Rate.RATE_104_HZ) and feeds data into a ring
-    buffer. Designed to run in its own thread with minimal latency.
+    Samples at ~104 Hz (application poll rate; sensor ODR is 208 Hz internally
+    after phase 22 and the intermediate sample is silently dropped) and feeds
+    data into a ring buffer. Designed to run in its own thread with minimal
+    latency.
     """
 
     def __init__(
@@ -56,7 +129,8 @@ class HighRateSampler:
 
         Args:
             ring_buffer: Buffer to store samples.
-            sample_rate_hz: Target sample rate (104.0 matches Rate.RATE_104_HZ).
+            sample_rate_hz: Target application poll rate in Hz (sensor ODR
+                is configured to 208 Hz; the poll-loop decimates to this rate).
             accel_offset_x: Bias correction for ax (g), subtracted after unit conversion.
             accel_offset_y: Bias correction for ay (g), subtracted after unit conversion.
             accel_offset_z: Bias correction for az (g), subtracted after unit conversion.
@@ -98,13 +172,76 @@ class HighRateSampler:
                 raise ImportError("adafruit-circuitpython-lsm6ds not installed")
             self._i2c = busio.I2C(board.SCL, board.SDA)  # type: ignore[name-defined]
             sensor = LSM6DSOX(self._i2c)  # type: ignore[name-defined]
-            sensor.accelerometer_data_rate = Rate.RATE_104_HZ  # type: ignore[name-defined]
-            sensor.gyro_data_rate = Rate.RATE_104_HZ  # type: ignore[name-defined]
+            # Phase 22: direct register writes. Bypasses the Adafruit
+            # property getters to avoid read-modify-write clobbering
+            # LPF2_XL_EN (see 22-RESEARCH Pitfall 2).
+            _write_register(sensor, REG_CTRL1_XL, CTRL1_XL_VALUE)  # ODR=208 Hz, LPF2_XL_EN=1
+            _write_register(sensor, REG_CTRL2_G,  CTRL2_G_VALUE)   # ODR=208 Hz, FS=+/-500 dps
+            _write_register(sensor, REG_CTRL8_XL, CTRL8_XL_VALUE)  # HPCF_XL=ODR/10, fast-settle
+            # Phase 22 plan 22-04: sync the Adafruit driver's range cache to match
+            # the hardware state produced by the direct writes above.
+            # _cached_accel_range / _cached_gyro_range are used by the .acceleration
+            # and .gyro property getters to scale raw counts. Without this sync, the
+            # cache stays at constructor defaults (+/-4g / +/-250 dps) and readings
+            # are off by a 2x scale factor — the root cause of the UAT gap-1
+            # stationary mean_z=1.9997 symptom and the gap-3 halved-gyro consequence.
+            #
+            # These setters use RWBits(2, REG, 2), which masks off only the FS bits
+            # [3:2]. Our direct CTRL1_XL=0x52 write already set FS_XL = 0b00
+            # (RANGE_2G), so the underlying register write is a no-op; LPF2_XL_EN
+            # (bit 1) and ODR_XL (bits [7:4]) are preserved through the RMW. Same
+            # logic for CTRL2_G: FS_G = 0b01 already matches RANGE_500_DPS, ODR_G
+            # preserved.
+            #
+            # ORDERING NOTE (load-bearing): each setter calls sleep(0.2) internally.
+            # Our AN5272 50 ms settle MUST remain the LAST time.sleep in setup() — it
+            # guards the filter chain, not the range cache. Both setter calls go
+            # BEFORE the existing 50 ms sleep.
+            sensor.accelerometer_range = AccelRange.RANGE_2G
+            sensor.gyro_range = GyroRange.RANGE_500_DPS
+            log.debug(
+                "lsm6dsox_driver_cache_synced",
+                accel_range="RANGE_2G",
+                gyro_range="RANGE_500_DPS",
+            )
+            # AN5272 (STMicroelectronics LSM6DSOX app note): worst-case LPF2 settling
+            # is 8/ODR seconds after filter reconfiguration. At 208 Hz that is ~38.5 ms.
+            # Fast-settle mode (CTRL8_XL bit 3) converges in 2 samples (~9.6 ms) but the
+            # conservative pad keeps the detector from seeing transients. DO NOT REMOVE
+            # this sleep or reorder it before the register writes — without it running
+            # AFTER all three writes (AND the property setters that follow), the first
+            # ~8 samples can falsely trigger HARD_BRAKE/HIGH_G at boot. The Task 2 /
+            # plan 22-04 Task 3 unit tests pin this ordering as the LAST time.sleep.
+            time.sleep(FILTER_SETTLE_SECONDS)
             self._lsm6dsox = sensor
             log.info("lsm6dsox_initialised", sample_rate_hz=self.sample_rate_hz)
         except (OSError, ValueError, ImportError, RuntimeError, Exception) as e:
+            # Phase 22: differentiate register-config failure from sensor-detection
+            # failure in the log message. Both paths null _lsm6dsox so start()
+            # triggers the I2C recovery ladder identically.
             log.error("sensor_init_failed", sensor="LSM6DSOX", error=str(e))
+            hw_state.report_degraded(self.role)
             self._lsm6dsox = None
+
+    def update_offsets(self, x: float, y: float, z: float) -> None:
+        """Replace the three accel offsets live, without restarting the sampler.
+
+        Called by the engine telemetry loop when auto-zero accepts a new
+        stationary-window mean (plan 22-03). Assignment to three independent
+        float attributes is not atomic as a sequence in CPython; a worst-case
+        interleaved read from the sampler thread would see x updated but y/z
+        not yet. The sub-0.05 g delta per assignment is below detector noise
+        and is accepted as negligible (see 22-RESEARCH Assumption A4).
+        """
+        self._accel_offset_x = x
+        self._accel_offset_y = y
+        self._accel_offset_z = z
+        log.info(
+            "sampler_offsets_updated",
+            offset_x=round(x, 4),
+            offset_y=round(y, 4),
+            offset_z=round(z, 4),
+        )
 
     def start(self) -> None:
         """Start sampling in background thread."""
@@ -158,6 +295,13 @@ class HighRateSampler:
             return
 
         next_sample_time = time.perf_counter()
+        # Plan 22-05: fixed-cadence rate instrumentation. `rate_window_samples`
+        # counts successful reads in the current 10 s window; baseline of
+        # `samples_dropped` at window start lets us emit the per-window drop
+        # delta rather than the lifetime counter.
+        last_rate_log = next_sample_time
+        rate_window_samples = 0
+        rate_window_dropped_baseline = self.samples_dropped
 
         while self._running:
             now = time.perf_counter()
@@ -176,14 +320,47 @@ class HighRateSampler:
             try:
                 if self._lsm6dsox is None:
                     raise OSError("sensor is None — I2C reinit failed")
+                # Plan 22-05: only time every Nth read. The unconditional
+                # `perf_counter` calls in the simpler target shape would break
+                # the IMU-02 `test_sample_loop_rate` pin, so we gate the four
+                # timestamps behind the same modulo check that decides whether
+                # to emit `sampler_timing_snapshot`. Non-snapshot iterations do
+                # exactly one perf_counter call, matching pre-22-05 behaviour.
+                do_timing = (
+                    (self.samples_total + 1) % _TIMING_SNAPSHOT_EVERY_N_SAMPLES == 0
+                )
+
+                t_read_start = time.perf_counter() if do_timing else 0.0
                 sample = self._read_sample()
+                t_read_done = time.perf_counter() if do_timing else 0.0
+
                 self.ring_buffer.append(sample)
+                t_append_done = time.perf_counter() if do_timing else 0.0
+
                 self.samples_total += 1
+                rate_window_samples += 1
                 self._consecutive_failures = 0
                 hw_state.report_present(self.role)
 
                 if self.on_sample:
                     self.on_sample(sample)
+                t_callback_done = time.perf_counter() if do_timing else 0.0
+
+                if do_timing:
+                    log.info(
+                        "sampler_timing_snapshot",
+                        i2c_read_ms=round((t_read_done - t_read_start) * 1000.0, 3),
+                        ring_buffer_append_ms=round(
+                            (t_append_done - t_read_done) * 1000.0, 3
+                        ),
+                        on_sample_callback_ms=round(
+                            (t_callback_done - t_append_done) * 1000.0, 3
+                        ),
+                        total_cycle_ms=round(
+                            (t_callback_done - t_read_start) * 1000.0, 3
+                        ),
+                        samples_total=self.samples_total,
+                    )
 
             except OSError as e:
                 log.error("sample_read_error", error=str(e))
@@ -223,6 +400,25 @@ class HighRateSampler:
             except Exception as e:
                 log.error("sample_read_error", error=str(e))
                 self._consecutive_failures += 1
+
+            # Plan 22-05: periodic rate log at fixed 10 s cadence. Uses `now`
+            # captured at loop top — no extra perf_counter call. Window is
+            # windowed: `rate_window_samples` counts successful reads in this
+            # window; `samples_dropped_delta` is dropped count change since
+            # the window began.
+            if now - last_rate_log >= _RATE_LOG_INTERVAL_SECONDS:
+                elapsed = now - last_rate_log
+                dropped_delta = self.samples_dropped - rate_window_dropped_baseline
+                log.info(
+                    "sampler_read_rate",
+                    samples_per_second=round(rate_window_samples / elapsed, 2),
+                    target_hz=self.sample_rate_hz,
+                    window_seconds=round(elapsed, 2),
+                    samples_dropped_delta=dropped_delta,
+                )
+                rate_window_samples = 0
+                rate_window_dropped_baseline = self.samples_dropped
+                last_rate_log = now
 
             next_sample_time += self.sample_interval
 

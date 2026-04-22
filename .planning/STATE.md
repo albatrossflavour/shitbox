@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: executing
-stopped_at: context exhaustion at 91% (2026-04-22)
-last_updated: "2026-04-22T00:33:39.464Z"
-last_activity: 2026-04-21 -- Phase 21 verified and closed
+status: ready_to_plan
+stopped_at: Phase 23 complete (verification closure); Phase 24 next (waits on prints)
+last_updated: "2026-04-22T11:02:33.617Z"
+last_activity: 2026-04-22 Phase 23 executed and verified
 progress:
-  total_phases: 11
-  completed_phases: 6
-  total_plans: 36
-  completed_plans: 35
-  percent: 97
+  total_phases: 13
+  completed_phases: 8
+  total_plans: 46
+  completed_plans: 43
+  percent: 93
 ---
 
 # Project State
@@ -22,24 +22,28 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 20 — physical-integration (resumed 2026-04-21 after Phase 21 close)
+**Current focus:** Phase 23 complete; Phase 24 next (Phase 20 Physical Integration Completion, waits on prints)
 
 ## Current Position
 
-Phase: 20 (physical-integration) — PAUSED (3D prints queued on Bambu P1S)
-  Plan: 1 of 3 started, remaining work blocked on physical prints coming off the machine
-  Resume after: prints complete and mock-fit done in-car
+Phase: 23 (verification-closure-and-traceability-sweep) — COMPLETE (VERIFICATION PASS)
+  All 3 plans done:
+    - 23-01: 18-VERIFICATION.md created (8 Phase 18 requirements satisfied)
+    - 23-02: NARR-08b corrected in 19-VERIFICATION.md (stale BLOCKED → SATISFIED, score 11/11)
+    - 23-03: REQUIREMENTS.md traceability refreshed (17 checkboxes + 19 rows flipped); ROADMAP.md Phase 21/22 rows updated
+  23-VERIFICATION.md: 5/5 success criteria VERIFIED; one informational note re IMU-02 checkbox/table mismatch (pre-existing Phase 22 Pi UAT deferral, out of scope for this phase).
 
-Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE (VERIFICATION PASS)
-  All 5 plans done. Post-review follow-ups landed:
+Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — COMPLETE
+  7/7 plans; verified 2026-04-22 with deferred Pi UAT on IMU-02 sustained poll rate.
 
-    - GpsdClient TPV → hw_state.report_present("gps")
-    - Inline HARDWARE panel replaced with top-bar HW button + full-screen modal
-  4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
+Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
+  5/5 plans; verified 2026-04-21. 4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Last activity: 2026-04-21 -- Phase 21 verified and closed
+Next: Phase 24 (Phase 20 Physical Integration Completion) waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24.
 
-Progress: [██████████] 100%
+Last activity: 2026-04-22 Phase 23 executed and verified
+
+Progress: 8/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
@@ -108,8 +112,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-22T00:33:39.455Z
-Stopped at: context exhaustion at 91% (2026-04-22)
+Last session: 2026-04-22T11:02:33.611Z
+Stopped at: Phase 23 complete (verification closure and traceability sweep)
 Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)
@@ -144,4 +148,4 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
 
-**Planned Phase:** 21 (Hardware Inventory and Graceful Degradation) — 5 plans — 2026-04-21T01:38:39.545Z
+**Planned Phase:** 23 (Verification Closure and Traceability Sweep) — 3 plans — 2026-04-22T10:38:33.864Z

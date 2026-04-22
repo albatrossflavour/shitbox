@@ -41,6 +41,10 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [x] **Phase 19: Website Narrative Rebuild** - Day-centric IA with before/live/archive modes, timeline spine, progress-bar day nav (completed 2026-04-17)
 - [ ] **Phase 20: Physical Integration** - 3D-printed enclosures for Pi, screen, and camera; dash mounting; system verification
 - [ ] **Phase 21: Hardware Inventory and Graceful Degradation** - Per-device manifest, boot-time presence validation, graceful handling of missing/lost I2C and USB devices, TTS/OLED/UI status
+- [ ] **Phase 22: IMU Signal Quality and Rollover Detection** - LSM6DSOX register programming, ROLLOVER event type, stationary auto-zero (awaiting final milestone verifier)
+- [x] **Phase 23: Verification Closure and Traceability Sweep** - Formal verify Phase 18, correct stale NARR-08b note, refresh REQUIREMENTS.md + ROADMAP.md tables (gap closure) (completed 2026-04-22)
+- [ ] **Phase 24: Phase 20 Physical Integration Completion** - Finish deferred 20-03 Task 3 (OpenSCAD review + Pi boot verify), produce 20-VERIFICATION.md (gap closure, waits on prints)
+- [ ] **Phase 25: Milestone v2.0 Nyquist Validation Sweep** - `/gsd-validate-phase` across phases 12/13/17/18/19/20/21 (gap closure)
 
 ## Phase Details
 
@@ -344,12 +348,93 @@ Plans:
 
 **Requirements**: IMU-01, IMU-02, IMU-03, IMU-04, IMU-05, IMU-06
 
-**Plans**: 3 plans
+**Plans**: 6 plans (3 original + 3 gap-closure)
 
 Plans:
-- [ ] 22-01-sampler-register-config-PLAN.md — LSM6DSOX CTRL1_XL / CTRL2_G / CTRL8_XL register programming (ODR 208 Hz, LPF2 cutoff ~20.8 Hz, FS ±500 dps), AN5272 settle, sampler update_offsets() API, config scaffolding for auto-zero. (IMU-01, IMU-02)
-- [ ] 22-02-rollover-detection-PLAN.md — New ROLLOVER EventType (gx/gy > 250 dps for 150 ms), peak_gx/gy/gz on Event, BIG_CORNER OR-semantics adding gz yaw-rate gate, VIDEO_CAPTURE_EVENTS wiring. (IMU-03, IMU-04)
-- [ ] 22-03-stationary-auto-zero-PLAN.md — Stationary-window state machine (GPS fix + speed<1 km/h), bootstrap-accept-first rule, tolerance/motion/plausibility gates, trip_state persistence, boot-time offset reload. (IMU-05, IMU-06)
+- [x] 22-01-sampler-register-config-PLAN.md — LSM6DSOX CTRL1_XL / CTRL2_G / CTRL8_XL register programming (ODR 208 Hz, LPF2 cutoff ~20.8 Hz, FS ±500 dps), AN5272 settle, sampler update_offsets() API, config scaffolding for auto-zero. (IMU-01, IMU-02)
+- [x] 22-02-rollover-detection-PLAN.md — New ROLLOVER EventType (gx/gy > 250 dps for 150 ms), peak_gx/gy/gz on Event, BIG_CORNER OR-semantics adding gz yaw-rate gate, VIDEO_CAPTURE_EVENTS wiring. (IMU-03, IMU-04)
+- [x] 22-03-stationary-auto-zero-PLAN.md — Stationary-window state machine (GPS fix + speed<1 km/h), bootstrap-accept-first rule, tolerance/motion/plausibility gates, trip_state persistence, boot-time offset reload. (IMU-05, IMU-06)
+- [x] 22-04-driver-cache-alignment-PLAN.md — [gap closure, blocker] Sync Adafruit driver's `_cached_accel_range` / `_cached_gyro_range` to match direct CTRL1_XL/CTRL2_G register writes; closes UAT gaps 1 & 3 (stationary mean_z=1.9997 and halved gyro readings). (IMU-01, IMU-02)
+- [x] 22-05-application-poll-rate-fix-PLAN.md — [gap closure, major] Diagnostics-only instrumentation (`sampler_read_rate` every 10 s, `sampler_timing_snapshot` every 100 samples) on sample loop — addresses UAT gap 2 by producing evidence for follow-up root-cause fix. (IMU-02)
+- [x] 22-06-events-json-gyro-fields-PLAN.md — [gap closure, minor] Extend `EventStorage.generate_events_json()` to copy peak_ax/ay/az and peak_gx/gy/gz to the website-facing feed; closes UAT gap 4. (IMU-04)
+- [x] 22-07-PLAN.md — [gap closure, major] Retarget IMU-02 application poll rate from ~100 Hz to 25 Hz: config + dataclass defaults to 25.0 Hz, auto-zero floor rescaled to 750 samples, EventDetector rate-aware (`_az_window_size = ms * Hz / 1000`), REQUIREMENTS.md IMU-02 rewritten with 10 Hz acceptance floor; closes UAT/VERIFICATION gap 2 at the spec level (Pi UAT confirms). (IMU-02)
+
+---
+
+---
+
+### Phase 23: Verification Closure and Traceability Sweep
+
+**Goal:** Close the paperwork gaps preventing v2.0 milestone from passing — run the formal verifier pass against Phase 18 (all code wired per integration checker), correct the stale NARR-08b BLOCKED note in Phase 19 VERIFICATION.md, and refresh the REQUIREMENTS.md traceability table + ROADMAP.md progress table to reflect actual state.
+
+**Depends on:** Phase 22 complete (milestone audit produced)
+
+**Requirements:** (verification artefacts only) NOTE-03, FUEL-03, DRVR-04, DRVR-05, WEB-01, WEB-02, WEB-03, WEB-04, NARR-08b — code already satisfies them per the integration checker; this phase produces paperwork.
+
+**Success Criteria** (what must be TRUE):
+
+  1. `.planning/phases/18-website-revamp/18-VERIFICATION.md` exists with status `passed` for all eight Phase 18 requirements
+  2. `.planning/phases/19-website-narrative-rebuild/19-VERIFICATION.md` no longer lists NARR-08b as BLOCKED; reflects the home-address proximity filter as implemented at `src/shitbox/storage/route.py:22-28, 121, 153-157`
+  3. REQUIREMENTS.md traceability table shows Status `Complete` for every requirement whose VERIFICATION.md reports `satisfied`
+  4. REQUIREMENTS.md checkbox list matches the traceability table's Status column
+  5. ROADMAP.md progress table shows Phase 21 `Complete`, Phase 22 `Verified`, with correct completion dates
+
+**Gap Closure:** Closes audit gaps from `.planning/v2.0-MILESTONE-AUDIT.md` (Phase 18 verification missing; Phase 19 NARR-08b stale blocker; ROADMAP + REQUIREMENTS table drift).
+
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] 23-01-PLAN.md, generate 18-VERIFICATION.md (eight Phase 18 requirements flip to satisfied)
+- [x] 23-02-PLAN.md, correct NARR-08b stale BLOCKED entry in 19-VERIFICATION.md
+- [x] 23-03-PLAN.md, refresh REQUIREMENTS.md traceability plus ROADMAP.md progress table
+
+**UI hint**: no
+
+---
+
+### Phase 24: Phase 20 Physical Integration Completion
+
+**Goal:** Finish the deferred third task of plan 20-03 — OpenSCAD visual review of all four SCAD designs plus full system boot verification with the Pi installed in the car — then produce 20-VERIFICATION.md to close PHYS-01..04.
+
+**Depends on:** Phase 20 (existing SCAD files), physical 3D prints complete and fitted.
+
+**Requirements:** PHYS-01, PHYS-02, PHYS-03, PHYS-04
+
+**Success Criteria** (what must be TRUE):
+
+  1. All four SCAD files (Pi stack, screen bezel, VESA backplate, camera cradle) visually reviewed; rendered previews or in-situ photos captured
+  2. Physical prints test-fitted to the real hardware; any geometry errors documented and corrected
+  3. Full system boots in installed in-car configuration with every declared sensor present per `HardwareState`
+  4. `.planning/phases/20-physical-integration/20-VERIFICATION.md` exists with status `passed` for PHYS-01..04
+
+**Gap Closure:** Closes plan 20-03 Task 3 deferral and PHYS-01..04 unverified state.
+
+**Plans:** TBD (deferred — waits on prints)
+
+**UI hint**: no
+
+---
+
+### Phase 25: Milestone v2.0 Nyquist Validation Sweep
+
+**Goal:** Bring every executed v2.0 phase (12, 13, 17, 18, 19, 20, 21) to Nyquist compliance by running `/gsd-validate-phase` against each, filling any test coverage gaps the auditor identifies, and flipping `nyquist_compliant: true` + `wave_0_complete: true` in each VALIDATION.md.
+
+**Depends on:** Phase 23 (Phase 18 verified) for the phase-18 validate; Phase 24 (Phase 20 verified) for the phase-20 validate. Phases 12/13/17/19/21 can be validated independently.
+
+**Requirements:** (validation artefacts only — no new behavioural requirements)
+
+**Success Criteria** (what must be TRUE):
+
+  1. `.planning/phases/12-*/VALIDATION.md` has `nyquist_compliant: true` and `wave_0_complete: true`
+  2. Same for phases 13, 17, 18, 19, 20, 21
+  3. Any auditor-identified test coverage gaps have corresponding tests landed in the repo
+  4. Auditor-emitted REVIEW.md for each validated phase shows no BLOCK-severity findings
+
+**Gap Closure:** Closes the Nyquist audit gap (7 phases partial → compliant).
+
+**Plans:** TBD
+
+**UI hint**: no
 
 ---
 
@@ -377,5 +462,8 @@ Plans:
 | 18. Website Revamp | v2.0 | 5/5 | Complete    | 2026-04-11 |
 | 19. Website Narrative Rebuild | v2.0 | 12/12 | Complete   | 2026-04-17 |
 | 20. Physical Integration | v2.0 | 0/3 | Not started | — |
-| 21. Hardware Inventory and Graceful Degradation | v2.0 | 0/5 | Not started | — |
-| 22. IMU Signal Quality and Rollover Detection | v2.0 | 0/0 | Not started | — |
+| 21. Hardware Inventory and Graceful Degradation | v2.0 | 5/5 | Complete | 2026-04-21 |
+| 22. IMU Signal Quality and Rollover Detection | v2.0 | 7/7 | Verified | 2026-04-22 |
+| 23. Verification Closure and Traceability Sweep | v2.0 | 3/3 | Complete    | 2026-04-22 |
+| 24. Phase 20 Physical Integration Completion | v2.0 | TBD | Not started (waits on prints) | — |
+| 25. Milestone v2.0 Nyquist Validation Sweep | v2.0 | TBD | Not started | — |

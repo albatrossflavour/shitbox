@@ -43,15 +43,30 @@ class GPSConfig:
 
 @dataclass
 class LSM6DSOXConfig:
-    """LSM6DSOX accel+gyro (replaces MPU6050)."""
+    """LSM6DSOX accel+gyro (replaces MPU6050). Also carries auto-zero config (Phase 22)."""
 
     enabled: bool = True
     i2c_bus: int = 1
     address: int = 0x6A
-    sample_rate_hz: float = 104.0  # LSM6DSOX Rate.RATE_104_HZ default
+    # Application poll rate, retargeted 22-07 from 104.0 -> 25.0 Hz.
+    # Sensor ODR stays at 208 Hz internally (CTRL1_XL=0x52). Acceptance floor is 10 Hz
+    # per REQUIREMENTS.md IMU-02. Matches the default in config/config.yaml.
+    sample_rate_hz: float = 25.0
     accel_offset_x: float = 0.0   # g, subtracted after unit conversion
     accel_offset_y: float = 0.0
     accel_offset_z: float = 0.0
+    # Phase 22 auto-zero (IMU-05, IMU-06) — canonical field names
+    auto_zero_enabled: bool = True
+    auto_zero_stationary_kmh: float = 1.0
+    auto_zero_window_seconds: float = 30.0
+    auto_zero_tolerance_g: float = 0.05
+    auto_zero_max_abs_g: float = 0.5
+    auto_zero_motion_reject_g: float = 0.2
+    # window-stddev gate; distinct from per-sample auto_zero_motion_reject_g
+    # (see IMU-05 / 22-RESEARCH Pitfall 5). A sustained 0.5 g DC bias with low
+    # jitter would pass stddev but still trip per-sample — these are independent
+    # guards layered in sequence.
+    auto_zero_motion_stddev_g: float = 0.20
 
 
 @dataclass

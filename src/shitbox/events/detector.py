@@ -21,11 +21,24 @@ class EventType(Enum):
     HIGH_G = "high_g"
     MANUAL_CAPTURE = "manual_capture"
     BOOT = "boot"
+    ROLLOVER = "rollover"  # Phase 22 (IMU-03)
 
 
 @dataclass
 class Event:
-    """A detected driving event."""
+    """Structured detection event produced by the EventDetector state machine.
+
+    Peak-field semantics (locked by plan 22-02 / IMU-03):
+        peak_ax/ay/az and peak_gx/gy/gz are the accelerometer and gyro readings
+        TAKEN AT THE SAMPLE where `peak_value` (the tracked axis) was observed.
+        They are a point-in-time snapshot of the full 6-DoF state at the peak,
+        NOT per-axis maxima computed independently over the event window.
+
+        This means: if |gx| is tracked and peaks at sample N, `peak_gy` is the
+        gy value at sample N — not the maximum |gy| seen anywhere between
+        start_time and end_time. If you need per-axis maxima, compute them
+        from `samples` (the retained pre/in-event IMU buffer).
+    """
 
     event_type: EventType
     start_time: float  # Unix timestamp
@@ -34,6 +47,9 @@ class Event:
     peak_ax: float
     peak_ay: float
     peak_az: float
+    peak_gx: float = 0.0
+    peak_gy: float = 0.0
+    peak_gz: float = 0.0
     samples: List[IMUSample] = field(default_factory=list)
     lat: Optional[float] = None
     lng: Optional[float] = None
@@ -58,6 +74,9 @@ class Event:
             "peak_ax": round(self.peak_ax, 3),
             "peak_ay": round(self.peak_ay, 3),
             "peak_az": round(self.peak_az, 3),
+            "peak_gx": round(self.peak_gx, 3),
+            "peak_gy": round(self.peak_gy, 3),
+            "peak_gz": round(self.peak_gz, 3),
             "sample_count": len(self.samples),
         }
         if self.lat is not None:
@@ -85,6 +104,7 @@ class DetectorConfig:
 
     # Big corner: |ay| > threshold for duration
     big_corner_threshold_g: float = 0.45
+    big_corner_yaw_dps: float = 60.0  # OR-trigger: sustained yaw rate (Phase 22 / IMU-04)
     big_corner_min_duration_ms: int = 300
 
     # Rough road: stddev of az over window > threshold
@@ -96,12 +116,22 @@ class DetectorConfig:
     high_g_min_duration_ms: int = 300
     high_g_min_speed_kmh: float = 10.0
 
+    # Rollover: sustained |gx| or |gy| above threshold (Phase 22 / IMU-03)
+    rollover_threshold_dps: float = 250.0
+    rollover_min_duration_ms: int = 150
+
     # Cooldown: minimum time between events of same type
     cooldown_seconds: float = 10.0
 
     # Pre/post event capture
     pre_event_seconds: float = 5.0
     post_event_seconds: float = 10.0
+
+    # Application poll rate (Hz). Mirrored from LSM6DSOXConfig.sample_rate_hz by
+    # engine wiring so the detector's rolling-window sizes match the ring buffer's
+    # fill rate. Default aligns with LSM6DSOXConfig default (25 Hz per 22-07).
+    # Placed at end of dataclass for positional-arg call-site safety.
+    sample_rate_hz: float = 25.0
 
 
 class EventDetector:
@@ -140,11 +170,16 @@ class EventDetector:
         # Stats
         self.events_detected: Dict[EventType, int] = {t: 0 for t in EventType}
 
-        # Rolling window for rough road detection
+        # Rolling window for rough road detection. Sized from ms window * Hz / 1000
+        # so it scales with the application poll rate (22-07). Pre-22-07 this hardcoded
+        # a /10 divisor assuming 100 Hz, which silently broke at any other rate.
+        # max(1, ...) prevents a zero-size window if someone configures a pathological
+        # <1 Hz rate with a <1 s window.
         self._az_window: List[float] = []
-        self._az_window_size = int(
-            self.config.rough_road_window_ms / 10
-        )  # Assuming ~100 Hz
+        self._az_window_size = max(
+            1,
+            int(self.config.rough_road_window_ms * self.config.sample_rate_hz / 1000.0),
+        )
 
     def process_sample(self, sample: IMUSample) -> Optional[Event]:
         """Process a new sample and check for events.
@@ -162,6 +197,7 @@ class EventDetector:
         completed_event = self._check_big_corner(sample) or completed_event
         completed_event = self._check_high_g(sample) or completed_event
         completed_event = self._check_rough_road(sample) or completed_event
+        completed_event = self._check_rollover(sample) or completed_event  # Phase 22
 
         return completed_event
 
@@ -187,6 +223,9 @@ class EventDetector:
             "peak_ax": sample.ax,
             "peak_ay": sample.ay,
             "peak_az": sample.az,
+            "peak_gx": sample.gx,
+            "peak_gy": sample.gy,
+            "peak_gz": sample.gz,
         }
 
     def _update_event(
@@ -204,6 +243,13 @@ class EventDetector:
             event["peak_ax"] = sample.ax
             event["peak_ay"] = sample.ay
             event["peak_az"] = sample.az
+            # peak_gx/gy/gz are snapshot-at-peak, NOT per-axis maxima — they
+            # record the full gyro triple at the same sample where peak_value
+            # (the tracked axis) was observed. Matches peak_ax/ay/az semantics.
+            # See Event dataclass docstring for the contract.
+            event["peak_gx"] = sample.gx
+            event["peak_gy"] = sample.gy
+            event["peak_gz"] = sample.gz
 
     def _end_event(self, event_type: EventType, sample: IMUSample) -> Optional[Event]:
         """End an active event and return it if valid."""
@@ -219,6 +265,7 @@ class EventDetector:
             EventType.BIG_CORNER: self.config.big_corner_min_duration_ms,
             EventType.HIGH_G: self.config.high_g_min_duration_ms,
             EventType.ROUGH_ROAD: self.config.rough_road_window_ms,
+            EventType.ROLLOVER: self.config.rollover_min_duration_ms,
         }.get(event_type, 0)
 
         if duration_ms < min_duration:
@@ -238,6 +285,9 @@ class EventDetector:
             peak_ax=event_data["peak_ax"],
             peak_ay=event_data["peak_ay"],
             peak_az=event_data["peak_az"],
+            peak_gx=event_data["peak_gx"],
+            peak_gy=event_data["peak_gy"],
+            peak_gz=event_data["peak_gz"],
             samples=pre_samples,
         )
 
@@ -272,15 +322,26 @@ class EventDetector:
             return self._end_event(event_type, sample)
 
     def _check_big_corner(self, sample: IMUSample) -> Optional[Event]:
-        """Check for big corner (strong lateral ay)."""
-        event_type = EventType.BIG_CORNER
-        threshold = self.config.big_corner_threshold_g
+        """Check for big corner (strong lateral ay OR sustained yaw rate gz).
 
-        if abs(sample.ay) > threshold:
+        Phase 22 / IMU-04. Lateral-g alone misses slow tight turns (lateral g
+        is speed^2 / radius). Adding gz captures yaw as a cleaner signature of
+        cornering; either exceeding its threshold triggers. The trigger value
+        fed to _start_event/_update_event is whichever axis is more strongly
+        past its threshold (ratio-based), so the peak-tracking stays coherent.
+        """
+        event_type = EventType.BIG_CORNER
+        g_threshold = self.config.big_corner_threshold_g
+        yaw_threshold = self.config.big_corner_yaw_dps
+        ay_ratio = abs(sample.ay) / g_threshold if g_threshold > 0 else 0.0
+        gz_ratio = abs(sample.gz) / yaw_threshold if yaw_threshold > 0 else 0.0
+        triggered = ay_ratio > 1.0 or gz_ratio > 1.0
+        if triggered:
+            trigger_value = sample.ay if ay_ratio >= gz_ratio else sample.gz
             if event_type not in self._active_events:
-                self._start_event(event_type, sample, sample.ay)
+                self._start_event(event_type, sample, trigger_value)
             else:
-                self._update_event(event_type, sample, sample.ay)
+                self._update_event(event_type, sample, trigger_value)
             return None
         else:
             return self._end_event(event_type, sample)
@@ -330,6 +391,28 @@ class EventDetector:
                 self._start_event(event_type, sample, stddev)
             else:
                 self._update_event(event_type, sample, stddev)
+            return None
+        else:
+            return self._end_event(event_type, sample)
+
+    def _check_rollover(self, sample: IMUSample) -> Optional[Event]:
+        """Check for rollover (sustained roll or pitch rate).
+
+        Phase 22 / IMU-03. Triggers on |gx| OR |gy| above rollover_threshold_dps
+        (default 250 dps — below NHTSA 300 dps clipping reference, above normal
+        aggressive cornering ~100 dps). Duration gate in _end_event rejects
+        spikes shorter than rollover_min_duration_ms (default 150 ms).
+        """
+        event_type = EventType.ROLLOVER
+        threshold = self.config.rollover_threshold_dps
+        abs_gx = abs(sample.gx)
+        abs_gy = abs(sample.gy)
+        if abs_gx > threshold or abs_gy > threshold:
+            trigger_value = sample.gx if abs_gx >= abs_gy else sample.gy
+            if event_type not in self._active_events:
+                self._start_event(event_type, sample, trigger_value)
+            else:
+                self._update_event(event_type, sample, trigger_value)
             return None
         else:
             return self._end_event(event_type, sample)

@@ -10,6 +10,7 @@ Low-rate path (1 Hz):
 """
 
 import json
+import math
 import shutil
 import signal
 import threading
@@ -87,11 +88,22 @@ class EngineConfig:
     """Configuration for the unified engine."""
 
     # High-rate IMU sampling (LSM6DSOX via circuitpython)
-    imu_sample_rate_hz: float = 104.0
+    # 22-07 retarget: 104.0 -> 25.0 Hz; matches LSM6DSOXConfig and config.yaml defaults.
+    imu_sample_rate_hz: float = 25.0
     ring_buffer_seconds: float = 30.0
     accel_offset_x: float = 0.0
     accel_offset_y: float = 0.0
     accel_offset_z: float = 0.0
+
+    # Auto-zero (thermal drift compensation) — IMU-05, IMU-06.
+    # Field names are authoritative per REQUIREMENTS.md IMU-05.
+    auto_zero_enabled: bool = True
+    auto_zero_stationary_kmh: float = 1.0   # speed gate; GPS fix also required
+    auto_zero_window_seconds: float = 30.0  # window length; pulled from ring buffer
+    auto_zero_tolerance_g: float = 0.05     # max |new-current| per axis, post-bootstrap
+    auto_zero_motion_reject_g: float = 0.2  # per-sample raw combined-g reject
+    auto_zero_motion_stddev_g: float = 0.20  # per-axis window stddev reject
+    auto_zero_max_abs_g: float = 0.5        # absolute offset plausibility cap
 
     # Low-rate telemetry
     telemetry_interval_seconds: float = 1.0
@@ -253,6 +265,14 @@ class EngineConfig:
             accel_offset_y=config.sensors.lsm6dsox.accel_offset_y,
             accel_offset_z=config.sensors.lsm6dsox.accel_offset_z,
             imu_sample_rate_hz=config.sensors.lsm6dsox.sample_rate_hz,
+            # Auto-zero (IMU-05, IMU-06) — 1:1 pass-through from LSM6DSOXConfig
+            auto_zero_enabled=config.sensors.lsm6dsox.auto_zero_enabled,
+            auto_zero_stationary_kmh=config.sensors.lsm6dsox.auto_zero_stationary_kmh,
+            auto_zero_window_seconds=config.sensors.lsm6dsox.auto_zero_window_seconds,
+            auto_zero_tolerance_g=config.sensors.lsm6dsox.auto_zero_tolerance_g,
+            auto_zero_motion_reject_g=config.sensors.lsm6dsox.auto_zero_motion_reject_g,
+            auto_zero_motion_stddev_g=config.sensors.lsm6dsox.auto_zero_motion_stddev_g,
+            auto_zero_max_abs_g=config.sensors.lsm6dsox.auto_zero_max_abs_g,
             # v2 sensor configs
             temperature=config.sensors.temperature,
             light=config.sensors.light,
@@ -412,6 +432,12 @@ class UnifiedEngine:
             on_sample=self._on_imu_sample,
         )
 
+        # 22-07: detector's rolling-window sizes (e.g. _az_window_size for ROUGH_ROAD)
+        # must scale with the application poll rate. Mirror imu_sample_rate_hz onto
+        # the DetectorConfig so the two stay in lock-step, regardless of where
+        # config.detector was constructed (default_factory or future from_yaml_config
+        # wiring). This is the one source-of-truth invariant from 22-07's plan.
+        config.detector.sample_rate_hz = config.imu_sample_rate_hz
         self.detector = EventDetector(
             ring_buffer=self.ring_buffer,
             config=config.detector,
@@ -716,6 +742,19 @@ class UnifiedEngine:
         self._cabin_temp_c: Optional[float] = None
         self._gps_has_fix = False
         self._clock_synced_from_gps = False
+
+        # Auto-zero state (IMU-05, IMU-06). Counter ticks at 1 Hz telemetry
+        # cadence; window data is pulled from the 100 Hz ring buffer on
+        # evaluation. _current_accel_offsets tracks live offsets separately
+        # from the static config seed so post-bootstrap tolerance compares
+        # against current-known-good, not the one-time YAML value.
+        self._stationary_elapsed_s: float = 0.0
+        self._autozero_bootstrap_done: bool = False
+        self._current_accel_offsets: tuple[float, float, float] = (
+            config.accel_offset_x,
+            config.accel_offset_y,
+            config.accel_offset_z,
+        )
         self._distance_from_start_km: Optional[float] = None
         self._distance_to_destination_km: Optional[float] = None
 
@@ -961,6 +1000,7 @@ class UnifiedEngine:
         EventType.ROUGH_ROAD,
         EventType.MANUAL_CAPTURE,
         EventType.BOOT,
+        EventType.ROLLOVER,  # Phase 22 (IMU-03) - rollovers always save video
     }
 
     # Health watchdog
@@ -1574,6 +1614,13 @@ class UnifiedEngine:
                 # Telemetry at configured interval
                 if (now - last_telemetry) >= self.config.telemetry_interval_seconds:
                     self._record_telemetry()
+                    # Auto-zero tick (IMU-05). Reads the ring buffer on window
+                    # completion; wrapped so it can never crash the telemetry
+                    # thread (T-22-06).
+                    try:
+                        self._maybe_auto_zero()
+                    except Exception as e:
+                        log.error("auto_zero_error", error=str(e))
                     last_telemetry = now
 
                 # Check for completed event captures
@@ -1722,6 +1769,239 @@ class UnifiedEngine:
         # Update video HUD overlay text files
         if self.config.overlay_enabled and self.video_ring_buffer:
             self._update_overlay()
+
+    def _load_persisted_offsets(self) -> None:
+        """Boot path: persisted accel offsets override the config seed. IMU-06.
+
+        Called from ``start()`` BEFORE ``self.sampler.start()`` so the sampler
+        thread never samples with stale config seeds when trip_state holds a
+        better calibration from a previous drive.
+
+        Partial persistence (one or two axes missing from trip_state but others
+        present) falls back to the config seed per missing axis. A full-miss
+        (all three None) is a clean no-op — the sampler keeps the seed it was
+        constructed with and ``_current_accel_offsets`` stays at the seed.
+
+        Database read failures are logged and swallowed — the sampler still
+        starts on the config seed rather than blocking boot.
+        """
+        try:
+            x = self.database.get_trip_state("accel_offset_x")
+            y = self.database.get_trip_state("accel_offset_y")
+            z = self.database.get_trip_state("accel_offset_z")
+        except Exception as e:
+            log.warning("autozero_offset_load_failed", error=str(e))
+            return
+
+        if x is None and y is None and z is None:
+            log.info(
+                "autozero_no_persisted_offsets",
+                seed_x=self.config.accel_offset_x,
+                seed_y=self.config.accel_offset_y,
+                seed_z=self.config.accel_offset_z,
+            )
+            return
+
+        fx = x if x is not None else self.config.accel_offset_x
+        fy = y if y is not None else self.config.accel_offset_y
+        fz = z if z is not None else self.config.accel_offset_z
+        self.sampler.update_offsets(fx, fy, fz)
+        self._current_accel_offsets = (fx, fy, fz)
+        source = "trip_state" if (x is not None and y is not None and z is not None) else "mixed"
+        log.info(
+            "autozero_offsets_loaded",
+            ax=round(fx, 4),
+            ay=round(fy, 4),
+            az=round(fz, 4),
+            source=source,
+        )
+
+    def _maybe_auto_zero(self) -> None:
+        """Stationary auto-zero state machine. Called once per telemetry tick (1 Hz).
+
+        Implements IMU-05 guards:
+          - GPS fix AND speed below stationary gate (both required)
+          - Minimum 600 samples in window (= 20 Hz x 30 s — sized to actual
+            sustained Pi rate ~22 Hz, not the 25 Hz configured target. Pi UAT
+            on 2026-04-22 showed steady ~22 sps with spike windows down to ~18,
+            so the previous 750 floor (25 x 30) blocked auto-zero in normal
+            operation; 600 catches a real degraded window without being noise.)
+          - Per-sample raw combined-g reject (any sample magnitude > motion_reject_g)
+          - Per-axis window stddev reject (any stddev > motion_stddev_g)
+          - Absolute offset plausibility cap (max abs > max_abs_g)
+          - Tolerance gate vs current live offsets (skipped on bootstrap)
+
+        IMU-06: first accept per boot is unconditional (bootstrap rule) so a
+        cold start with a drifted sensor can self-correct once without
+        operator action.
+
+        Threat refs: T-22-03, T-22-04, T-22-06.
+        """
+        cfg = self.config
+        if not cfg.auto_zero_enabled:
+            return
+
+        # Gate 1: GPS fix AND speed (both must pass — Checker Issue 5).
+        # Speed=0 with a missing fix is treated as not-stationary.
+        if not self._gps_has_fix:
+            self._stationary_elapsed_s = 0.0
+            return
+        if (
+            self._current_speed_kmh is None
+            or self._current_speed_kmh >= cfg.auto_zero_stationary_kmh
+        ):
+            self._stationary_elapsed_s = 0.0
+            return
+
+        # Advance the stationary timer. Only evaluate the window once we've
+        # accumulated enough stationary elapsed time at 1 Hz cadence.
+        self._stationary_elapsed_s += 1.0
+        if self._stationary_elapsed_s < cfg.auto_zero_window_seconds:
+            return
+
+        # Reset counter for the next attempt (regardless of outcome).
+        self._stationary_elapsed_s = 0.0
+
+        # Pull the window from the ring buffer. 600-sample floor = 20 Hz x 30 s,
+        # sized to observed sustained rate (~22 sps) rather than the 25 Hz configured
+        # target. Pi UAT on 2026-04-22 showed the 750 floor (target x window) blocked
+        # auto-zero during normal operation because the loop runs ~12% behind whatever
+        # target you give it (88% efficiency). Acceptance floor per IMU-02 stays at
+        # 10 Hz; this 600 keeps healthy operation passing while still rejecting truly
+        # degraded ring-buffer or sensor conditions.
+        samples = self.ring_buffer.get_window(cfg.auto_zero_window_seconds)
+        min_samples = 600
+        if len(samples) < min_samples:
+            log.info(
+                "auto_zero_rejected",
+                reason="insufficient_samples",
+                sample_count=len(samples),
+                min_required=min_samples,
+            )
+            return
+
+        # Compute means first — both per-axis stddev and the per-sample
+        # "sudden-move" gate are defined against the window mean (deviation-
+        # from-mean), not raw magnitude. Raw magnitude of a stationary sample
+        # is ~1 g (gravity), which would always trip a 0.2 g gate. The real
+        # intent of IMU-05 / RESEARCH Pitfall 5 is to catch single-sample
+        # bumps on top of an otherwise-quiet stationary window; that only
+        # makes physical sense as deviation-from-mean. (Plan behaviour spec
+        # test data assumed gravity-bearing samples pass per-sample gate —
+        # that only holds if per-sample is measured as deviation-from-mean.
+        # Deviation documented in SUMMARY under Rule 1.)
+        n = len(samples)
+        mean_x = sum(s.ax for s in samples) / n
+        mean_y = sum(s.ay for s in samples) / n
+        mean_z = sum(s.az for s in samples) / n
+        sd_x = (sum((s.ax - mean_x) ** 2 for s in samples) / n) ** 0.5
+        sd_y = (sum((s.ay - mean_y) ** 2 for s in samples) / n) ** 0.5
+        sd_z = (sum((s.az - mean_z) ** 2 for s in samples) / n) ** 0.5
+
+        # Gate 3: per-sample deviation-from-mean reject (IMU-05 / RESEARCH
+        # Pitfall 5, Checker Issue 2). Any sample more than motion_reject_g
+        # away from the window mean means the car wasn't actually stationary
+        # for the whole window — a transient bump from the engine bay, road
+        # settling, or a passenger shifting weight.
+        reject_g = cfg.auto_zero_motion_reject_g
+        for s in samples:
+            dx_s = s.ax - mean_x
+            dy_s = s.ay - mean_y
+            dz_s = s.az - mean_z
+            mag = math.sqrt(dx_s * dx_s + dy_s * dy_s + dz_s * dz_s)
+            if mag > reject_g:
+                log.info(
+                    "auto_zero_rejected",
+                    reason="motion_sample",
+                    max_magnitude_g=round(mag, 4),
+                    threshold_g=reject_g,
+                )
+                return
+
+        # Gate 4: per-axis window stddev reject (separate from per-sample gate).
+        if max(sd_x, sd_y, sd_z) > cfg.auto_zero_motion_stddev_g:
+            log.info(
+                "auto_zero_rejected",
+                reason="motion_stddev",
+                stddev_x=round(sd_x, 4),
+                stddev_y=round(sd_y, 4),
+                stddev_z=round(sd_z, 4),
+            )
+            return
+
+        # Gate 5: implausibility cap (T-22-03, applies even during bootstrap).
+        # Parked on a steep slope, sensor fault, etc. must not poison the
+        # calibration even on a fresh boot. Z axis carries ~1 g gravity in
+        # the car's installed orientation; the cap applies to drift-from-
+        # gravity on z, not raw z. That matches the plan's test 10
+        # behaviour (reject mean (0.9, 0.1, 1.05) — x=0.9 is the offender
+        # not z=1.05 which is ~gravity). residual_z is also what we persist
+        # — the sampler subtracts accel_offset_z raw from every read, so the
+        # stored value must be the gravity-corrected bias residual or
+        # stationary reads lose gravity entirely.
+        residual_z = mean_z - 1.0
+        if max(abs(mean_x), abs(mean_y), abs(residual_z)) > cfg.auto_zero_max_abs_g:
+            log.warning(
+                "auto_zero_rejected",
+                reason="implausible",
+                mean_x=round(mean_x, 4),
+                mean_y=round(mean_y, 4),
+                mean_z=round(mean_z, 4),
+            )
+            return
+
+        # Gate 6: tolerance against current live offsets (skipped on bootstrap).
+        # Compared in residual (gravity-corrected) space on Z because that's
+        # the space _current_accel_offsets lives in.
+        if self._autozero_bootstrap_done:
+            cur_x, cur_y, cur_z = self._current_accel_offsets
+            dx = abs(mean_x - cur_x)
+            dy = abs(mean_y - cur_y)
+            dz = abs(residual_z - cur_z)
+            if max(dx, dy, dz) > cfg.auto_zero_tolerance_g:
+                log.info(
+                    "auto_zero_rejected",
+                    reason="tolerance",
+                    delta_x=round(dx, 4),
+                    delta_y=round(dy, 4),
+                    delta_z=round(dz, 4),
+                )
+                return
+
+        # Accept path with rollback on persistence failure (T-22-06).
+        prev_offsets = self._current_accel_offsets
+        try:
+            self.sampler.update_offsets(mean_x, mean_y, residual_z)
+            self._current_accel_offsets = (mean_x, mean_y, residual_z)
+            self.database.set_trip_state("accel_offset_x", mean_x)
+            self.database.set_trip_state("accel_offset_y", mean_y)
+            self.database.set_trip_state("accel_offset_z", residual_z)
+        except Exception as e:
+            # Rollback so the next window starts from a known-good baseline.
+            self._current_accel_offsets = prev_offsets
+            try:
+                self.sampler.update_offsets(*prev_offsets)
+            except Exception:
+                pass  # rollback failure is already logged upstream
+            log.error(
+                "auto_zero_persist_failed",
+                error=str(e),
+                attempted_x=round(mean_x, 4),
+                attempted_y=round(mean_y, 4),
+                attempted_z=round(residual_z, 4),
+            )
+            return
+
+        was_bootstrap = not self._autozero_bootstrap_done
+        self._autozero_bootstrap_done = True
+        log.info(
+            "auto_zero_accepted",
+            ax=round(mean_x, 4),
+            ay=round(mean_y, 4),
+            az=round(residual_z, 4),
+            bootstrap=was_bootstrap,
+            sample_count=n,
+        )
 
     def _check_waypoints(self, lat: float, lon: float) -> None:
         """Check whether the current position is within 5 km of any unreached waypoint.
@@ -2018,6 +2298,14 @@ class UnifiedEngine:
             started["camera_front"] = self._start_service_graceful(
                 "video_ring_buffer", self.video_ring_buffer.start
             )
+
+        # IMU-06: load persisted accel offsets BEFORE the sampler thread
+        # starts so the sampler samples with the correct offsets from the
+        # very first tick. Pulling from trip_state overrides the static
+        # config seed when a previous drive's auto-zero accepted a better
+        # calibration. Safe to call even if trip_state is empty — falls
+        # back to config seed silently.
+        self._load_persisted_offsets()
 
         # Start high-rate sampler — graceful per HW-05. A setup() failure here
         # is caught and logged; _force_reboot remains reachable only from the
