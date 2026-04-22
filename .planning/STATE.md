@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: executing
-stopped_at: context exhaustion at 91% (2026-04-21)
-last_updated: "2026-04-21T10:19:17.824Z"
+stopped_at: context exhaustion at 91% (2026-04-22)
+last_updated: "2026-04-22T00:33:39.464Z"
 last_activity: 2026-04-21 -- Phase 21 verified and closed
 progress:
-  total_phases: 10
+  total_phases: 11
   completed_phases: 6
   total_plans: 36
   completed_plans: 35
@@ -104,11 +104,12 @@ None.
 ### Roadmap Evolution
 
 - Phase 21 added: hardware inventory and graceful degradation
+- Phase 22 added: IMU signal quality and rollover detection — gyro-based rollover/yaw event, on-chip LPF2 + 208 Hz ODR with decimation, stationary auto-zero with tolerance-based rejection
 
 ## Session Continuity
 
-Last session: 2026-04-21T10:19:17.818Z
-Stopped at: context exhaustion at 91% (2026-04-21)
+Last session: 2026-04-22T00:33:39.455Z
+Stopped at: context exhaustion at 91% (2026-04-22)
 Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)

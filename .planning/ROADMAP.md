@@ -326,6 +326,29 @@ Plans:
 
 **UI hint**: yes (dashboard hardware panel)
 
+### Phase 22: IMU Signal Quality and Rollover Detection
+
+**Goal:** Stop treating the LSM6DSOX as a dumb MPU6050. Three scoped improvements:
+
+1. **Gyro-based rollover / yaw-rate detection (first — plugs a safety gap).** Add a ROLLOVER event type triggered by sustained |gx| or |gy| above threshold. Consider gz for BIG_CORNER alongside (or in place of) |ay| — yaw rate is a cleaner cornering signature than lateral load. Data is already in `IMUSample`; ~5-10 lines in `detector.py`.
+
+2. **On-chip LPF2 + ODR bump.** Configure LPF2 via direct register write to `CTRL8_XL` in `sampler.setup()` — one byte, once at startup; not a maintenance burden. Bump ODR to 208 Hz, set LPF2 cutoff to ODR/10 (~20 Hz), decimate to 100 Hz in the sample loop. Critical sequencing: configure the filter chain *before* the detector starts consuming samples. LSM6DSOX app note specifies ~8/ODR seconds of settle time after filter reconfiguration; at 208 Hz that's ~40 ms. Put a `time.sleep(0.05)` after the `CTRL8_XL` write with an inline comment citing AN5040 and why it's there — otherwise the next person (possibly future-us at 2 am in Port Douglas) will remove it as "unnecessary." Keep the existing `_check_rough_road` stddev-over-1s logic as-is — it's RMS with mean removed, a fine roughness proxy; the LPF fix just gives it a cleaner input.
+
+3. **Stationary auto-zero for thermal drift.** Detect GPS speed <1 km/h for 30 s, sample accel mean over the stationary window. Tolerance-based rejection, not per-cycle clamping: if |new_offset − stored_offset| > 0.05 g, reject and log a warning. Naturally handles the three cases — normal thermal drift (small delta, accept), parked on a hill (big delta, reject), sensor walking off into space (flagged in logs).
+
+   **Bootstrap rule (important).** On the first stationary window after boot, always accept the new offset unconditionally and log it. Tolerance gating applies only to subsequent windows. Reason: after a cold start, the stored offsets may be hours or days old; the car may have been sitting in the sun; "car has been sitting" is precisely when you most want a fresh zero. Without this rule, a hot cold-boot produces a delta >0.05 g, the correction gets rejected, and the system runs on stale offsets for the whole drive. Simpler than a progressive-tolerance approach and arguably more correct.
+
+**Non-goals:** MLC (Machine Learning Core), on-chip FIFO, and hardware interrupts on INT1/INT2 — separate future discussion. No changes to video framerate or collector cadence.
+
+**Depends on:** Phase 21 (HardwareState + supervisor pattern lets the sampler report transient I2C / filter-reconfig failures cleanly).
+
+**Requirements**: TBD (map during `/gsd-plan-phase 22`)
+
+**Plans**: 0 plans (not yet broken down)
+
+Plans:
+- [ ] TBD (run `/gsd-plan-phase 22` to break down)
+
 ---
 
 ## Progress
@@ -353,3 +376,4 @@ Plans:
 | 19. Website Narrative Rebuild | v2.0 | 12/12 | Complete   | 2026-04-17 |
 | 20. Physical Integration | v2.0 | 0/3 | Not started | — |
 | 21. Hardware Inventory and Graceful Degradation | v2.0 | 0/5 | Not started | — |
+| 22. IMU Signal Quality and Rollover Detection | v2.0 | 0/0 | Not started | — |
