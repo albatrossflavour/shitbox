@@ -292,6 +292,21 @@ capture:
     model_path: /var/lib/shitbox/tts/en_GB-northern_english_male-medium.onnx
     distance_announce_interval_km: 50
     volume: 90
+  # Event video title-card slate (phase 26 / D-01, D-09, D-12, D-16).
+  # Flip enabled to false if slates start misbehaving in the field.
+  title_card:
+    enabled: true
+    duration_seconds: 3.0
+    show_driver: true
+    # Whimsy pool used when GPS has no fix at save time (D-09). Overrides
+    # the defaults baked into title_card.py if set. One line is picked
+    # per slate; no round-robin state.
+    whimsy_lines:
+      - "Here be dragons"
+      - "GPS off having a lie down"
+      - "Somewhere between A and B"
+      - "The map ends here"
+      - "Lost, but enthusiastic"
 
 # Driver roster for Phase 13 driver tracking. Change this file to change the roster.
 drivers:
