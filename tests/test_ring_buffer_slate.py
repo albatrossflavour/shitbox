@@ -146,6 +146,7 @@ def test_render_slate_happy_path_returns_paths_and_duration(tmp_path: Path) -> N
     vrb._title_card_renderer = renderer
 
     tmp_dir = tmp_path / "save_1"
+    tmp_dir.mkdir()
     event = SimpleNamespace(event_type="HIGH_G", start_time=0.0)
 
     png, ts, dur = vrb._render_slate(
