@@ -277,10 +277,15 @@ class TitleCardRenderer:
         hero_text: Optional[str]
         coord_text: Optional[str]
         if place:
-            # G-02: abbreviate AU state names before char-truncation so
-            # "Narellan, New South Wales" (clips at 140pt) becomes "Narellan, NSW".
-            abbreviated = _abbreviate_au_states(place)
-            hero_text = _truncate(abbreviated, MAX_PLACE_CHARS)
+            # D-06 (Phase 27): drop the state suffix entirely. Everything after
+            # the first comma is stripped from the hero — "Narellan, New South
+            # Wales" becomes "Narellan". _abbreviate_au_states stays in the
+            # module as a utility but is no longer called on this path.
+            hero_raw = place.split(",", 1)[0].strip()
+            # D-05 (Phase 27): ALL CAPS hero. Applied AFTER truncation so the
+            # character count is measured on the natural-case string; Unicode
+            # upper-case round-trips the ellipsis character ("…") unchanged.
+            hero_text = _truncate(hero_raw, MAX_PLACE_CHARS).upper()
             coord_text = f"{lat:.4f}, {lng:.4f}" if (lat is not None and lng is not None) else None
         elif geocoder_called:
             # D-10: we asked, got nothing; show coords only, no hero.
@@ -288,9 +293,12 @@ class TitleCardRenderer:
             coord_text = f"{lat:.4f}, {lng:.4f}"
         else:
             # D-09: no GPS or no geocoder → whimsy line, no coords.
+            # D-07 (Phase 27): whimsy rendered ALL CAPS in Cinzel for
+            # consistency with the hero. `.upper()` is outside _truncate so
+            # the ellipsis character is not double-processed.
             hero_text = _truncate(
                 random.choice(self.whimsy_lines), MAX_WHIMSY_CHARS
-            )
+            ).upper()
             coord_text = None
 
         # Badge (D-11): manual captures drop the badge so the driver credit
