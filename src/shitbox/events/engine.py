@@ -1329,8 +1329,7 @@ class UnifiedEngine:
                 # base_name= override to avoid a second _generate_filename
                 # (counter double-bump — T-26-04-06).
                 # src_png was popped from _event_poster_paths above (set on the
-                # worker thread via _on_video_complete). The old reach-across
-                # into ring_buffer._pending_slate_png is removed (CR-01 fix).
+                # worker thread via _on_video_complete) — CR-01 fix.
                 poster_path: Optional[Path] = None
                 base_name: Optional[str] = None
                 if self.video_ring_buffer is not None:
@@ -1347,7 +1346,7 @@ class UnifiedEngine:
                             poster_path = None
                     # _pending_slate_ts and _pending_slate_duration stay worker-local;
                     # do NOT reset them here — they are cleared at the top of the
-                    # next save pass. _pending_slate_png reach-across retired (CR-01).
+                    # next save pass (CR-01 gap-closure, plan 26-05).
 
                 # Save to disk
                 try:
