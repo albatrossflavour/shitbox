@@ -162,12 +162,11 @@ def test_poster_delivered_via_late_update_when_save_event_fires_first(
     metadata = json.loads(json_path.read_text())
     assert "poster_path" not in metadata or not metadata.get("poster_path")
 
-    # events.json emitted but has no poster_url for this event.
+    # G-06 (plan 26-07): events.json NOT emitted during EARLY save when
+    # video_path is None. The regen is deferred to the LATE branch so a
+    # race-window no-video entry never gets published to the NAS / browsers.
     events_json = captures_dir / "events.json"
-    assert events_json.exists()
-    feed = json.loads(events_json.read_text())
-    entries = feed["events"] if isinstance(feed, dict) else feed
-    assert not any("poster_url" in e for e in entries)
+    assert not events_json.exists()
 
     # Step 2: video worker completes LATE. Stash a real PNG in pending_slates
     # to simulate ring_buffer._do_save_event having moved it there.

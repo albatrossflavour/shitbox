@@ -1356,17 +1356,19 @@ class UnifiedEngine:
                     video_path = self._event_video_paths.pop(eid, None)
                     src_png = self._event_poster_paths.pop(eid, None)
                 if not video_path:
-                    video_path = self._find_capture_video(event)
-                if not video_path:
-                    # G-05 (plan 26-06): stash empty AND type-scan empty. The
-                    # save proceeds with video_path=None; surface this in logs
-                    # so future cross-session pickups / crashed workers are
-                    # traceable instead of silently absent.
+                    # G-06 (plan 26-07): EARLY branch refuses _find_capture_video
+                    # type-scan. On slow Pi scheduling the stash is often empty
+                    # at save time because the MP4 is still rendering; type-scan
+                    # would return the PRIOR event's MP4 (most recent of the same
+                    # type) and stamp a stale path into events.json. Save with
+                    # video_path=None here — _on_video_complete will pair the
+                    # real MP4 via event_id-strict lookup in the LATE branch.
+                    # Symmetric with the LATE branch refusal (G-05, plan 26-06).
                     log.warning(
                         "event_video_update_orphan",
                         event_id=eid,
                         event_type=event.event_type.value,
-                        reason="no_stash_no_type_match",
+                        reason="no_stash_type_scan_refused",
                     )
 
                 # Phase 26 (plan 26-05): move the stable holding-dir PNG into
@@ -1409,7 +1411,14 @@ class UnifiedEngine:
                     # update this event.
                     with self._event_paths_lock:
                         self._event_json_paths[eid] = json_path
-                    self.event_storage.generate_events_json()
+                    # G-06 (plan 26-07): defer events.json regen when
+                    # video_path is None. The LATE branch's event_video_updated
+                    # path regenerates events.json after pairing the real MP4,
+                    # so skipping here avoids publishing a race-window no-video
+                    # entry that browsers/NAS can cache past the corrective
+                    # regen.
+                    if video_path is not None:
+                        self.event_storage.generate_events_json()
                     log.info(
                         "event_saved_to_disk",
                         event_type=event.event_type.value,
