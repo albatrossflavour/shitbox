@@ -1,15 +1,20 @@
 ---
 phase: 26-event-video-title-cards
 verified: 2026-04-23T12:00:00Z
-status: human_needed
-score: 6/6 must-haves verified
+status: gaps_found
+score: 5/6 must-haves verified in practice (on-device UAT regressed criterion #3)
 overrides_applied: 0
 re_verification:
   previous_status: gaps_found
   previous_score: 5/6
   gaps_closed:
-    - "`<event>_poster.png` is persisted alongside the MP4; events.json carries `poster_url` for every event where the poster exists on disk (CR-01 race resolved by plan 26-05)"
-  gaps_remaining: []
+    - "CR-01 (worker-side race): `_do_save_event` relocates the PNG to `pending_slates/` before rmtree and stashes via callback. Unit/integration tests pass."
+  gaps_remaining:
+    - "G-01: `event_video_updated` late-update path does not write `poster_url` or rename the PNG to `<day_dir>/<base>_poster.png` — PNGs strand in `pending_slates/` on this Pi's timing (save_event fires before video_save_complete). See 26-HUMAN-UAT.md G-01."
+    - "G-02: Long place names overflow the 1280px slate canvas (no measure-and-fit pass). See 26-HUMAN-UAT.md G-02."
+    - "G-03: Slate time renders in UTC, not local — needs a decision. See 26-HUMAN-UAT.md G-03."
+    - "G-04: `_cleanup_pending_slates` sweep guard is broken at startup (`save_id < _save_counter` where counter=0). See 26-HUMAN-UAT.md G-04."
+    - "G-05: `event_video_updated` pairs MP4s with the prior session's event JSON (pre-26 bug surfaced by testing). See 26-HUMAN-UAT.md G-05."
   regressions: []
 human_verification:
   - test: "Trigger a manual capture (SIGUSR1 or the GPIO button) on the running Pi, wait for `capture_complete` + `event_saved_to_disk` log lines, then verify `<event>_poster.png` exists in `/var/lib/shitbox/captures/<date>/` alongside the MP4, and that the generated `events.json` entry carries a `poster_url` field"
