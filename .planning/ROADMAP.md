@@ -454,13 +454,14 @@ Plans:
   5. `src/shitbox/events/labels.py` is the single source of truth for event-type human labels and badge colours, consumable by the TTS path and website without Pillow/hardware imports
   6. PiP overlay and HUD burn-in timestamps shift by `intro_duration + slate_duration` so the cabin feed and ASS subtitles align with the post-slate timeline
 
-**Plans:** 4 plans
+**Plans:** 5 plans (4 original + 1 gap-closure)
 
 Plans:
 - [x] 26-01-PLAN.md — Shared event-label + badge-colour module (src/shitbox/events/labels.py)
 - [x] 26-02-PLAN.md — TitleCardConfig dataclass + config.yaml title_card block + whimsy pool defaults
 - [x] 26-03-PLAN.md — TitleCardRenderer: Pillow PNG composition + ffmpeg MPEG-TS encoding with silent AAC parity
 - [x] 26-04-PLAN.md — Wiring: slate insertion in _concatenate_segments, head_offset_s into PiP + ASS shifts, poster_path threading through save_event and generate_events_json, engine TitleCardRenderer instantiation + geocoder adapter
+- [ ] 26-05-PLAN.md — [gap closure, CR-01] Close poster delivery race: relocate slate PNG to buffer_dir/pending_slates/<save_id>.png on worker thread before rmtree, extend save callback to 3-arg so engine._on_video_complete stashes the stable path in _event_poster_paths under _event_paths_lock; _check_post_captures pops from the dict instead of reaching into VideoRingBuffer._pending_slate_png. Integration test covers the full save_event → rmtree → _check_post_captures chain. Restores ROADMAP criterion #3 (poster_url on events.json).
 
 **UI hint**: no (server-side render; website consumption of `poster_url` is a follow-up in home-ops)
 
@@ -495,4 +496,4 @@ Plans:
 | 23. Verification Closure and Traceability Sweep | v2.0 | 3/3 | Complete    | 2026-04-22 |
 | 24. Phase 20 Physical Integration Completion | v2.0 | TBD | Not started (waits on prints) | — |
 | 25. Milestone v2.0 Nyquist Validation Sweep | v2.0 | TBD | Not started | — |
-| 26. Event Video Title Cards | v2.0 | 0/4 | Planned | — |
+| 26. Event Video Title Cards | v2.0 | 4/5 | Gap closure | — |

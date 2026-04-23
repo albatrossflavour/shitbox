@@ -4,8 +4,8 @@ milestone: v2.0
 milestone_name: — Rally Ready
 status: unknown
 stopped_at: Phase 26 context gathered — ready for /gsd-plan-phase 26
-last_updated: "2026-04-23T03:32:54.567Z"
-last_activity: 2026-04-23 -- Phase 26 execution started
+last_updated: "2026-04-23T03:46:31.022Z"
+last_activity: 2026-04-23 -- Phase --phase execution started
 progress:
   total_phases: 13
   completed_phases: 8
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 26 — event-video-title-cards
+**Current focus:** Phase --phase — 26
 
 ## Current Position
 
-Phase: 26 (event-video-title-cards) — EXECUTING
-Plan: 1 of 4
+Phase: --phase (26) — EXECUTING
+Plan: 1 of --name
   All 3 plans done:
 
     - 23-01: 18-VERIFICATION.md created (8 Phase 18 requirements satisfied)
@@ -43,7 +43,7 @@ Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
 
 Next: Phase 24 (Phase 20 Physical Integration Completion) waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24.
 
-Last activity: 2026-04-23 -- Phase 26 execution started
+Last activity: 2026-04-23 -- Phase --phase execution started
 
 Progress: 8/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
