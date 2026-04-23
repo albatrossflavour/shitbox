@@ -1269,21 +1269,57 @@ class UnifiedEngine:
 
         log.info("capture_complete", path=str(path), event_id=event_id)
 
+        # Phase 26-06 (G-01 + G-05): the lock covers the full
+        # pop+rename+JSON-rewrite window for the late branch so a concurrent
+        # _check_post_captures cannot observe a half-consumed state (PNG
+        # renamed but JSON not yet updated). See threat_model T-26-06-01.
         with self._event_paths_lock:
             json_path = self._event_json_paths.get(event_id)
-            if not json_path:
-                # Event hasn't been saved yet — stash path for
-                # _check_post_captures to pick up.
+            if json_path is None:
+                # EARLY branch: event not yet saved. Stash for
+                # _check_post_captures to pop under the same lock.
                 self._event_video_paths[event_id] = path
-            if poster_path is not None:
-                self._event_poster_paths[event_id] = poster_path
-                log.info(
-                    "event_poster_stashed",
-                    event_id=event_id,
-                    poster=str(poster_path),
-                )
-        if json_path:
+                if poster_path is not None:
+                    self._event_poster_paths[event_id] = poster_path
+                    log.info(
+                        "event_poster_stashed",
+                        event_id=event_id,
+                        poster=str(poster_path),
+                    )
+                return
+
+            # LATE branch (G-01): event already saved with poster_path=None.
+            # Deliver the poster by renaming the stable PNG into the day
+            # dir and patching the saved JSON. Key strictly on event_id —
+            # no _find_capture_video type-scan fallback (G-05 refusal).
+            # Source order: the poster_path parameter passed on THIS call wins
+            # (standard late-callback shape); fall back to any previously
+            # stashed path for the same event_id (belt-and-braces — e.g. a
+            # prior call stashed via the EARLY branch and this call is a
+            # redelivery with poster_path=None).
+            src_png = poster_path
+            if src_png is None:
+                src_png = self._event_poster_paths.pop(event_id, None)
+            else:
+                # Drop any prior stash for this event so it doesn't leak.
+                self._event_poster_paths.pop(event_id, None)
             self.event_storage.update_event_video(json_path, path)
+            if src_png is not None:
+                base_name = json_path.stem
+                day_dir = json_path.parent
+                dest_png = day_dir / f"{base_name}_poster.png"
+                try:
+                    day_dir.mkdir(parents=True, exist_ok=True)
+                    src_png.rename(dest_png)
+                    self.event_storage.update_event_poster(json_path, dest_png)
+                except OSError as move_err:
+                    log.warning(
+                        "late_poster_move_failed",
+                        event_id=event_id,
+                        src=str(src_png),
+                        dst=str(dest_png),
+                        error=str(move_err),
+                    )
             self.event_storage.generate_events_json()
             if self.capture_sync:
                 self.capture_sync.trigger_sync()
@@ -1321,6 +1357,17 @@ class UnifiedEngine:
                     src_png = self._event_poster_paths.pop(eid, None)
                 if not video_path:
                     video_path = self._find_capture_video(event)
+                if not video_path:
+                    # G-05 (plan 26-06): stash empty AND type-scan empty. The
+                    # save proceeds with video_path=None; surface this in logs
+                    # so future cross-session pickups / crashed workers are
+                    # traceable instead of silently absent.
+                    log.warning(
+                        "event_video_update_orphan",
+                        event_id=eid,
+                        event_type=event.event_type.value,
+                        reason="no_stash_no_type_match",
+                    )
 
                 # Phase 26 (plan 26-05): move the stable holding-dir PNG into
                 # the per-day dir so generate_events_json can build a
@@ -1396,16 +1443,33 @@ class UnifiedEngine:
                     self._pending_post_capture.pop(event_id, None)
 
     def _find_capture_video(self, event: Event) -> Optional[Path]:
-        """Find the most recent video capture matching an event."""
+        """Find the most recent video capture matching an event by TYPE.
+
+        WARNING (G-05, plan 26-06): this is a type-scan fallback used only
+        when _check_post_captures finds the in-memory video stash empty. It
+        CANNOT distinguish between two same-type events in the same day
+        directory and can also pick up prior-session files. Do NOT call this
+        from the late-update branch of _on_video_complete — event_id-keyed
+        lookup via _event_json_paths is the sole trusted source there.
+        """
         captures = Path(self.config.captures_dir)
         event_date = datetime.fromtimestamp(event.start_time, tz=timezone.utc)
         date_dir = captures / event_date.strftime("%Y-%m-%d")
         if not date_dir.is_dir():
+            log.debug("find_capture_video_empty", event_type=event.event_type.value)
             return None
 
         pattern = f"{event.event_type.value}_*.mp4"
         matches = sorted(date_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
-        return matches[0] if matches else None
+        if not matches:
+            log.debug("find_capture_video_empty", event_type=event.event_type.value)
+            return None
+        log.warning(
+            "find_capture_video_type_scan",
+            event_type=event.event_type.value,
+            matched=str(matches[0]),
+        )
+        return matches[0]
 
     def _read_gps(self) -> Optional[Reading]:
         """Read current GPS data from the cached gpsd stream."""
