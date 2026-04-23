@@ -474,7 +474,7 @@ shitbox = [
 
 **Three items are assumed**; none affect plan-v1 correctness. A3 is the one most worth a render-and-review loop during Wave 1 of implementation.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should Cinzel Bold be replaced by SemiBold if 140pt ALL CAPS reads too heavy?**
    - What we know: Bold has clean metrics and fits the "engraved location title" brief; Black is wider and heavier (may clip more long names).

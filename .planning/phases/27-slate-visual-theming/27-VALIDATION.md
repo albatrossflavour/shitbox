@@ -19,7 +19,7 @@ created: 2026-04-24
 |----------|-------|
 | **Framework** | pytest 7.x |
 | **Config file** | `pyproject.toml` (`[tool.pytest.ini_options]`) |
-| **Quick run command** | `pytest tests/capture/test_title_card.py -q` |
+| **Quick run command** | `pytest tests/test_capture_title_card.py -q` |
 | **Full suite command** | `pytest -q` |
 | **Estimated runtime** | ~15 seconds (targeted) / ~90 seconds (full) |
 
@@ -27,7 +27,7 @@ created: 2026-04-24
 
 ## Sampling Rate
 
-- **After every task commit:** Run `pytest tests/capture/test_title_card.py -q`
+- **After every task commit:** Run `pytest tests/test_capture_title_card.py -q`
 - **After every plan wave:** Run `pytest -q`
 - **Before `/gsd-verify-work`:** Full suite must be green
 - **Max feedback latency:** 15 seconds (quick) / 90 seconds (full)
@@ -38,14 +38,14 @@ created: 2026-04-24
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 27-01-XX | 01 | 1 | SC-3 (TitleCardConfig backward-compat) | — | N/A | unit | `pytest tests/capture/test_title_card.py::test_cinzel_fonts_load -q` | ❌ W0 | ⬜ pending |
-| 27-02-XX | 02 | 2 | SC-1 (non-default typeface) | — | N/A | unit | `pytest tests/capture/test_title_card.py::test_hero_uses_cinzel_bold -q` | ❌ W0 | ⬜ pending |
-| 27-02-XX | 02 | 2 | D-05 (ALL CAPS hero) | — | N/A | unit | `pytest tests/capture/test_title_card.py::test_hero_all_caps -q` | ❌ W0 | ⬜ pending |
-| 27-02-XX | 02 | 2 | D-06 (state suffix dropped) | — | N/A | unit | `pytest tests/capture/test_title_card.py::test_state_suffix_dropped_from_hero -q` | ❌ W0 | ⬜ pending |
-| 27-02-XX | 02 | 2 | SC-4 (G-02 shrink-fit preserved) | — | N/A | unit | `pytest tests/capture/test_title_card.py::test_hero_shrink_fit_cinzel -q` | ❌ W0 | ⬜ pending |
-| 27-02-XX | 02 | 2 | SC-5 (1280×720 canvas fit) | — | N/A | unit | `pytest tests/capture/test_title_card.py::test_long_place_name_fits_safe_width -q` | ❌ W0 | ⬜ pending |
-| 27-02-XX | 02 | 2 | SC-2 (all event types render) | — | N/A | unit | `pytest tests/capture/test_title_card.py::test_all_event_types_render_with_cinzel -q` | ❌ W0 | ⬜ pending |
-| 27-02-XX | 02 | 2 | SC-2 (no-GPS whimsy fallback) | — | N/A | unit | `pytest tests/capture/test_title_card.py::test_no_gps_whimsy_still_renders -q` | ❌ W0 | ⬜ pending |
+| 27-01-XX | 01 | 1 | SC-3 (TitleCardConfig backward-compat) | — | N/A | unit | `pytest tests/test_capture_title_card.py::test_cinzel_fonts_load -q` | ❌ W0 | ⬜ pending |
+| 27-02-XX | 02 | 2 | SC-1 (non-default typeface) | — | N/A | unit | `pytest tests/test_capture_title_card.py::test_hero_uses_cinzel_bold -q` | ❌ W0 | ⬜ pending |
+| 27-02-XX | 02 | 2 | D-05 (ALL CAPS hero) | — | N/A | unit | `pytest tests/test_capture_title_card.py::test_hero_all_caps -q` | ❌ W0 | ⬜ pending |
+| 27-02-XX | 02 | 2 | D-06 (state suffix dropped) | — | N/A | unit | `pytest tests/test_capture_title_card.py::test_state_suffix_dropped_from_hero -q` | ❌ W0 | ⬜ pending |
+| 27-02-XX | 02 | 2 | SC-4 (G-02 shrink-fit preserved) | — | N/A | unit | `pytest tests/test_capture_title_card.py::test_hero_shrink_fit_cinzel -q` | ❌ W0 | ⬜ pending |
+| 27-02-XX | 02 | 2 | SC-5 (1280×720 canvas fit) | — | N/A | unit | `pytest tests/test_capture_title_card.py::test_long_place_name_fits_safe_width -q` | ❌ W0 | ⬜ pending |
+| 27-02-XX | 02 | 2 | SC-2 (all event types render) | — | N/A | unit | `pytest tests/test_capture_title_card.py::test_all_event_types_render_with_cinzel -q` | ❌ W0 | ⬜ pending |
+| 27-02-XX | 02 | 2 | SC-2 (no-GPS whimsy fallback) | — | N/A | unit | `pytest tests/test_capture_title_card.py::test_no_gps_whimsy_still_renders -q` | ❌ W0 | ⬜ pending |
 | 27-01-XX | 01 | 1 | Asset packaging (wheel) | — | N/A | packaging | `python -c "import shitbox.capture; from importlib.resources import files; p = files('shitbox.capture').joinpath('assets/cinzel/Cinzel-Bold.ttf'); assert p.is_file()"` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
@@ -56,11 +56,10 @@ Note: Task IDs are placeholders. The planner assigns real IDs (`27-01-01`, `27-0
 
 ## Wave 0 Requirements
 
-- [ ] `tests/capture/test_title_card.py` — stubs for all eight unit tests listed above
-- [ ] `tests/capture/conftest.py` — shared fixture for a minimal `TitleCardConfig` and a sample event payload (re-use Phase 26 fixtures if present)
+- [ ] `tests/test_capture_title_card.py` — extend with the nine Phase 27 stubs listed above (file already ships from Phase 26; no new conftest required)
 - [ ] Pillow available in dev venv — confirm `pillow` is already a project dep; do not add a new dep
 
-*If Phase 26 already ships `tests/capture/test_title_card.py`, Wave 0 extends it rather than creating from scratch.*
+*If Phase 26 already ships `tests/test_capture_title_card.py`, Wave 0 extends it rather than creating from scratch.*
 
 ---
 
