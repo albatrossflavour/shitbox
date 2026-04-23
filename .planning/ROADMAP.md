@@ -489,7 +489,7 @@ Plans:
 
 Plans:
 - [x] 27-01-PLAN.md — Vendor Cinzel Bold/Regular + OFL.txt into `src/shitbox/capture/assets/cinzel/`, extend `pyproject.toml` `package-data` glob, Wave 0 packaging-sanity test
-- [ ] 27-02-PLAN.md — Wire Cinzel Bold/Regular through `title_card.py` constants and `_compose_png`; ALL CAPS + state-drop hero and whimsy in `_resolve_strings`; Phase 27 typography tests + update Phase 26 state-abbrev assertions
+- [x] 27-02-PLAN.md — Wire Cinzel Bold/Regular through `title_card.py` constants and `_compose_png`; ALL CAPS + state-drop hero and whimsy in `_resolve_strings`; Phase 27 typography tests + update Phase 26 state-abbrev assertions
 
 **UI hint**: yes (user-facing visual; benefits from a design spike)
 
