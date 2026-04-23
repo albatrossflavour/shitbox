@@ -66,6 +66,21 @@ class EventStorage:
         day_dir.mkdir(exist_ok=True)
         return day_dir
 
+    def get_captures_day_dir(self, timestamp: float) -> Optional[Path]:
+        """Get captures day dir for a timestamp — None if captures_dir unset.
+
+        G-07 (plan 26-08): the poster PNG must land here (next to the MP4)
+        rather than next to the JSON. rsync only ships captures_dir to the
+        NAS; events_dir is Pi-local JSON+CSV.
+        """
+        if self.captures_dir is None:
+            return None
+        dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        day_str = dt.strftime("%Y-%m-%d")
+        day_dir = self.captures_dir / day_str
+        day_dir.mkdir(parents=True, exist_ok=True)
+        return day_dir
+
     def _generate_filename(self, event: Event) -> str:
         """Generate base filename for an event."""
         dt = datetime.fromtimestamp(event.start_time, tz=timezone.utc)
@@ -79,6 +94,8 @@ class EventStorage:
         video_path: Optional[Path] = None,
         *,
         driver_name: Optional[str] = None,
+        poster_path: Optional[Path] = None,
+        base_name: Optional[str] = None,
     ) -> tuple[Path, Path]:
         """Save an event to disk.
 
@@ -86,12 +103,25 @@ class EventStorage:
             event: The event to save.
             video_path: Path to the associated video capture, if any.
             driver_name: Active driver name at time of event, if known.
+            poster_path: Path to the slate PNG saved alongside the MP4, if any.
+                Persisted as metadata['poster_path']; consumed by
+                generate_events_json() to emit poster_url in the
+                website-facing feed.
+            base_name: Optional override for the generated filename stem.
+                When provided, the internal _generate_filename() counter is
+                NOT incremented. Used by the engine (phase 26) to pre-compute
+                the base name for the per-event poster PNG filename without
+                double-bumping the counter.
 
         Returns:
             Tuple of (json_path, csv_path).
         """
         day_dir = self._get_day_dir(event.start_time)
-        base_name = self._generate_filename(event)
+        # T-26-04-06: engine pre-generates base_name to derive the poster PNG
+        # filename before save. Skip _generate_filename (and its counter bump)
+        # when an override is supplied.
+        if base_name is None:
+            base_name = self._generate_filename(event)
 
         json_path = day_dir / f"{base_name}.json"
         csv_path = day_dir / f"{base_name}.csv"
@@ -102,6 +132,8 @@ class EventStorage:
         metadata["saved_at"] = datetime.now(timezone.utc).isoformat()
         if video_path:
             metadata["video_path"] = str(video_path)
+        if poster_path:
+            metadata["poster_path"] = str(poster_path)
         if driver_name is not None:
             metadata["driver_name"] = driver_name
 
@@ -142,6 +174,33 @@ class EventStorage:
             )
         except (json.JSONDecodeError, IOError) as e:
             log.error("event_video_update_error", error=str(e))
+
+    def update_event_poster(
+        self, json_path: Path, poster_path: Path
+    ) -> None:
+        """Update a saved event's JSON with a poster_path after the fact.
+
+        Mirrors update_event_video. Used by the engine's late-update path when
+        the video worker completes after save_event has already fired (G-01
+        gap-closure, plan 26-06).
+
+        Args:
+            json_path: Path to the event's JSON metadata file.
+            poster_path: Path to the poster PNG in the per-day captures dir.
+        """
+        try:
+            with open(json_path) as f:
+                metadata = json.load(f)
+            metadata["poster_path"] = str(poster_path)
+            with open(json_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+            log.info(
+                "event_poster_updated",
+                json=str(json_path),
+                poster=str(poster_path),
+            )
+        except (json.JSONDecodeError, IOError) as e:
+            log.error("event_poster_update_error", error=str(e))
 
     def _write_csv(self, path: Path, samples: List[IMUSample]) -> None:
         """Write samples to CSV file."""
@@ -424,6 +483,17 @@ class EventStorage:
                         f"{video_base_url}/{vp.parent.name}/{vp.name}"
                     )
 
+            # Build poster URL from stored path (mirrors video_url pattern —
+            # filesystem path on metadata, URL on feed). Phase 26 D-17.
+            poster_url = None
+            stored_poster = meta.get("poster_path")
+            if stored_poster:
+                pp = Path(stored_poster)
+                if pp.exists():
+                    poster_url = (
+                        f"{video_base_url}/{pp.parent.name}/{pp.name}"
+                    )
+
             entry: dict = {
                 "id": int(start_time * 1000),
                 "type": meta.get("type", "unknown").upper(),
@@ -461,6 +531,8 @@ class EventStorage:
                 entry["distance_to_destination_km"] = meta["distance_to_destination_km"]
             if video_url:
                 entry["video_url"] = video_url
+            if poster_url:
+                entry["poster_url"] = poster_url
 
             entries.append(entry)
 

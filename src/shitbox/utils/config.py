@@ -350,6 +350,16 @@ class SpeakerConfig:
 
 
 @dataclass
+class TitleCardConfig:
+    """Event video title-card slate configuration (phase 26)."""
+
+    enabled: bool = True
+    duration_seconds: float = 3.0
+    show_driver: bool = True
+    whimsy_lines: List[str] = field(default_factory=list)
+
+
+@dataclass
 class CaptureConfig:
     """Manual capture (button + video) configuration."""
 
@@ -365,6 +375,7 @@ class CaptureConfig:
     timelapse: TimelapseConfig = field(default_factory=TimelapseConfig)
     video_buffer: VideoBufferConfig = field(default_factory=VideoBufferConfig)
     speaker: SpeakerConfig = field(default_factory=SpeakerConfig)
+    title_card: TitleCardConfig = field(default_factory=TitleCardConfig)
 
 
 @dataclass
@@ -489,6 +500,9 @@ def load_config(config_path: str | Path | None = None) -> Config:
             VideoBufferConfig, capture_data.get("video_buffer", {})
         ),
         speaker=_dict_to_dataclass(SpeakerConfig, capture_data.get("speaker", {})),
+        title_card=_dict_to_dataclass(
+            TitleCardConfig, capture_data.get("title_card", {})
+        ),
     )
 
     gps_dict = data.get("sensors", {}).get("gps", {})

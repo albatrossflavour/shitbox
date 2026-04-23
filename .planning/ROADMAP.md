@@ -45,7 +45,8 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [x] **Phase 23: Verification Closure and Traceability Sweep** - Formal verify Phase 18, correct stale NARR-08b note, refresh REQUIREMENTS.md + ROADMAP.md tables (gap closure) (completed 2026-04-22)
 - [ ] **Phase 24: Phase 20 Physical Integration Completion** - Finish deferred 20-03 Task 3 (OpenSCAD review + Pi boot verify), produce 20-VERIFICATION.md (gap closure, waits on prints)
 - [ ] **Phase 25: Milestone v2.0 Nyquist Validation Sweep** - `/gsd-validate-phase` across phases 12/13/17/18/19/20/21 (gap closure)
-- [ ] **Phase 26: Event Video Title Cards** - Cinematic title frame between intro clip and event footage (location, date, event badge) via Pillow PNG → ffmpeg loop → concat demuxer
+- [x] **Phase 26: Event Video Title Cards** - Cinematic title frame between intro clip and event footage (location, date, event badge) via Pillow PNG → ffmpeg loop → concat demuxer (completed 2026-04-23)
+- [ ] **Phase 27: Slate Visual Theming** - Redesign title slate from utilitarian text layout to a themed composition (typography, palette, motif, badge styling) fitting the Shit of Theseus identity
 
 ## Phase Details
 
@@ -454,15 +455,39 @@ Plans:
   5. `src/shitbox/events/labels.py` is the single source of truth for event-type human labels and badge colours, consumable by the TTS path and website without Pillow/hardware imports
   6. PiP overlay and HUD burn-in timestamps shift by `intro_duration + slate_duration` so the cabin feed and ASS subtitles align with the post-slate timeline
 
-**Plans:** 4 plans
+**Plans:** 5 plans (4 original + 1 gap-closure)
 
 Plans:
-- [ ] 26-01-PLAN.md — Shared event-label + badge-colour module (src/shitbox/events/labels.py)
-- [ ] 26-02-PLAN.md — TitleCardConfig dataclass + config.yaml title_card block + whimsy pool defaults
-- [ ] 26-03-PLAN.md — TitleCardRenderer: Pillow PNG composition + ffmpeg MPEG-TS encoding with silent AAC parity
-- [ ] 26-04-PLAN.md — Wiring: slate insertion in _concatenate_segments, head_offset_s into PiP + ASS shifts, poster_path threading through save_event and generate_events_json, engine TitleCardRenderer instantiation + geocoder adapter
+- [x] 26-01-PLAN.md — Shared event-label + badge-colour module (src/shitbox/events/labels.py)
+- [x] 26-02-PLAN.md — TitleCardConfig dataclass + config.yaml title_card block + whimsy pool defaults
+- [x] 26-03-PLAN.md — TitleCardRenderer: Pillow PNG composition + ffmpeg MPEG-TS encoding with silent AAC parity
+- [x] 26-04-PLAN.md — Wiring: slate insertion in _concatenate_segments, head_offset_s into PiP + ASS shifts, poster_path threading through save_event and generate_events_json, engine TitleCardRenderer instantiation + geocoder adapter
+- [ ] 26-05-PLAN.md — [gap closure, CR-01] Close poster delivery race: relocate slate PNG to buffer_dir/pending_slates/<save_id>.png on worker thread before rmtree, extend save callback to 3-arg so engine._on_video_complete stashes the stable path in _event_poster_paths under _event_paths_lock; _check_post_captures pops from the dict instead of reaching into VideoRingBuffer._pending_slate_png. Integration test covers the full save_event → rmtree → _check_post_captures chain. Restores ROADMAP criterion #3 (poster_url on events.json).
 
 **UI hint**: no (server-side render; website consumption of `poster_url` is a follow-up in home-ops)
+
+### Phase 27: Slate Visual Theming
+
+**Goal:** Redesign the title slate from the current utilitarian text-on-dark layout into a themed composition that fits the Shit of Theseus identity. Typography, colour palette, motif, badge styling, and (optional) per-event-type visual language. Rendering pipeline (Pillow PNG → MPEG-TS → concat) is unchanged; this is a visual design pass over `TitleCardRenderer` and whatever new assets it consumes.
+
+**Depends on:** Phase 26 (slate pipeline in place, `events.json` carries `poster_url`).
+
+**Requirements:** To be captured in `27-CONTEXT.md` when the phase starts. Scope tiers to be decided during spec:
+
+  - Minimum: one custom typeface, deliberate colour palette, a single motif element, badge polish.
+  - Stretch: per-event-type illustration or iconography, animated slate intro variants, crest-style driver credit block.
+
+**Success Criteria** (what must be TRUE):
+
+  1. The themed slate renders as both the poster PNG and the in-video slate with a visible design language (non-default typeface, intentional palette, at least one motif element) distinct from the Phase 26 utilitarian layout
+  2. All event types (HARD_BRAKE, BIG_CORNER, HIGH_G, ROUGH_ROAD, MANUAL_CAPTURE, ROLLOVER, BOOT) and the no-GPS whimsy fallback render correctly under the new theme
+  3. `TitleCardConfig` shape stays backward-compatible (no breaking config changes; existing installs render the themed slate without intervention)
+  4. G-02 measure-and-shrink fit behaviour preserved for long place names
+  5. Rendered slate fits the 1280×720 canvas with safe margins
+
+**Plans:** TBD
+
+**UI hint**: yes (user-facing visual; benefits from a design spike)
 
 ---
 
@@ -495,4 +520,5 @@ Plans:
 | 23. Verification Closure and Traceability Sweep | v2.0 | 3/3 | Complete    | 2026-04-22 |
 | 24. Phase 20 Physical Integration Completion | v2.0 | TBD | Not started (waits on prints) | — |
 | 25. Milestone v2.0 Nyquist Validation Sweep | v2.0 | TBD | Not started | — |
-| 26. Event Video Title Cards | v2.0 | 0/4 | Planned | — |
+| 26. Event Video Title Cards | v2.0 | 6/6 | Complete | 2026-04-23 |
+| 27. Slate Visual Theming | v2.0 | TBD | Not started | — |

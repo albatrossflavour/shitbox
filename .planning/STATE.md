@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: ready_to_plan
-stopped_at: Phase 26 context gathered — ready for /gsd-plan-phase 26
-last_updated: "2026-04-23T01:00:13.186Z"
-last_activity: 2026-04-23 Phase 26 context captured (title cards)
+status: in_progress
+stopped_at: Phase 26 closed out (on-Pi UAT passed 2026-04-23)
+last_updated: "2026-04-23T23:59:00Z"
+last_activity: 2026-04-23 -- Phase 26 complete — G-01..G-08 shipped and UAT'd
 progress:
-  total_phases: 14
-  completed_phases: 8
+  total_phases: 13
+  completed_phases: 9
   total_plans: 46
-  completed_plans: 43
-  percent: 86
+  completed_plans: 46
+  percent: 100
 ---
 
 # Project State
@@ -22,17 +22,15 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 23 complete; Phase 24 next (Phase 20 Physical Integration Completion, waits on prints)
+**Current focus:** Phase 27 — slate-visual-theming (not started)
 
 ## Current Position
 
-Phase: 23 (verification-closure-and-traceability-sweep) — COMPLETE (VERIFICATION PASS)
-  All 3 plans done:
+Phase: 26 (event-video-title-cards) — COMPLETE
+  6/6 plans; gap closure G-01..G-08 shipped. 26-VERIFICATION.md 6/6 criteria VERIFIED on 2026-04-23 with on-Pi UAT confirming render.
 
-    - 23-01: 18-VERIFICATION.md created (8 Phase 18 requirements satisfied)
-    - 23-02: NARR-08b corrected in 19-VERIFICATION.md (stale BLOCKED → SATISFIED, score 11/11)
-    - 23-03: REQUIREMENTS.md traceability refreshed (17 checkboxes + 19 rows flipped); ROADMAP.md Phase 21/22 rows updated
-  23-VERIFICATION.md: 5/5 success criteria VERIFIED; one informational note re IMU-02 checkbox/table mismatch (pre-existing Phase 22 Pi UAT deferral, out of scope for this phase).
+Phase: 23 (verification-closure-and-traceability-sweep) — COMPLETE
+  3/3 plans; 23-VERIFICATION.md 5/5 success criteria VERIFIED.
 
 Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — COMPLETE
   7/7 plans; verified 2026-04-22 with deferred Pi UAT on IMU-02 sustained poll rate.
@@ -40,11 +38,11 @@ Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — COM
 Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
   5/5 plans; verified 2026-04-21. 4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Next: Phase 24 (Phase 20 Physical Integration Completion) waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24.
+Next: Phase 27 (Slate Visual Theming) ready to spec — needs 27-CONTEXT.md (scope tier, typography, palette, motif). Phase 24 (Phase 20 Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24.
 
-Last activity: 2026-04-22 Phase 23 executed and verified
+Last activity: 2026-04-23 -- Phase 26 closed out (G-01..G-08 + on-Pi UAT pass)
 
-Progress: 8/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
+Progress: 9/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
@@ -114,9 +112,10 @@ None.
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 26 context gathered — ready for /gsd-plan-phase 26
-Resume file: --resume-file
+Last session: 2026-04-23T23:59:00Z
+Stopped at: Phase 26 closed out — on-Pi UAT passed, all gap closure landed.
+Resume file: None
+Next action: spec Phase 27 (Slate Visual Theming). Suggested entry point: `/gsd-discuss-phase 27` to gather scope tier and visual direction before planning.
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
@@ -150,4 +149,3 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
 
-**Planned Phase:** 23 (Verification Closure and Traceability Sweep) — 3 plans — 2026-04-22T10:38:33.864Z

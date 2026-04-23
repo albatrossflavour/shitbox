@@ -23,6 +23,7 @@ from typing import Any, Callable, Optional, cast
 from shitbox.capture import buzzer, overlay, speaker
 from shitbox.capture.button import ButtonHandler
 from shitbox.capture.ring_buffer import VideoRingBuffer
+from shitbox.capture.title_card import TitleCardRenderer
 from shitbox.capture.video import VideoRecorder
 from shitbox.collectors.imu_heading import IMUHeadingCollector
 from shitbox.collectors.light import VEML7700Collector
@@ -241,6 +242,12 @@ class EngineConfig:
     speaker_distance_announce_interval_km: float = 50.0
     speaker_volume: int = 75
 
+    # Title-card slate (phase 26)
+    title_card_enabled: bool = True
+    title_card_duration_seconds: float = 3.0
+    title_card_show_driver: bool = True
+    title_card_whimsy_lines: list[str] = field(default_factory=list)
+
     # Route waypoints (WaypointConfig objects loaded from YAML)
     route_waypoints: list = field(default_factory=list)
 
@@ -382,6 +389,11 @@ class EngineConfig:
                 config.capture.speaker.distance_announce_interval_km
             ),
             speaker_volume=config.capture.speaker.volume,
+            # Title-card slate (phase 26)
+            title_card_enabled=config.capture.title_card.enabled,
+            title_card_duration_seconds=config.capture.title_card.duration_seconds,
+            title_card_show_driver=config.capture.title_card.show_driver,
+            title_card_whimsy_lines=list(config.capture.title_card.whimsy_lines),
             # Route waypoints
             route_waypoints=config.sensors.gps.route.waypoints,
             # Dashboard
@@ -700,6 +712,39 @@ class UnifiedEngine:
                 debounce_ms=config.capture_debounce_ms,
             )
 
+        # Phase 26: title-card slate renderer. Built only when the slate is
+        # enabled AND a video ring buffer exists to append it to. Injected
+        # into the ring buffer alongside the geocoder adapter + driver-state
+        # resolver so the renderer never touches either module directly
+        # (decoupled — see 26-PATTERNS.md).
+        self._title_card_renderer: Optional[TitleCardRenderer] = None
+        if (
+            config.video_buffer_enabled
+            and config.title_card_enabled
+            and self.video_ring_buffer is not None
+        ):
+            whimsy = (
+                config.title_card_whimsy_lines
+                if config.title_card_whimsy_lines
+                else None
+            )
+            self._title_card_renderer = TitleCardRenderer(
+                duration_seconds=config.title_card_duration_seconds,
+                show_driver=config.title_card_show_driver,
+                whimsy_lines=whimsy,
+                resolution=config.video_buffer_resolution,
+                fps=config.video_buffer_fps,
+            )
+            self.video_ring_buffer._title_card_renderer = self._title_card_renderer
+            self.video_ring_buffer._geocoder_fn = self._resolve_place_for_slate
+            self.video_ring_buffer._active_driver_fn = driver_state.get_active_driver
+            log.info(
+                "title_card_renderer_wired",
+                duration_s=config.title_card_duration_seconds,
+                show_driver=config.title_card_show_driver,
+                whimsy_count=len(config.title_card_whimsy_lines) if whimsy else 0,
+            )
+
         # Live dashboard (in-process FastAPI on daemon thread)
         # Snapshot counter decimates the 100 Hz IMU callback down to ~10 Hz
         # dashboard updates (RESEARCH Pitfall 3 — 100 dicts/sec is wasteful).
@@ -730,6 +775,12 @@ class UnifiedEngine:
         self._event_json_paths: dict[int, Path] = {}
         self._event_video_paths: dict[int, Path] = {}
         self._event_paths_lock = threading.Lock()
+        # Phase 26 gap-closure (plan 26-05): poster PNG paths handed over from
+        # the ring-buffer worker via the save callback's third argument. Same
+        # lock as _event_video_paths — both arrive on the same callback, so one
+        # critical section covers both. Consumed by _check_post_captures, which
+        # renames the holding-dir PNG into the per-day dir before save_event.
+        self._event_poster_paths: dict[int, Path] = {}
         self._manual_capture_count = 0
         self._last_timelapse_time = 0.0
         self._last_wal_checkpoint: float = 0.0
@@ -1088,9 +1139,10 @@ class UnifiedEngine:
                     prefix=event.event_type.value,
                     post_seconds=int(self.config.capture_post_seconds),
                     pre_seconds=int(self.config.capture_pre_seconds),
-                    callback=lambda path, _cs, _eid=eid: self._on_video_complete(
-                        _eid, path
+                    callback=lambda path, _cs, _pp, _eid=eid: self._on_video_complete(
+                        _eid, path, _pp
                     ),
+                    event=event,
                 )
                 log.info(
                     "video_save_triggered",
@@ -1179,34 +1231,102 @@ class UnifiedEngine:
         self._on_event(event)
 
     def _on_video_complete(
-        self, event_id: int, path: Optional[Path]
+        self,
+        event_id: int,
+        path: Optional[Path],
+        poster_path: Optional[Path],
     ) -> None:
         """Called when a video ring buffer save finishes.
 
         Updates the saved event metadata with the video path and
-        regenerates events.json.
+        regenerates events.json. Also stashes the stable poster PNG
+        path so _check_post_captures can rename it into the per-day dir.
 
         Args:
-            event_id: The id() of the Event object, used to look up
-                      the saved JSON path.
-            path: Path to the saved video file, or None on failure.
+            event_id: id() of the source Event — lookup key for the
+                      _event_json_paths and _event_poster_paths dicts.
+            path: Saved MP4 path, or None on concat/save failure.
+            poster_path: Stable holding-dir PNG path from the ring-buffer
+                         worker (buffer_dir/pending_slates/<save_id>.png),
+                         or None when no slate rendered or move to
+                         holding failed.
         """
         buzzer.beep_capture_end()
         speaker.speak_capture_end()
         if not path:
             log.warning("capture_failed", event_id=event_id)
+            # Poster may have rendered even though concat failed — stash it
+            # so _check_post_captures can still emit poster_url.
+            if poster_path is not None:
+                with self._event_paths_lock:
+                    self._event_poster_paths[event_id] = poster_path
+                    log.info(
+                        "event_poster_stashed",
+                        event_id=event_id,
+                        poster=str(poster_path),
+                    )
             return
 
         log.info("capture_complete", path=str(path), event_id=event_id)
 
+        # Phase 26-06 (G-01 + G-05): the lock covers the full
+        # pop+rename+JSON-rewrite window for the late branch so a concurrent
+        # _check_post_captures cannot observe a half-consumed state (PNG
+        # renamed but JSON not yet updated). See threat_model T-26-06-01.
         with self._event_paths_lock:
             json_path = self._event_json_paths.get(event_id)
-            if not json_path:
-                # Event hasn't been saved yet — stash path for
-                # _check_post_captures to pick up.
+            if json_path is None:
+                # EARLY branch: event not yet saved. Stash for
+                # _check_post_captures to pop under the same lock.
                 self._event_video_paths[event_id] = path
-        if json_path:
+                if poster_path is not None:
+                    self._event_poster_paths[event_id] = poster_path
+                    log.info(
+                        "event_poster_stashed",
+                        event_id=event_id,
+                        poster=str(poster_path),
+                    )
+                return
+
+            # LATE branch (G-01): event already saved with poster_path=None.
+            # Deliver the poster by renaming the stable PNG into the day
+            # dir and patching the saved JSON. Key strictly on event_id —
+            # no _find_capture_video type-scan fallback (G-05 refusal).
+            # Source order: the poster_path parameter passed on THIS call wins
+            # (standard late-callback shape); fall back to any previously
+            # stashed path for the same event_id (belt-and-braces — e.g. a
+            # prior call stashed via the EARLY branch and this call is a
+            # redelivery with poster_path=None).
+            src_png = poster_path
+            if src_png is None:
+                src_png = self._event_poster_paths.pop(event_id, None)
+            else:
+                # Drop any prior stash for this event so it doesn't leak.
+                self._event_poster_paths.pop(event_id, None)
             self.event_storage.update_event_video(json_path, path)
+            if src_png is not None:
+                base_name = json_path.stem
+                # G-07 (plan 26-08): place the poster next to the MP4 in
+                # captures_dir — the tree rsync ships to the NAS. events_dir
+                # (where json_path lives) is Pi-local JSON+CSV.
+                day_str = json_path.parent.name
+                if self.event_storage.captures_dir is not None:
+                    day_dir = self.event_storage.captures_dir / day_str
+                else:
+                    day_dir = json_path.parent
+                dest_png = day_dir / f"{base_name}_poster.png"
+                try:
+                    day_dir.mkdir(parents=True, exist_ok=True)
+                    src_png.rename(dest_png)
+                    self.event_storage.update_event_poster(json_path, dest_png)
+                except OSError as move_err:
+                    log.warning(
+                        "late_poster_move_failed",
+                        event_id=event_id,
+                        src=str(src_png),
+                        dst=str(dest_png),
+                        error=str(move_err),
+                    )
             self.event_storage.generate_events_json()
             if self.capture_sync:
                 self.capture_sync.trigger_sync()
@@ -1241,8 +1361,56 @@ class UnifiedEngine:
                 eid = id(event)
                 with self._event_paths_lock:
                     video_path = self._event_video_paths.pop(eid, None)
+                    src_png = self._event_poster_paths.pop(eid, None)
                 if not video_path:
-                    video_path = self._find_capture_video(event)
+                    # G-06 (plan 26-07): EARLY branch refuses _find_capture_video
+                    # type-scan. On slow Pi scheduling the stash is often empty
+                    # at save time because the MP4 is still rendering; type-scan
+                    # would return the PRIOR event's MP4 (most recent of the same
+                    # type) and stamp a stale path into events.json. Save with
+                    # video_path=None here — _on_video_complete will pair the
+                    # real MP4 via event_id-strict lookup in the LATE branch.
+                    # Symmetric with the LATE branch refusal (G-05, plan 26-06).
+                    log.warning(
+                        "event_video_update_orphan",
+                        event_id=eid,
+                        event_type=event.event_type.value,
+                        reason="no_stash_type_scan_refused",
+                    )
+
+                # Phase 26 (plan 26-05): move the stable holding-dir PNG into
+                # the per-day dir so generate_events_json can build a
+                # /captures/<date>/<base>_poster.png URL. We pre-generate
+                # base_name ONCE here and pass it into save_event via the
+                # base_name= override to avoid a second _generate_filename
+                # (counter double-bump — T-26-04-06).
+                # src_png was popped from _event_poster_paths above (set on the
+                # worker thread via _on_video_complete) — CR-01 fix.
+                poster_path: Optional[Path] = None
+                base_name: Optional[str] = None
+                if self.video_ring_buffer is not None:
+                    base_name = self.event_storage._generate_filename(event)
+                    if src_png is not None and src_png.exists():
+                        # G-07 (plan 26-08): place the poster next to the MP4
+                        # in captures_dir — the tree rsync ships to the NAS.
+                        day_dir = self.event_storage.get_captures_day_dir(
+                            event.start_time
+                        )
+                        if day_dir is None:
+                            day_dir = self.event_storage._get_day_dir(
+                                event.start_time
+                            )
+                        dest_png = day_dir / f"{base_name}_poster.png"
+                        try:
+                            day_dir.mkdir(parents=True, exist_ok=True)
+                            src_png.rename(dest_png)
+                            poster_path = dest_png
+                        except OSError as move_err:
+                            log.warning("poster_move_failed", error=str(move_err))
+                            poster_path = None
+                    # _pending_slate_ts and _pending_slate_duration stay worker-local;
+                    # do NOT reset them here — they are cleared at the top of the
+                    # next save pass (CR-01 gap-closure, plan 26-05).
 
                 # Save to disk
                 try:
@@ -1250,13 +1418,22 @@ class UnifiedEngine:
                         event,
                         video_path=video_path,
                         driver_name=driver_state.get_active_driver(),
+                        poster_path=poster_path,
+                        base_name=base_name,
                     )
                     self.events_captured += 1
                     # Store json_path so late video callbacks can
                     # update this event.
                     with self._event_paths_lock:
                         self._event_json_paths[eid] = json_path
-                    self.event_storage.generate_events_json()
+                    # G-06 (plan 26-07): defer events.json regen when
+                    # video_path is None. The LATE branch's event_video_updated
+                    # path regenerates events.json after pairing the real MP4,
+                    # so skipping here avoids publishing a race-window no-video
+                    # entry that browsers/NAS can cache past the corrective
+                    # regen.
+                    if video_path is not None:
+                        self.event_storage.generate_events_json()
                     log.info(
                         "event_saved_to_disk",
                         event_type=event.event_type.value,
@@ -1290,16 +1467,33 @@ class UnifiedEngine:
                     self._pending_post_capture.pop(event_id, None)
 
     def _find_capture_video(self, event: Event) -> Optional[Path]:
-        """Find the most recent video capture matching an event."""
+        """Find the most recent video capture matching an event by TYPE.
+
+        WARNING (G-05, plan 26-06): this is a type-scan fallback used only
+        when _check_post_captures finds the in-memory video stash empty. It
+        CANNOT distinguish between two same-type events in the same day
+        directory and can also pick up prior-session files. Do NOT call this
+        from the late-update branch of _on_video_complete — event_id-keyed
+        lookup via _event_json_paths is the sole trusted source there.
+        """
         captures = Path(self.config.captures_dir)
         event_date = datetime.fromtimestamp(event.start_time, tz=timezone.utc)
         date_dir = captures / event_date.strftime("%Y-%m-%d")
         if not date_dir.is_dir():
+            log.debug("find_capture_video_empty", event_type=event.event_type.value)
             return None
 
         pattern = f"{event.event_type.value}_*.mp4"
         matches = sorted(date_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
-        return matches[0] if matches else None
+        if not matches:
+            log.debug("find_capture_video_empty", event_type=event.event_type.value)
+            return None
+        log.warning(
+            "find_capture_video_type_scan",
+            event_type=event.event_type.value,
+            matched=str(matches[0]),
+        )
+        return matches[0]
 
     def _read_gps(self) -> Optional[Reading]:
         """Read current GPS data from the cached gpsd stream."""
@@ -1470,6 +1664,30 @@ class UnifiedEngine:
             * math.sin(dlon / 2) ** 2
         )
         return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    def _resolve_place_for_slate(self, lat: float, lon: float) -> Optional[str]:
+        """Geocoder adapter for TitleCardRenderer (phase 26).
+
+        Mirrors timelapse_compiler._resolve_place_name's "Name, Admin1" shape,
+        using the engine's shared _reverse_geocoder instance. Returns None
+        when the geocoder is absent or no result is returned (D-09 / D-10
+        fallback in the renderer).
+        """
+        if self._reverse_geocoder is None:
+            return None
+        try:
+            results = self._reverse_geocoder.search((lat, lon))
+            if not results:
+                return None
+            r = results[0]
+            name = (r.get("name") or "").strip()
+            admin1 = (r.get("admin1") or "").strip()
+            if name and admin1:
+                return f"{name}, {admin1}"
+            return name or None
+        except Exception as exc:
+            log.debug("slate_geocode_failed", error=str(exc))
+            return None
 
     def _resolve_location(self, lat: float, lon: float) -> None:
         """Resolve GPS coordinates to a human-readable location name.
@@ -2484,6 +2702,7 @@ class UnifiedEngine:
                 self.event_storage.save_event(
                     pending["event"],
                     driver_name=driver_state.get_active_driver(),
+                    poster_path=None,  # shutdown flush: no slate render path
                 )
             except Exception as e:
                 log.error("event_save_error_on_shutdown", error=str(e))
