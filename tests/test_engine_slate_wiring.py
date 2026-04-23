@@ -134,7 +134,10 @@ def test_engine_constructs_renderer_when_enabled(
     vrb = engine.video_ring_buffer
     assert vrb is not None
     assert vrb._title_card_renderer is engine._title_card_renderer
-    assert vrb._geocoder_fn is engine._resolve_place_for_slate
+    # Bound methods are re-bound per attribute access; compare the
+    # underlying function and the bound __self__ to prove the injection.
+    assert vrb._geocoder_fn.__func__ is UnifiedEngine._resolve_place_for_slate
+    assert vrb._geocoder_fn.__self__ is engine
     # driver-state callable is the bare module function, not a bound value
     from shitbox.dashboard import driver_state
     assert vrb._active_driver_fn is driver_state.get_active_driver
