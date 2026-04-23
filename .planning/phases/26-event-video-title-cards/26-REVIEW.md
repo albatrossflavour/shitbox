@@ -2,280 +2,270 @@
 phase: 26-event-video-title-cards
 reviewed: 2026-04-23T00:00:00Z
 depth: standard
-files_reviewed: 12
+files_reviewed: 5
 files_reviewed_list:
-  - src/shitbox/events/labels.py
-  - src/shitbox/utils/config.py
-  - config/config.yaml
-  - src/shitbox/capture/title_card.py
   - src/shitbox/capture/ring_buffer.py
-  - src/shitbox/events/storage.py
   - src/shitbox/events/engine.py
-  - tests/test_events_labels.py
-  - tests/test_config_title_card.py
-  - tests/test_capture_title_card.py
   - tests/test_ring_buffer_slate.py
-  - tests/test_events_storage_poster.py
   - tests/test_engine_slate_wiring.py
+  - tests/test_poster_delivery_integration.py
 findings:
-  critical: 1
-  warning: 5
-  info: 6
-  total: 12
+  critical: 0
+  warning: 3
+  info: 4
+  total: 7
 status: issues_found
 ---
 
-# Phase 26: Code Review Report
+# Phase 26: Code Review Report (re-review after gap-closure plan 26-05)
 
 **Reviewed:** 2026-04-23T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 12
+**Files Reviewed:** 5
 **Status:** issues_found
 
 ## Summary
 
-Phase 26 introduces a title-card slate renderer that composes a PNG poster per event, encodes it to MPEG-TS, and wedges it between `intro.ts` and live buffer segments via the concat demuxer. The pattern is sound — lazy Pillow import, defence-in-depth `render()` that can't raise, fallback matrix for geocoder failure modes, counter-stable `base_name=` override on `save_event`.
+Plan 26-05 restructures the poster handoff so the slate PNG now outlives the per-save tmp dir. The PNG is relocated to `buffer_dir/pending_slates/<save_id>.png` inside `_do_save_event` *before* the `finally` rmtree runs, the save callback is extended to a 3-arg shape `(output_path, clip_start_mtime, poster_path)`, and the engine stashes the stable path in a lock-protected `_event_poster_paths` dict which `_check_post_captures` then consumes and renames into the per-day events dir. A new `_cleanup_pending_slates` startup sweep drains orphans from prior crashes.
 
-One critical issue: a lifecycle race means the poster PNG can be deleted by the ring-buffer worker's `finally` cleanup before the engine's telemetry thread tries to rename it into the per-day events dir. Under normal timing the PNG is gone by the time `_check_post_captures` fires `post_event_seconds` later — the `src_png.exists()` guard will usually silently swallow it, leaving `poster_url` off the website feed. The feature will appear to work intermittently based on whether the save worker has reached its `finally` yet.
+The CR-01 race is closed, and WR-01/WR-02 from the prior review are both addressed — the callback annotation is now accurate at both the public and internal boundaries, and cross-thread `_pending_slate_png` reads from the engine are gone (the integration test `test_check_post_captures_does_not_touch_pending_slate_png` actively enforces this).
 
-The rest is quality stuff: a stale type annotation, a dead reset, test coverage gaps around the slate happy path at the `_do_save_event` level, and a handful of `except Exception: pass` patterns that obscure real problems.
+The delta is small and the integration test `test_poster_survives_rmtree_and_appears_in_events_json` exercises the full race path. Three issues remain:
 
-## Critical Issues
+1. **WR-01** — The startup sweep's guard logic is wrong. At start(), `_save_counter == 0`, so numeric orphan PNGs from prior runs (`5.png`, `12.png`, etc.) can never satisfy `save_id_from_name < _save_counter` and will *never* be removed. The sweep only works for non-numeric names, defeating its stated purpose.
+2. **WR-02** — If `_on_video_complete` fires late (after `_check_post_captures` has already run for the same event), the poster is stashed in `_event_poster_paths` but never consumed — both the dict entry leaks forever, and the PNG stays stranded in `pending_slates/` because the rename-into-day-dir step only happens in `_check_post_captures`.
+3. **WR-03** — `shutil.move` across filesystems can fall back to copy+unlink and can succeed partially. The current `OSError` catch covers the common case but doesn't explicitly reason about same-filesystem-only usage (buffer_dir and pending_slates share a parent, so it's fine in practice — worth a comment).
 
-### CR-01: Poster PNG is deleted before engine can move it — lifecycle race
-
-**File:** `src/shitbox/capture/ring_buffer.py:1143-1147`, `src/shitbox/events/engine.py:1293-1315`
-
-**Issue:** The ring-buffer worker thread sets `self._pending_slate_png` to a path inside `tmp_dir` (`save_N/slate.png`) at line 1102, completes the concat at line 1107, invokes the save callback at line 1137, then in its `finally` block at line 1147 runs `shutil.rmtree(tmp_dir, ignore_errors=True)` — deleting `slate.png`.
-
-The engine does NOT move the PNG in the save callback. It waits for `_check_post_captures` (line 1260) to fire on the next telemetry tick after `post_event_seconds` has elapsed, then reads `_pending_slate_png` (line 1304) and tries `src_png.rename(dest_png)` (line 1311). By that point the file has been gone for seconds, because:
-
-1. `_do_save_event` runs in a worker thread (`save_event` spawned at ring_buffer.py:253).
-2. The worker finishes and runs `rmtree` in its `finally`.
-3. The engine's post-capture check runs later on the telemetry thread.
-
-The `src_png.exists()` guard at engine.py:1306 masks the problem as a silent absence: `poster_path` stays `None`, the feed entry omits `poster_url`, and nobody notices until a field test shows no posters ever appearing on the website. The order-of-operations test (`test_pending_state_reset_between_saves`) does not exercise the engine → ring-buffer hand-off and therefore misses it.
-
-There is also a cross-thread access pattern concern: `_pending_slate_png` is written by the worker under no lock and read/cleared by the telemetry thread under no lock, similar to the existing `_event_json_paths` issue called out in `project_audit_findings.md`. Not the immediate cause here (the file is gone, not racing), but worth noting.
-
-**Fix:** Either (a) move the slate PNG out of `save_N/` and into a stable location inside the ring-buffer worker before the `finally` fires, or (b) have the engine move it synchronously in the save callback, not on the next post-capture tick. Option (b) is closer to the existing video-path flow:
-
-```python
-# ring_buffer.py — render slate into a stable tmp outside tmp_dir
-slate_persist_dir = self.buffer_dir / "pending_slates"
-slate_persist_dir.mkdir(parents=True, exist_ok=True)
-png_path, ts_path, dur = self._render_slate(
-    event,
-    slate_persist_dir,  # survives the save_N rmtree
-    geocoder=self._geocoder_fn,
-    driver_name=driver,
-)
-# ts_path still needs to live in tmp_dir for concat OR be copied; simplest:
-# render PNG to persist_dir, render TS into tmp_dir via a second ffmpeg pass
-# that reads the persisted PNG.
-```
-
-Or the cleaner fix — have `_do_save_event` emit the final destination path via an additional callback arg, so the engine can set `poster_path` from the sync callback (same thread as the video rename) without reaching back into ring-buffer state:
-
-```python
-# ring_buffer.py: callback signature gains poster_path
-if callback:
-    callback(output_path, clip_start_mtime, self._pending_slate_png)
-# engine side: _on_video_complete stashes the poster path alongside video_path
-```
-
-Either way the invariant to restore is: the PNG must live past `_do_save_event.finally`, or it must be renamed to its final home before that `finally` fires.
+Info items are about test scaffolding (`test_ring_buffer_slate.py` has a dead `if False` and a no-op `_caplog_context` shim) and a couple of carry-overs from the prior review that weren't in 26-05's scope.
 
 ## Warnings
 
-### WR-01: `_do_save_event` callback type annotation lies about arity
+### WR-01: `_cleanup_pending_slates` guard logic prevents startup sweep from removing numeric orphans
 
-**File:** `src/shitbox/capture/ring_buffer.py:997`
+**File:** `src/shitbox/capture/ring_buffer.py:1677-1710`
 
-**Issue:** The internal worker declares `callback: Optional[Callable[[Optional[Path]], None]]` (one-arg callable returning None), but the method invokes the callback with two arguments at lines 1086, 1137, and 1142:
+**Issue:** The sweep gates each removal on `if mtime_ok and id_ok`, where:
 
-```python
-callback(None, 0.0)           # line 1086
-callback(output_path, clip_start_mtime)  # line 1137
-callback(None, 0.0)           # line 1142
-```
+- `mtime_ok = entry.stat().st_mtime < self._process_start_time`
+- `id_ok = int(entry.stem) < self._save_counter` (falls back to `True` on non-numeric names)
 
-The public `save_event` at line 227 declares the correct two-arg signature (`Callable[[Optional[Path], float], None]`). The internal method's annotation is wrong — it was probably copied from an older revision and never updated when `clip_start_mtime` was added. mypy under strict mode would catch this; the current mypy config evidently doesn't.
+The sweep is called from `start()` at line 190, immediately after `self._process_start_time = time.time()` on line 189. At that point `self._save_counter == 0` (it's incremented on every `_do_save_event`, which can only run after `start()` returns).
 
-**Fix:**
-```python
-def _do_save_event(
-    self,
-    prefix: str,
-    post_seconds: int,
-    pre_seconds: Optional[int],
-    callback: Optional[Callable[[Optional[Path], float], None]],
-    event: Optional["Event"] = None,
-) -> None:
-```
+For a legitimate orphan file from a prior run, say `5.png`:
 
-### WR-02: Slate pending-state accessed from two threads without a lock
+- `mtime_ok` → `True` (file was written before this process started)
+- `id_ok` → `5 < 0` → `False`
+- `mtime_ok and id_ok` → `False` → **file is NOT removed**
 
-**File:** `src/shitbox/capture/ring_buffer.py:1102-1104`, `src/shitbox/events/engine.py:1303-1319`
+Every numeric-named PNG from a crashed prior run survives the sweep. Only unrecognised-name files get cleaned. The test `test_cleanup_pending_slates_removes_old_files` passes because it explicitly sets `_save_counter = 10` — a state the real startup sequence never reaches before the sweep runs.
 
-**Issue:** Three related attributes — `_pending_slate_png`, `_pending_slate_ts`, `_pending_slate_duration` — are written by the save-worker thread (ring_buffer.py:1011-1013, 1102-1104) and read+cleared by the telemetry thread (engine.py:1304, 1317-1319). No lock guards either side. Same class of bug as the `_event_json_paths` issue already noted in `project_audit_findings.md`.
+Net effect: `pending_slates/` accumulates PNGs over time across restarts. On a Pi with a tmpfs buffer this resets at boot, so on a real rally it's mostly a cosmetic leak. On any system where `buffer_dir` is persistent (dev laptop, NAS mount) it's unbounded growth.
 
-Two concrete failure modes:
-
-1. If a second event fires while a prior save is mid-flight (possible during a rapid burst of HIGH_G hits on a corrugated section), the worker resets the pending state to None at line 1011 and then sets fresh paths at 1102-1104. If the telemetry thread runs between those two writes, it sees `None` for the previous event's poster.
-2. On aarch64 without sequential consistency, the telemetry thread may see a partial write — `_pending_slate_png` set but `_pending_slate_duration` still zero, or vice versa. Unlikely to bite on CPython given the GIL, but the invariant is "related tuple updated atomically" and it isn't enforced.
-
-**Fix:** Bundle the three fields into a single tuple behind a lock, or use a `threading.Lock()` around the write and read blocks:
+**Fix:** The intent is "anything that predates this process is an orphan, regardless of its numeric save_id" — drop the `id_ok` check at startup and gate purely on mtime. The in-run race the comment calls out (save_event firing before start() completes) is impossible by construction: `save_event` is only reachable once the engine has been built and has called `start()`, and `_save_counter` isn't used for filename collision prevention either way (only the save_id from the save-in-flight ever writes). The simpler correct rule:
 
 ```python
-# ring_buffer.py
-self._pending_slate: Optional[tuple[Path, Path, float]] = None
-self._pending_slate_lock = threading.Lock()
+def _cleanup_pending_slates(self) -> None:
+    """Remove PNGs left over from crashed prior runs.
 
-# writer
-with self._pending_slate_lock:
-    self._pending_slate = (png_path, ts_path, dur) if dur > 0 else None
-
-# reader (engine)
-with vrb._pending_slate_lock:
-    slate = vrb._pending_slate
-    vrb._pending_slate = None
-```
-
-Bonus: this also closes CR-01 in the same change if you include the rename inside the critical section.
-
-### WR-03: Poster URL builder assumes a specific directory layout
-
-**File:** `src/shitbox/events/storage.py:446-453`
-
-**Issue:** `generate_events_json` builds the poster URL as `f"{video_base_url}/{pp.parent.name}/{pp.name}"`. This silently assumes `poster_path` lives one directory deep under `captures_dir`. If the engine ever changes to store posters in a subdirectory (e.g. `/captures/<date>/posters/<name>.png`), the URL will be wrong and point at a 404.
-
-The video-URL builder four lines up has the same shape, so the assumption is at least consistent, but it's fragile. A relative-path computation against `captures_dir` would be explicit:
-
-**Fix:**
-```python
-if self.captures_dir:
+    Any file whose mtime predates this process's start is an orphan by
+    definition — save_event cannot fire until start() returns, so an
+    in-run writer will always produce mtime > process_start_time.
+    """
     try:
-        rel = pp.resolve().relative_to(self.captures_dir.resolve())
-        poster_url = f"{video_base_url}/{rel.as_posix()}"
-    except ValueError:
-        # poster is outside captures_dir — log and skip
-        log.warning("poster_outside_captures_dir", path=str(pp))
-        poster_url = None
+        entries = list(self._pending_slates_dir.iterdir())
+    except FileNotFoundError:
+        return
+    removed = 0
+    for entry in entries:
+        try:
+            if not entry.is_file():
+                continue
+            if entry.stat().st_mtime < self._process_start_time:
+                entry.unlink()
+                removed += 1
+        except OSError:
+            continue
+    if removed:
+        log.info("pending_slates_swept", removed=removed)
 ```
 
-Do the same for `video_url` while you're in there.
+And update `test_cleanup_pending_slates_removes_old_files` to stop relying on `_save_counter = 10` as the unlock — set `_save_counter = 0` so the test reflects real startup conditions.
 
-### WR-04: `_render_slate` references local `Any` import that's shadowed by module `typing.Any`
+### WR-02: Late `_on_video_complete` leaks stashed poster and never emits `poster_url`
 
-**File:** `src/shitbox/capture/ring_buffer.py:1400`
+**File:** `src/shitbox/events/engine.py:1270-1289`
 
-**Issue:** `_render_slate` declares `geocoder: Optional[Any] = None` but the actual renderer signature is `GeocoderFn = Callable[[float, float], Optional[str]]`. Using `Any` here gives up type checking on the one hand-off where getting the signature wrong would send a wrong-shape callable into `TitleCardRenderer.render`.
+**Issue:** `_on_video_complete` has two branches after CR-01 was closed:
 
-This isn't a bug today (the engine passes the right shape), but it hides signature drift. Since `TitleCardRenderer` already exports `GeocoderFn`, use it:
+1. Early callback (video finishes before `_check_post_captures` runs): `json_path = self._event_json_paths.get(event_id)` returns `None`, so the code stashes `video_path` and `poster_path` into the dicts. `_check_post_captures` pops both later, renames the PNG, and passes `poster_path=` into `save_event`. Works.
+2. Late callback (video finishes *after* `_check_post_captures` has already run for the event): `json_path` is populated. The code calls `update_event_video(json_path, path)` and re-runs `generate_events_json()`. But there is no matching `update_event_poster` — the stashed `self._event_poster_paths[event_id] = poster_path` (line 1279) is never read or consumed anywhere.
 
-**Fix:**
+Two concrete problems:
+
+- The dict entry leaks forever — nothing pops it.
+- The PNG stays at `buffer_dir/pending_slates/<save_id>.png`. `generate_events_json` reads `poster_path` from the event's JSON, and that JSON still has `poster_path=None` because `_check_post_captures` ran when the stash was empty. So the website feed gets `video_url` but no `poster_url` for late-callback events.
+
+The late-callback branch is rare (requires the video worker to be slower than `post_event_seconds + processing_time`), but the whole point of extending the callback to carry `poster_path` is that it covers *both* orderings. The integration test `test_poster_survives_rmtree_and_appears_in_events_json` only exercises the early-callback path (it calls `_do_save_event` synchronously, then `_check_post_captures` after).
+
+**Fix:** Add a late-callback branch that mirrors `update_event_video` for the poster. Either:
+
 ```python
-from shitbox.capture.title_card import GeocoderFn  # TYPE_CHECKING block is fine
-...
-def _render_slate(
-    self,
-    event: "Event",
-    tmp_dir: Path,
-    *,
-    geocoder: Optional[GeocoderFn] = None,
-    driver_name: Optional[str] = None,
-) -> tuple[Optional[Path], Optional[Path], float]:
+# engine.py _on_video_complete, after update_event_video + generate_events_json:
+if json_path and poster_path is not None:
+    # Late callback — rename the stashed PNG into the day dir and update JSON.
+    try:
+        # reconstruct the base_name from json_path.stem
+        base_name = json_path.stem
+        day_dir = json_path.parent
+        dest_png = day_dir / f"{base_name}_poster.png"
+        if poster_path.exists():
+            poster_path.rename(dest_png)
+            self.event_storage.update_event_poster(json_path, dest_png)
+            self.event_storage.generate_events_json()
+        # Pop the stash — entry is consumed either way.
+        with self._event_paths_lock:
+            self._event_poster_paths.pop(event_id, None)
+    except OSError as move_err:
+        log.warning("late_poster_move_failed", event_id=event_id, error=str(move_err))
 ```
 
-### WR-05: `_truncate(None, ...)` defensive path is unreachable but claims to handle None
+Or simplify: have `_check_post_captures` not pop the poster path; leave it for `_on_video_complete` to consume regardless of ordering. Either way add a test case that fires the callback after `_check_post_captures` has already processed the pending entry.
 
-**File:** `src/shitbox/capture/title_card.py:400-411`
+### WR-03: `shutil.move` semantics across filesystem boundaries not documented
 
-**Issue:** The helper has `if text is None: return ""` — but every caller (`driver_name`, `place`, whimsy line) pre-filters. The type annotation is `text: str`, not `Optional[str]`. If a caller ever relied on this defence and passed `None`, they'd get an empty string silently rendered centred in a 140pt font — not what you'd want.
+**File:** `src/shitbox/capture/ring_buffer.py:1163-1180`
 
-Either remove the dead guard and tighten the type to `str`, or accept `Optional[str]` in the annotation and push the None-handling out to callers explicitly. The current shape is "documented lie" — the code says it handles None but the signature forbids it.
+**Issue:** The PNG relocation uses `shutil.move(str(src), str(dst))` wrapped in an `OSError` catch. `shutil.move` semantics differ by whether src and dst share a filesystem:
 
-**Fix:** Drop the None branch since callers already guard:
+- Same filesystem: atomic `os.rename` — either fully moves or fully fails.
+- Cross filesystem: falls back to `shutil.copy2(src, dst)` + `os.unlink(src)`. The copy can finish and the unlink can then fail (permission, read-only, race), leaving duplicate content. `shutil.move` raises in that case so the except branch catches it, but the destination file may already be present and valid.
+
+In practice `src` is `tmp_dir/slate.png` (under `buffer_dir`) and `dst` is `_pending_slates_dir/<id>.png` (also under `buffer_dir`), so they always share a filesystem and the move is atomic. But the code doesn't say so, and a future reader moving `_pending_slates_dir` somewhere else (say a tmpfs-mounted `/run/shitbox/pending_slates` while `buffer_dir` stays on SD) would trip the cross-filesystem path silently.
+
+This is a documentation fix more than a code fix, and it's below WR-02 in priority. Flag because the phase introduced the move and the invariant should be nailed down:
+
+**Fix:** Either swap `shutil.move` for `Path.rename` (explicit same-filesystem requirement, raises `OSError` on cross-device, forces the invariant) or add a one-line comment:
+
 ```python
-def _truncate(text: str, max_chars: int) -> str:
-    if len(text) <= max_chars:
-        return text
-    return text[: max_chars - 1] + "…"
+# src and dst are both under self.buffer_dir — same filesystem guaranteed,
+# so shutil.move is atomic via os.rename. If pending_slates_dir ever moves
+# to a different mount, revisit: cross-fs move is copy+unlink and can leave
+# partial state on the failure path.
+try:
+    self._pending_slates_dir.mkdir(parents=True, exist_ok=True)
+    src.rename(dst)  # explicit same-fs; raises on cross-device
+    stable_png_path = dst
 ```
 
 ## Info
 
-### IN-01: Dead `os` import lingers in ring_buffer (pre-existing, still there)
+### IN-01: Test file has vestigial `if False` conditional and no-op context manager
 
-**File:** `src/shitbox/capture/ring_buffer.py:8`
+**File:** `tests/test_ring_buffer_slate.py:496-518`
 
-**Issue:** `import os` is used throughout (`os.path.exists`, `os.nice`, `os.get_blocking`, etc.) so this one's fine. Leaving the note because `project_audit_findings.md` flagged a dead `os` in ring_buffer; that flag appears stale now — os is used. Worth verifying the audit file is current.
-
-**Fix:** Cross-check with `project_audit_findings.md` and drop the stale entry if confirmed.
-
-### IN-02: `_nice` lambda still defined inside `_start_ffmpeg`
-
-**File:** `src/shitbox/capture/ring_buffer.py:731`
-
-**Issue:** `_nice = lambda: os.nice(5)` is defined as a noqa'd E731 inside `_start_ffmpeg` and used as `preexec_fn=_nice`. It's harmless but the audit file called it out as "unused lambda in ring_buffer.py". It's actually used — just in the reverse of how the audit claims. Again worth a cross-check with the living doc.
-
-**Fix:** Same as IN-01 — reconcile with `project_audit_findings.md`.
-
-### IN-03: `generate_events_json` rescans all event JSON files on every call
-
-**File:** `src/shitbox/events/storage.py:400-509`
-
-**Issue:** `_check_post_captures` calls `generate_events_json()` on every event save (engine.py:1335). The function re-scans every `*.json` under `base_dir` via `rglob` each time and rebuilds the full feed. With 14 days × typical event rate on a hard rally day, this is a few thousand stat+open calls per event. Not performance-critical on paper but flagged because:
-
-1. The `poster_path` exists-check adds another stat() per entry.
-2. It's already synchronous on the telemetry loop — the audit file already called this out for `capture_sync._do_sync` with the same fix ("needs backgrounding").
-
-Out of scope for v1 performance review (per review rules), but since it was flagged for other services in the audit, the title-card addition shouldn't make it worse. It doesn't, materially — one extra stat per entry is negligible — but the pattern deserves the same background-queue treatment eventually.
-
-**Fix:** Track against the existing background-sync audit item; no code change needed here.
-
-### IN-04: Logo-load `except Exception` swallows corrupt asset warnings at debug level
-
-**File:** `src/shitbox/capture/title_card.py:332-333`
-
-**Issue:** The logo-load path distinguishes `FileNotFoundError` (warning) from other errors (debug). A corrupt PNG under `LOGO_PATH` will render with no logo and no log trail above debug, which makes a "why is the logo missing from production slates" investigation tedious. This is a judgement call — the rest of the module is carefully best-effort, and a corrupt logo shouldn't fail a rollover slate — but the visibility drop from warning to debug is arguably too aggressive.
-
-**Fix:** Bump the non-FileNotFoundError branch to `log.warning`:
-```python
-except Exception as exc:
-    log.warning("slate_logo_skip", path=LOGO_PATH, error=str(exc))
-```
-
-### IN-05: `driver_state.get_active_driver` called twice for the same save
-
-**File:** `src/shitbox/capture/ring_buffer.py:1095`, `src/shitbox/events/engine.py:1326`
-
-**Issue:** The slate renderer asks `_active_driver_fn()` inside `_do_save_event` at line 1095, and the engine asks `driver_state.get_active_driver()` again at engine.py:1326 when persisting the event. If a driver swap happens between the two calls (sub-second race during a crash-and-restore), the slate and the metadata could disagree. Low impact — but worth a comment noting that the slate is a snapshot-of-save-time, not a snapshot-of-event-time.
-
-**Fix:** Either pass the slate-time driver name through the callback so the engine reuses it for `save_event`, or add a comment acknowledging the split:
+**Issue:** `test_slate_png_move_failure_passes_none` contains:
 
 ```python
-# ring_buffer.py _do_save_event:
-# NOTE: driver is re-read by the engine at event persist. Brief
-# window where slate shows driver A and events.json shows driver B
-# during a driver swap coinciding with a post-event save.
+import logging
+with pytest.raises(Exception) if False else _caplog_context() as caplog:
+    vrb._do_save_event("event", 0, None, callback, event)
 ```
 
-### IN-06: `test_engine_skips_renderer_when_title_card_disabled` has vestigial commentary
+The `if False else` conditional is always false, so the code always takes the `_caplog_context()` branch. That context manager is a local shim (lines 513-518) whose `__enter__` returns itself and whose `__exit__` does nothing — it's not wired to pytest's actual `caplog` fixture. The `caplog` name is bound but never asserted on inside the test. `import logging` on line 496 is unused.
 
-**File:** `tests/test_engine_slate_wiring.py:154-166`
+This looks like a draft where the author started to add caplog assertions, decided they were flaky with structlog, and left the scaffolding in place. The test's behavioural assertions (PNG not in pending_slates, callback gets None as third arg) are solid — the dead caplog path doesn't hide anything, just clutters.
 
-**Issue:** The test body contains a 10-line comment paragraph about MagicMock attr tracking, wraps up with "To be robust we verify the mock's call list doesn't include a __setattr__...", then just asserts `engine._title_card_renderer is None`. The comment explains what the test *didn't* end up doing. Reads as a draft left in place.
+**Fix:** Strip the shim:
 
-**Fix:** Prune the commentary, keep the assertion:
 ```python
-def test_engine_skips_renderer_when_title_card_disabled(monkeypatch):
-    engine = _build_engine_skeleton(
-        monkeypatch, video_buffer_enabled=True, title_card_enabled=False
-    )
-    assert engine._title_card_renderer is None
+def test_slate_png_move_failure_passes_none(tmp_path: Path, monkeypatch) -> None:
+    ...
+    monkeypatch.setattr(rb_mod.shutil, "move", _boom)
+    callback = MagicMock()
+    vrb._do_save_event("event", 0, None, callback, event)
+
+    assert callback.called
+    call_args = callback.call_args[0]
+    assert len(call_args) == 3
+    assert call_args[2] is None
+    assert list(vrb._pending_slates_dir.glob("*.png")) == []
+    assert call_args[0] is not None
 ```
+
+Delete the `_caplog_context` class, drop the unused `import logging`. The caplog check from the integration test (`test_poster_absent_when_holding_dir_move_fails`) already covers the logging side; this unit test can stay behavioural-only.
+
+### IN-02: `_pending_slates_dir` and `_process_start_time` init order is fragile
+
+**File:** `src/shitbox/capture/ring_buffer.py:130-131, 182-190`
+
+**Issue:** Two new fields are initialised in `__init__`:
+
+```python
+self._pending_slates_dir: Path = self.buffer_dir / "pending_slates"
+self._process_start_time: float = 0.0  # set in start() for the sweep
+```
+
+And then in `start()`:
+
+```python
+self.buffer_dir.mkdir(parents=True, exist_ok=True)
+self._pending_slates_dir.mkdir(parents=True, exist_ok=True)
+self._process_start_time = time.time()
+self._cleanup_pending_slates()
+```
+
+If anything calls `_cleanup_pending_slates` before `start()` — including in a test that constructs via `__new__` and forgets to set `_process_start_time` — the sweep would compare file mtimes against `0.0` and remove nothing (since mtime is always > 0). The fixture in `test_ring_buffer_slate.py::_make_vrb` correctly sets `_process_start_time = time.time() - 3600.0` to mimic "1h ago," but a future test that forgets this will silently fail the sweep.
+
+Low impact — the sweep is best-effort and the field has a sentinel default — but a guard would make the failure mode explicit.
+
+**Fix:** Either assert `self._process_start_time > 0.0` at the top of the sweep, or initialise it in `__init__` to `time.time()` so the sentinel can never leak:
+
+```python
+self._process_start_time: float = time.time()  # overwritten by start()
+```
+
+The latter is simpler and matches how `_ffmpeg_started_at` is handled elsewhere in the class.
+
+### IN-03: Driver name re-read in `_check_post_captures` can disagree with slate snapshot
+
+**File:** `src/shitbox/capture/ring_buffer.py:1113`, `src/shitbox/events/engine.py:1356`
+
+**Issue:** Carry-over from the prior review (IN-05). `_do_save_event` reads the active driver via `self._active_driver_fn()` at line 1113 to bake into the slate PNG, and `_check_post_captures` reads `driver_state.get_active_driver()` independently at line 1356 when persisting the event. A driver swap during the window between slate render and post-capture processing (capture_pre_seconds + capture_post_seconds, typically 10s+) would produce a slate showing driver A and an `events.json` entry showing driver B.
+
+Low-probability real-world scenario — driver swaps are a rest-stop affair, not an in-event one — but the invariant still isn't enforced.
+
+**Fix:** Either pass the slate-time driver through the callback (would require a 4-arg callback, which is getting unwieldy), or accept the split and leave a comment noting that slate driver is save-time, JSON driver is post-capture-time. The latter is probably good enough given the field usage.
+
+### IN-04: `test_event_poster_paths_dict_initialised` has a tautological lock assertion
+
+**File:** `tests/test_engine_slate_wiring.py:266-275`
+
+**Issue:**
+
+```python
+def test_event_poster_paths_dict_initialised(monkeypatch):
+    engine = _build_engine_skeleton_poster(monkeypatch)
+    assert hasattr(engine, "_event_poster_paths")
+    assert isinstance(engine._event_poster_paths, dict)
+    assert len(engine._event_poster_paths) == 0
+    # Same lock as _event_video_paths.
+    assert engine._event_paths_lock is engine._event_paths_lock
+```
+
+The last assertion compares `engine._event_paths_lock` to itself — always True. The intent from the comment is "poster paths use the same lock object as video paths," which would be tested as:
+
+```python
+# Same lock object is used for both dicts — implicit via being the same
+# attribute, but pin it here so a future refactor that splits locks must
+# also update this test.
+assert engine._event_paths_lock is not None
+# (There is no separate lock attribute for posters — both dicts share
+# engine._event_paths_lock by construction.)
+```
+
+The test as written passes trivially and doesn't exercise the invariant. Low priority — the behavioural tests further down cover the lock usage via real lock acquisition.
+
+**Fix:** Either delete the tautology or replace with a structural assertion that both dicts are accessed under the same lock (harder to test directly; a comment saying "both use `_event_paths_lock`" is probably fine since there's only one lock attribute to begin with).
 
 ---
 
