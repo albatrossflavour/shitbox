@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: in_progress
-stopped_at: Phase 26 closed out (on-Pi UAT passed 2026-04-23)
-last_updated: "2026-04-23T23:59:00Z"
-last_activity: 2026-04-23 -- Phase 26 complete — G-01..G-08 shipped and UAT'd
+stopped_at: Phase 27 context gathered (typography-only Min tier — Cinzel + ALL CAPS hero, drop state)
+last_updated: "2026-04-24T00:00:00Z"
+last_activity: 2026-04-24 -- Phase 27 CONTEXT.md captured, ready to plan
 progress:
   total_phases: 13
   completed_phases: 9
@@ -22,7 +22,7 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 27 — slate-visual-theming (not started)
+**Current focus:** Phase 27 — slate-visual-theming (CONTEXT.md captured 2026-04-24, ready to plan)
 
 ## Current Position
 
@@ -38,9 +38,9 @@ Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — COM
 Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
   5/5 plans; verified 2026-04-21. 4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Next: Phase 27 (Slate Visual Theming) ready to spec — needs 27-CONTEXT.md (scope tier, typography, palette, motif). Phase 24 (Phase 20 Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24.
+Next: Phase 27 (Slate Visual Theming) ready to plan — 27-CONTEXT.md captured 2026-04-24. Scope is typography-only Min: Cinzel display font (bundled TTF), ALL CAPS hero with state suffix dropped, palette and badge styling deliberately preserved. Phase 24 (Phase 20 Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24.
 
-Last activity: 2026-04-23 -- Phase 26 closed out (G-01..G-08 + on-Pi UAT pass)
+Last activity: 2026-04-24 -- Phase 27 CONTEXT.md captured (typography-only Min tier, GoT homage via Cinzel)
 
 Progress: 9/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
@@ -112,9 +112,9 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23T23:59:00Z
-Stopped at: Phase 26 closed out — on-Pi UAT passed, all gap closure landed.
-Resume file: None
+Last session: --stopped-at
+Stopped at: Phase 27 context gathered
+Resume file: --resume-file
 Next action: spec Phase 27 (Slate Visual Theming). Suggested entry point: `/gsd-discuss-phase 27` to gather scope tier and visual direction before planning.
 
 ## Out-of-Band Hardware Work (2026-04-10)
@@ -148,4 +148,3 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **CPU temp 70.5°C at idle**: Hitting warning threshold. May need airflow improvement.
 - **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
-
