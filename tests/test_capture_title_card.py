@@ -524,3 +524,121 @@ def test_resolve_strings_whimsy_is_all_caps():
     hero, coord, *_ = renderer._resolve_strings(event, None)
     assert hero == "HERE BE DRAGONS", repr(hero)
     assert coord is None
+
+
+# --- Phase 27 Plan 02 Task 3: typography tests ----------------------------
+
+def _make_renderer_27(whimsy_lines=None):
+    """Phase 27 Task 3 helper — re-uses module-level EventType import.
+
+    Distinct from the existing _stub_encode_ts / _make_event helpers so the
+    Phase 27 block can evolve without perturbing the Phase 26 tests above.
+    """
+    from shitbox.capture.title_card import TitleCardRenderer
+
+    return TitleCardRenderer(
+        duration_seconds=3.0,
+        show_driver=True,
+        whimsy_lines=whimsy_lines or ["Here be dragons"],
+    )
+
+
+def test_hero_uses_cinzel_bold():
+    """SC-1: the hero font path points at the bundled Cinzel Bold TTF and
+
+    Pillow loads it as a real FreeType font (not load_default fallback).
+    """
+    pytest.importorskip("PIL")
+    from pathlib import Path
+
+    from PIL import ImageFont
+
+    from shitbox.capture import title_card
+
+    assert title_card.FONT_DISPLAY_BOLD.endswith("Cinzel-Bold.ttf")
+    assert Path(title_card.FONT_DISPLAY_BOLD).is_file()
+
+    font = ImageFont.truetype(title_card.FONT_DISPLAY_BOLD, 140)
+    assert font is not None
+    font_path = getattr(font, "path", None)
+    if font_path is not None:
+        assert "Cinzel-Bold" in str(font_path)
+
+
+def test_hero_all_caps():
+    """D-05: hero comes out upper-cased from _resolve_strings."""
+    renderer = _make_renderer_27()
+    event = _make_event(lat=-34.0, lng=150.7)
+    hero, _coord, *_ = renderer._resolve_strings(
+        event, lambda la, ln: "Narellan, New South Wales"
+    )
+    assert hero == "NARELLAN", repr(hero)
+
+
+@pytest.mark.parametrize(
+    "input_place, expected_hero",
+    [
+        ("Narellan, New South Wales", "NARELLAN"),
+        ("Brisbane, Queensland", "BRISBANE"),
+        ("Alice Springs, Northern Territory", "ALICE SPRINGS"),
+        ("Bathurst, New South Wales", "BATHURST"),
+        # Edge: whitespace after comma, trailing whitespace
+        ("  Hobart ,  Tasmania  ", "HOBART"),
+        # Edge: no comma at all — hero is just the upper-cased input
+        ("Nimbin", "NIMBIN"),
+    ],
+)
+def test_state_suffix_dropped_from_hero(input_place, expected_hero):
+    """D-06: everything after the first comma is stripped, then upper-cased."""
+    renderer = _make_renderer_27()
+    event = _make_event(lat=-34.0, lng=150.7)
+    hero, _coord, *_ = renderer._resolve_strings(
+        event, lambda la, ln: input_place
+    )
+    assert hero == expected_hero, f"{input_place!r} -> {hero!r}"
+
+
+def test_no_gps_whimsy_still_renders(tmp_path):
+    """SC-2: no-GPS whimsy fallback still produces a non-empty PNG under
+
+    the new typography. D-07: whimsy is ALL CAPS in Cinzel.
+    """
+    pytest.importorskip("PIL")
+    renderer = _make_renderer_27(whimsy_lines=["Here be dragons"])
+    _stub_encode_ts(renderer, tmp_path / "whimsy.ts")
+    event = _make_event(lat=None, lng=None)
+    png = tmp_path / "whimsy.png"
+    ts = tmp_path / "whimsy.ts"
+    duration = renderer.render(event, png, ts, geocoder=None, driver_name=None)
+    assert duration > 0.0
+    assert png.exists() and png.stat().st_size > 0
+
+
+@pytest.mark.parametrize("event_type_name", [
+    "HARD_BRAKE", "BIG_CORNER", "HIGH_G", "ROUGH_ROAD",
+    "MANUAL_CAPTURE", "ROLLOVER", "BOOT",
+])
+def test_all_event_types_render_with_cinzel(tmp_path, event_type_name):
+    """SC-2: every event type renders successfully under the new typography.
+
+    Badge composition + per-event colours unchanged (D-09) — this test only
+    cares that render() returns > 0 and writes a non-empty PNG.
+    """
+    pytest.importorskip("PIL")
+
+    renderer = _make_renderer_27()
+    _stub_encode_ts(renderer, tmp_path / f"{event_type_name}.ts")
+    event = _make_event(
+        event_type=EventType[event_type_name],
+        lat=-33.87,
+        lng=151.20,
+    )
+    png = tmp_path / f"{event_type_name}.png"
+    ts = tmp_path / f"{event_type_name}.ts"
+    duration = renderer.render(
+        event, png, ts,
+        geocoder=lambda la, ln: "Sydney, New South Wales",
+        driver_name="Tony",
+    )
+    assert duration > 0.0, f"render() returned 0.0 for {event_type_name}"
+    assert png.exists() and png.stat().st_size > 0

@@ -63,25 +63,42 @@ def test_au_state_abbreviation_longest_first() -> None:
 # ---------- G-02: measure-and-shrink-fit ----------
 
 
-def test_long_place_name_fits_safe_width(tmp_path: Path) -> None:
-    """After abbreviation + fit pass, the rendered hero text must be
-    <= SAFE_WIDTH (1160px) on the 1280px canvas."""
+def test_hero_shrink_fit_cinzel(tmp_path: Path) -> None:
+    """Phase 27 (D-13): HERO_FONT_FLOOR and HERO_FONT_STEP are unchanged.
+
+    Short Cinzel ALL CAPS names fit at FONT_HERO (140). Longer realistic AU
+    place names shrink but stay at or above HERO_FONT_FLOOR (100). A 28-char
+    synthetic string still fits the 1160px safe width at a size >= floor,
+    or ellipsis-truncates.
+    """
     from PIL import Image, ImageDraw
 
     img = Image.new("RGB", (tc.CANVAS_W, tc.CANVAS_H), tc.BG_COLOUR)
     draw = ImageDraw.Draw(img)
-
-    # The exact UAT failure string.
-    raw = "Narellan, New South Wales"
-    abbreviated = _abbreviate_au_states(raw)
-    assert abbreviated == "Narellan, NSW"
-
-    fitted_text, fitted_font = tc._fit_hero_to_canvas(
-        draw, abbreviated, tc.FONT_DISPLAY, max_size=tc.FONT_HERO
-    )
-    width = draw.textlength(fitted_text, font=fitted_font)
     safe_w = tc.CANVAS_W - 2 * tc.SAFE_MARGIN_PX
-    assert width <= safe_w, f"fitted width {width} > safe {safe_w}"
+
+    # Short: fits at 140
+    _text, font = tc._fit_hero_to_canvas(
+        draw, "NARELLAN", tc.FONT_DISPLAY_BOLD, max_size=tc.FONT_HERO
+    )
+    assert font.size == tc.FONT_HERO
+
+    # Longer: shrinks but stays >= floor
+    _text, font = tc._fit_hero_to_canvas(
+        draw, "MOUNT PANORAMA", tc.FONT_DISPLAY_BOLD, max_size=tc.FONT_HERO
+    )
+    assert font.size >= tc.HERO_FONT_FLOOR
+    assert font.size <= tc.FONT_HERO
+
+    # 28-char ALL CAPS still fits safe width at some size >= floor, or
+    # ellipsis-truncates (27-RESEARCH.md Pitfall 4).
+    long_name = "A" * 28
+    fitted_text, font = tc._fit_hero_to_canvas(
+        draw, long_name, tc.FONT_DISPLAY_BOLD, max_size=tc.FONT_HERO
+    )
+    assert font.size >= tc.HERO_FONT_FLOOR
+    width = draw.textlength(fitted_text, font=font)
+    assert width <= safe_w or "…" in fitted_text or "..." in fitted_text
 
 
 def test_extremely_long_unabbreviated_string_ellipsis_truncates(tmp_path: Path) -> None:
@@ -94,7 +111,7 @@ def test_extremely_long_unabbreviated_string_ellipsis_truncates(tmp_path: Path) 
 
     mega = "A" * 200
     fitted_text, fitted_font = tc._fit_hero_to_canvas(
-        draw, mega, tc.FONT_DISPLAY, max_size=tc.FONT_HERO
+        draw, mega, tc.FONT_DISPLAY_BOLD, max_size=tc.FONT_HERO
     )
     # Must end with ellipsis and fit at 100pt.
     assert fitted_text.endswith("...")
