@@ -160,6 +160,33 @@ class EventStorage:
         except (json.JSONDecodeError, IOError) as e:
             log.error("event_video_update_error", error=str(e))
 
+    def update_event_poster(
+        self, json_path: Path, poster_path: Path
+    ) -> None:
+        """Update a saved event's JSON with a poster_path after the fact.
+
+        Mirrors update_event_video. Used by the engine's late-update path when
+        the video worker completes after save_event has already fired (G-01
+        gap-closure, plan 26-06).
+
+        Args:
+            json_path: Path to the event's JSON metadata file.
+            poster_path: Path to the poster PNG in the per-day captures dir.
+        """
+        try:
+            with open(json_path) as f:
+                metadata = json.load(f)
+            metadata["poster_path"] = str(poster_path)
+            with open(json_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+            log.info(
+                "event_poster_updated",
+                json=str(json_path),
+                poster=str(poster_path),
+            )
+        except (json.JSONDecodeError, IOError) as e:
+            log.error("event_poster_update_error", error=str(e))
+
     def _write_csv(self, path: Path, samples: List[IMUSample]) -> None:
         """Write samples to CSV file."""
         with open(path, "w", newline="") as f:
