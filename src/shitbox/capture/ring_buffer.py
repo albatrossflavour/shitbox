@@ -12,11 +12,15 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from shitbox.capture import buzzer
 from shitbox.hardware import state as hw_state
 from shitbox.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from shitbox.capture.title_card import TitleCardRenderer
+    from shitbox.events.detector import Event
 
 log = get_logger(__name__)
 
@@ -107,6 +111,18 @@ class VideoRingBuffer:
         self._stall_check_armed: bool = False
         self._last_segment_mtime: float = 0.0
         self._last_segment_size: int = 0
+
+        # Phase 26: title-card slate. All three set by the engine (plan 26-04
+        # Task 3); left as default sentinels so the ring buffer runs unchanged
+        # when title cards are disabled or the engine has not wired them up.
+        self._title_card_renderer: Optional["TitleCardRenderer"] = None
+        self._geocoder_fn: Optional[Callable[[float, float], Optional[str]]] = None
+        self._active_driver_fn: Optional[Callable[[], Optional[str]]] = None
+        # Per-save slate state. Reset at the top of each save pass and again
+        # by the engine after the poster move.
+        self._pending_slate_ts: Optional[Path] = None
+        self._pending_slate_png: Optional[Path] = None
+        self._pending_slate_duration: float = 0.0
 
     def _configure_cameras(self) -> None:
         """Apply v4l2 controls to cameras before recording starts."""
@@ -209,6 +225,7 @@ class VideoRingBuffer:
         post_seconds: Optional[int] = None,
         pre_seconds: Optional[int] = None,
         callback: Optional[Callable[[Optional[Path], float], None]] = None,
+        event: Optional["Event"] = None,
     ) -> None:
         """Save pre-event buffer + post-event recording to a single MP4.
 
@@ -224,13 +241,18 @@ class VideoRingBuffer:
                       clip_start_mtime is the filesystem mtime of the oldest
                       pre-event segment — a GPS-clock wall-clock timestamp usable
                       for cross-camera sync alignment.
+            event: Optional source Event (phase 26). When provided and a
+                   title-card renderer is wired, a slate is rendered into the
+                   save tmp dir and inserted between intro.ts and the live
+                   segments on concat. Required for a slate to appear; omitted
+                   callers get the legacy intro→buffer sequence.
         """
         if post_seconds is None:
             post_seconds = self.post_event_seconds
 
         thread = threading.Thread(
             target=self._do_save_event,
-            args=(prefix, post_seconds, pre_seconds, callback),
+            args=(prefix, post_seconds, pre_seconds, callback, event),
             daemon=True,
             name=f"video-save-{prefix}",
         )
@@ -973,6 +995,7 @@ class VideoRingBuffer:
         post_seconds: int,
         pre_seconds: Optional[int],
         callback: Optional[Callable[[Optional[Path]], None]],
+        event: Optional["Event"] = None,
     ) -> None:
         """Worker that copies buffer segments, waits for post-event, then concatenates."""
         with self._lock:
@@ -982,6 +1005,12 @@ class VideoRingBuffer:
 
         tmp_dir = self.buffer_dir / f"save_{save_id}"
         tmp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Phase 26: reset per-save slate state at the top of every pass so a
+        # previous event's leftovers (or a failed render) never leak across.
+        self._pending_slate_ts = None
+        self._pending_slate_png = None
+        self._pending_slate_duration = 0.0
 
         try:
             # 1. Copy completed buffer segments (pre-event footage)
@@ -1056,6 +1085,23 @@ class VideoRingBuffer:
                 if callback:
                     callback(None, 0.0)
                 return
+
+            # Phase 26: render the title-card slate into the save tmp dir so
+            # it can be inserted between intro and live footage by the
+            # concat builder. Silent no-op when the renderer is absent or
+            # the event arg wasn't passed by the engine.
+            if event is not None and self._title_card_renderer is not None:
+                slate_tmp_dir = all_segments[0].parent
+                driver = self._active_driver_fn() if self._active_driver_fn else None
+                png_path, ts_path, dur = self._render_slate(
+                    event,
+                    slate_tmp_dir,
+                    geocoder=self._geocoder_fn,
+                    driver_name=driver,
+                )
+                self._pending_slate_png = png_path
+                self._pending_slate_ts = ts_path
+                self._pending_slate_duration = dur
 
             # 4. Concatenate into a single MP4 (PiP composited if cabin present)
             output_path = self._concatenate_segments(
@@ -1185,19 +1231,24 @@ class VideoRingBuffer:
             clip_end_wall = clip_start_wall
 
         intro_duration = getattr(self, "_intro_duration_seconds", 0.0) or 0.0
+        slate_duration = self._pending_slate_duration
+        head_offset_s = intro_duration + slate_duration
+
         history = ol.get_history(clip_start_wall, clip_end_wall)
         ass_path = concat_list.parent / "overlay.ass"
         ol.generate_ass_overlay(
             entries=history,
             clip_start_wall=clip_start_wall,
             clip_end_wall=clip_end_wall,
-            intro_duration=intro_duration,
+            intro_duration=head_offset_s,  # D-15: shift HUD past intro+slate
             output_path=ass_path,
         )
         log.info(
             "concat_overlay_generated",
             entries=len(history),
             intro_s=round(intro_duration, 2),
+            slate_s=round(slate_duration, 2),
+            head_offset_s=round(head_offset_s, 2),
             clip_s=round(clip_end_wall - clip_start_wall, 2),
         )
 
@@ -1258,19 +1309,24 @@ class VideoRingBuffer:
             clip_end_wall = clip_start_wall
 
         intro_duration = getattr(self, "_intro_duration_seconds", 0.0) or 0.0
+        slate_duration = self._pending_slate_duration
+        head_offset_s = intro_duration + slate_duration
+
         history = ol.get_history(clip_start_wall, clip_end_wall)
         ass_path = concat_front.parent / "overlay.ass"
         ol.generate_ass_overlay(
             entries=history,
             clip_start_wall=clip_start_wall,
             clip_end_wall=clip_end_wall,
-            intro_duration=intro_duration,
+            intro_duration=head_offset_s,  # D-15: shift HUD past intro+slate
             output_path=ass_path,
         )
         log.info(
             "concat_overlay_generated",
             entries=len(history),
             intro_s=round(intro_duration, 2),
+            slate_s=round(slate_duration, 2),
+            head_offset_s=round(head_offset_s, 2),
             clip_s=round(clip_end_wall - clip_start_wall, 2),
             mode="dual",
         )
@@ -1281,16 +1337,18 @@ class VideoRingBuffer:
         logo_exists = Path(ol.LOGO_PATH).exists()
 
         # PTS-STARTPTS zero-resets the cabin stream's timeline (it can start
-        # well above zero when segment_wrap has cycled), then +intro_duration
-        # shifts it past the intro on the output timeline.
+        # well above zero when segment_wrap has cycled), then +head_offset_s
+        # (intro+slate) shifts it past both on the output timeline. No cabin
+        # equivalent of the slate — the cabin stream stays invisible through
+        # both intro and slate, appearing from T=head_offset_s onward.
         pip_chain = (
             f"[1:v]scale=iw*{self.pip_scale}:-2,"
             "pad=iw+4:ih+20:2:18:color=black@0.7,"
             "drawtext=text='Cabin':fontsize=13:fontcolor=white@0.9:x=6:y=3,"
-            f"setpts=PTS-STARTPTS+{intro_duration}/TB[pip]"
+            f"setpts=PTS-STARTPTS+{head_offset_s}/TB[pip]"
         )
         overlay_chain = (
-            f"[0:v][pip]overlay={x}:{y}:enable='gte(t,{intro_duration})'[base]"
+            f"[0:v][pip]overlay={x}:{y}:enable='gte(t,{head_offset_s})'[base]"
         )
 
         if logo_exists:
@@ -1334,6 +1392,53 @@ class VideoRingBuffer:
         ]
         return cmd, 300
 
+    def _render_slate(
+        self,
+        event: "Event",
+        tmp_dir: Path,
+        *,
+        geocoder: Optional[Any] = None,
+        driver_name: Optional[str] = None,
+    ) -> tuple[Optional[Path], Optional[Path], float]:
+        """Render the phase 26 title-card slate into tmp_dir.
+
+        Returns ``(png_path, ts_path, duration)`` on success, or
+        ``(None, None, 0.0)`` when:
+
+          - no renderer is wired on this ring buffer (engine disabled it)
+          - the renderer raises any exception (Pillow missing, ffmpeg missing,
+            timeout, disk error, …)
+          - the renderer returns 0.0 or fails to materialise the ts file
+
+        Failure is silent at the ring-buffer level — ``_concatenate_segments``
+        simply falls through to the existing ``intro → buffer`` sequence
+        (matches the "always render if possible" best-effort intent of D-03).
+        """
+        if self._title_card_renderer is None:
+            return None, None, 0.0
+
+        png_path = tmp_dir / "slate.png"
+        ts_path = tmp_dir / "slate.ts"
+        try:
+            duration = self._title_card_renderer.render(
+                event,
+                png_path,
+                ts_path,
+                geocoder=geocoder,
+                driver_name=driver_name,
+            )
+        except Exception as exc:
+            log.error(
+                "slate_render_exception",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return None, None, 0.0
+
+        if duration <= 0.0 or not ts_path.exists():
+            return None, None, 0.0
+        return png_path, ts_path, duration
+
     def _concatenate_segments(
         self,
         segments: list[Path],
@@ -1369,10 +1474,29 @@ class VideoRingBuffer:
                 break
             counter += 1
 
-        # Build file list for the front concat demuxer (intro + live segments)
+        # Build file list for the front concat demuxer (intro + slate + live
+        # segments). Phase 26: slate.ts inserts between intro and live footage
+        # when the renderer produced one; otherwise falls through to the
+        # original intro→buffer sequence.
         files: list[Path] = []
         if self._intro_ts and self._intro_ts.exists():
             files.append(self._intro_ts)
+
+        # Phase 26: slate.ts lives in segments[0].parent (same tmp dir as
+        # concat.txt) so it's cleaned up at the end of the save pass.
+        # Skipped cleanly when the renderer is missing or returned 0.0:
+        # _pending_slate_duration is 0.0 in that case and downstream offsets
+        # fall through to intro_duration alone.
+        slate_ts = self._pending_slate_ts
+        slate_duration = self._pending_slate_duration
+        if slate_ts is not None and slate_ts.exists() and slate_duration > 0.0:
+            files.append(slate_ts)
+            log.info(
+                "slate_inserted",
+                ts=str(slate_ts),
+                slate_s=round(slate_duration, 2),
+            )
+
         files.extend(segments)
 
         total_input_bytes = sum(f.stat().st_size for f in files if f.exists())

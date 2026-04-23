@@ -23,6 +23,7 @@ from typing import Any, Callable, Optional, cast
 from shitbox.capture import buzzer, overlay, speaker
 from shitbox.capture.button import ButtonHandler
 from shitbox.capture.ring_buffer import VideoRingBuffer
+from shitbox.capture.title_card import TitleCardRenderer
 from shitbox.capture.video import VideoRecorder
 from shitbox.collectors.imu_heading import IMUHeadingCollector
 from shitbox.collectors.light import VEML7700Collector
@@ -241,6 +242,12 @@ class EngineConfig:
     speaker_distance_announce_interval_km: float = 50.0
     speaker_volume: int = 75
 
+    # Title-card slate (phase 26)
+    title_card_enabled: bool = True
+    title_card_duration_seconds: float = 3.0
+    title_card_show_driver: bool = True
+    title_card_whimsy_lines: list[str] = field(default_factory=list)
+
     # Route waypoints (WaypointConfig objects loaded from YAML)
     route_waypoints: list = field(default_factory=list)
 
@@ -382,6 +389,11 @@ class EngineConfig:
                 config.capture.speaker.distance_announce_interval_km
             ),
             speaker_volume=config.capture.speaker.volume,
+            # Title-card slate (phase 26)
+            title_card_enabled=config.capture.title_card.enabled,
+            title_card_duration_seconds=config.capture.title_card.duration_seconds,
+            title_card_show_driver=config.capture.title_card.show_driver,
+            title_card_whimsy_lines=list(config.capture.title_card.whimsy_lines),
             # Route waypoints
             route_waypoints=config.sensors.gps.route.waypoints,
             # Dashboard
@@ -698,6 +710,39 @@ class UnifiedEngine:
                 gpio_pin=config.capture_gpio_pin,
                 on_press=self.trigger_manual_capture,
                 debounce_ms=config.capture_debounce_ms,
+            )
+
+        # Phase 26: title-card slate renderer. Built only when the slate is
+        # enabled AND a video ring buffer exists to append it to. Injected
+        # into the ring buffer alongside the geocoder adapter + driver-state
+        # resolver so the renderer never touches either module directly
+        # (decoupled — see 26-PATTERNS.md).
+        self._title_card_renderer: Optional[TitleCardRenderer] = None
+        if (
+            config.video_buffer_enabled
+            and config.title_card_enabled
+            and self.video_ring_buffer is not None
+        ):
+            whimsy = (
+                config.title_card_whimsy_lines
+                if config.title_card_whimsy_lines
+                else None
+            )
+            self._title_card_renderer = TitleCardRenderer(
+                duration_seconds=config.title_card_duration_seconds,
+                show_driver=config.title_card_show_driver,
+                whimsy_lines=whimsy,
+                resolution=config.video_buffer_resolution,
+                fps=config.video_buffer_fps,
+            )
+            self.video_ring_buffer._title_card_renderer = self._title_card_renderer
+            self.video_ring_buffer._geocoder_fn = self._resolve_place_for_slate
+            self.video_ring_buffer._active_driver_fn = driver_state.get_active_driver
+            log.info(
+                "title_card_renderer_wired",
+                duration_s=config.title_card_duration_seconds,
+                show_driver=config.title_card_show_driver,
+                whimsy_count=len(config.title_card_whimsy_lines) if whimsy else 0,
             )
 
         # Live dashboard (in-process FastAPI on daemon thread)
@@ -1091,6 +1136,7 @@ class UnifiedEngine:
                     callback=lambda path, _cs, _eid=eid: self._on_video_complete(
                         _eid, path
                     ),
+                    event=event,
                 )
                 log.info(
                     "video_save_triggered",
@@ -1244,12 +1290,42 @@ class UnifiedEngine:
                 if not video_path:
                     video_path = self._find_capture_video(event)
 
+                # Phase 26: move any rendered slate PNG from the save_N/ tmp
+                # dir into the per-day dir so generate_events_json can build a
+                # /captures/<date>/<base>_poster.png URL. We pre-generate
+                # base_name ONCE here and pass it into save_event via the
+                # base_name= override to avoid a second _generate_filename
+                # (counter double-bump — T-26-04-06).
+                poster_path: Optional[Path] = None
+                base_name: Optional[str] = None
+                if self.video_ring_buffer is not None:
+                    base_name = self.event_storage._generate_filename(event)
+                    src_png = getattr(
+                        self.video_ring_buffer, "_pending_slate_png", None
+                    )
+                    if src_png is not None and src_png.exists():
+                        day_dir = self.event_storage._get_day_dir(event.start_time)
+                        dest_png = day_dir / f"{base_name}_poster.png"
+                        try:
+                            day_dir.mkdir(parents=True, exist_ok=True)
+                            src_png.rename(dest_png)
+                            poster_path = dest_png
+                        except OSError as move_err:
+                            log.warning("poster_move_failed", error=str(move_err))
+                            poster_path = None
+                    # Reset pending-slate state regardless of render/move outcome.
+                    self.video_ring_buffer._pending_slate_png = None
+                    self.video_ring_buffer._pending_slate_ts = None
+                    self.video_ring_buffer._pending_slate_duration = 0.0
+
                 # Save to disk
                 try:
                     json_path, _ = self.event_storage.save_event(
                         event,
                         video_path=video_path,
                         driver_name=driver_state.get_active_driver(),
+                        poster_path=poster_path,
+                        base_name=base_name,
                     )
                     self.events_captured += 1
                     # Store json_path so late video callbacks can
@@ -1470,6 +1546,30 @@ class UnifiedEngine:
             * math.sin(dlon / 2) ** 2
         )
         return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    def _resolve_place_for_slate(self, lat: float, lon: float) -> Optional[str]:
+        """Geocoder adapter for TitleCardRenderer (phase 26).
+
+        Mirrors timelapse_compiler._resolve_place_name's "Name, Admin1" shape,
+        using the engine's shared _reverse_geocoder instance. Returns None
+        when the geocoder is absent or no result is returned (D-09 / D-10
+        fallback in the renderer).
+        """
+        if self._reverse_geocoder is None:
+            return None
+        try:
+            results = self._reverse_geocoder.search((lat, lon))
+            if not results:
+                return None
+            r = results[0]
+            name = (r.get("name") or "").strip()
+            admin1 = (r.get("admin1") or "").strip()
+            if name and admin1:
+                return f"{name}, {admin1}"
+            return name or None
+        except Exception as exc:
+            log.debug("slate_geocode_failed", error=str(exc))
+            return None
 
     def _resolve_location(self, lat: float, lon: float) -> None:
         """Resolve GPS coordinates to a human-readable location name.
@@ -2484,6 +2584,7 @@ class UnifiedEngine:
                 self.event_storage.save_event(
                     pending["event"],
                     driver_name=driver_state.get_active_driver(),
+                    poster_path=None,  # shutdown flush: no slate render path
                 )
             except Exception as e:
                 log.error("event_save_error_on_shutdown", error=str(e))
