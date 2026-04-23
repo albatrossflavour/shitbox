@@ -473,3 +473,54 @@ def test_font_display_constants_point_at_bundled_cinzel():
 
     assert Path(title_card.FONT_DISPLAY_BOLD).is_file()
     assert Path(title_card.FONT_DISPLAY_REGULAR).is_file()
+
+
+# --- Phase 27 Plan 02 Task 2: hero state-drop + ALL CAPS -------------------
+
+def _make_renderer_for_resolve(whimsy_lines=None):
+    """Minimal renderer for _resolve_strings tests. show_driver and duration
+    are not read by _resolve_strings; any values suffice."""
+    from shitbox.capture.title_card import TitleCardRenderer
+
+    return TitleCardRenderer(
+        duration_seconds=3.0,
+        show_driver=True,
+        whimsy_lines=whimsy_lines or ["Here be dragons"],
+    )
+
+
+def test_resolve_strings_hero_is_all_caps_with_state_dropped():
+    """Task 2 (D-05, D-06): place "Narellan, New South Wales" resolves to
+
+    hero "NARELLAN" — state suffix dropped, ALL CAPS applied.
+    """
+    renderer = _make_renderer_for_resolve()
+    event = _make_event(lat=-34.0, lng=150.7)
+    hero, _coord, *_ = renderer._resolve_strings(
+        event, lambda la, ln: "Narellan, New South Wales"
+    )
+    assert hero == "NARELLAN", repr(hero)
+
+
+def test_resolve_strings_coord_only_branch_unchanged():
+    """Task 2 (D-10 unchanged): geocoder returned None with lat/lng present
+
+    keeps hero=None and coord_text populated.
+    """
+    renderer = _make_renderer_for_resolve()
+    event = _make_event(lat=-34.0, lng=150.7)
+    hero, coord, *_ = renderer._resolve_strings(event, lambda la, ln: None)
+    assert hero is None
+    assert coord == "-34.0000, 150.7000"
+
+
+def test_resolve_strings_whimsy_is_all_caps():
+    """Task 2 (D-07): whimsy branch (no GPS or no geocoder) upper-cases the
+
+    chosen whimsy line for consistency with the hero.
+    """
+    renderer = _make_renderer_for_resolve(whimsy_lines=["Here be dragons"])
+    event = _make_event(lat=None, lng=None)
+    hero, coord, *_ = renderer._resolve_strings(event, None)
+    assert hero == "HERE BE DRAGONS", repr(hero)
+    assert coord is None
