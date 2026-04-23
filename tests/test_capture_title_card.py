@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
@@ -14,7 +13,6 @@ import pytest
 from PIL import Image
 
 from shitbox.events.detector import EventType
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
