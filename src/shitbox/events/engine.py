@@ -775,6 +775,12 @@ class UnifiedEngine:
         self._event_json_paths: dict[int, Path] = {}
         self._event_video_paths: dict[int, Path] = {}
         self._event_paths_lock = threading.Lock()
+        # Phase 26 gap-closure (plan 26-05): poster PNG paths handed over from
+        # the ring-buffer worker via the save callback's third argument. Same
+        # lock as _event_video_paths — both arrive on the same callback, so one
+        # critical section covers both. Consumed by _check_post_captures, which
+        # renames the holding-dir PNG into the per-day dir before save_event.
+        self._event_poster_paths: dict[int, Path] = {}
         self._manual_capture_count = 0
         self._last_timelapse_time = 0.0
         self._last_wal_checkpoint: float = 0.0
@@ -1133,8 +1139,8 @@ class UnifiedEngine:
                     prefix=event.event_type.value,
                     post_seconds=int(self.config.capture_post_seconds),
                     pre_seconds=int(self.config.capture_pre_seconds),
-                    callback=lambda path, _cs, _eid=eid: self._on_video_complete(
-                        _eid, path
+                    callback=lambda path, _cs, _pp, _eid=eid: self._on_video_complete(
+                        _eid, path, _pp
                     ),
                     event=event,
                 )
@@ -1225,22 +1231,40 @@ class UnifiedEngine:
         self._on_event(event)
 
     def _on_video_complete(
-        self, event_id: int, path: Optional[Path]
+        self,
+        event_id: int,
+        path: Optional[Path],
+        poster_path: Optional[Path],
     ) -> None:
         """Called when a video ring buffer save finishes.
 
         Updates the saved event metadata with the video path and
-        regenerates events.json.
+        regenerates events.json. Also stashes the stable poster PNG
+        path so _check_post_captures can rename it into the per-day dir.
 
         Args:
-            event_id: The id() of the Event object, used to look up
-                      the saved JSON path.
-            path: Path to the saved video file, or None on failure.
+            event_id: id() of the source Event — lookup key for the
+                      _event_json_paths and _event_poster_paths dicts.
+            path: Saved MP4 path, or None on concat/save failure.
+            poster_path: Stable holding-dir PNG path from the ring-buffer
+                         worker (buffer_dir/pending_slates/<save_id>.png),
+                         or None when no slate rendered or move to
+                         holding failed.
         """
         buzzer.beep_capture_end()
         speaker.speak_capture_end()
         if not path:
             log.warning("capture_failed", event_id=event_id)
+            # Poster may have rendered even though concat failed — stash it
+            # so _check_post_captures can still emit poster_url.
+            if poster_path is not None:
+                with self._event_paths_lock:
+                    self._event_poster_paths[event_id] = poster_path
+                    log.info(
+                        "event_poster_stashed",
+                        event_id=event_id,
+                        poster=str(poster_path),
+                    )
             return
 
         log.info("capture_complete", path=str(path), event_id=event_id)
@@ -1251,6 +1275,13 @@ class UnifiedEngine:
                 # Event hasn't been saved yet — stash path for
                 # _check_post_captures to pick up.
                 self._event_video_paths[event_id] = path
+            if poster_path is not None:
+                self._event_poster_paths[event_id] = poster_path
+                log.info(
+                    "event_poster_stashed",
+                    event_id=event_id,
+                    poster=str(poster_path),
+                )
         if json_path:
             self.event_storage.update_event_video(json_path, path)
             self.event_storage.generate_events_json()
@@ -1287,22 +1318,23 @@ class UnifiedEngine:
                 eid = id(event)
                 with self._event_paths_lock:
                     video_path = self._event_video_paths.pop(eid, None)
+                    src_png = self._event_poster_paths.pop(eid, None)
                 if not video_path:
                     video_path = self._find_capture_video(event)
 
-                # Phase 26: move any rendered slate PNG from the save_N/ tmp
-                # dir into the per-day dir so generate_events_json can build a
+                # Phase 26 (plan 26-05): move the stable holding-dir PNG into
+                # the per-day dir so generate_events_json can build a
                 # /captures/<date>/<base>_poster.png URL. We pre-generate
                 # base_name ONCE here and pass it into save_event via the
                 # base_name= override to avoid a second _generate_filename
                 # (counter double-bump — T-26-04-06).
+                # src_png was popped from _event_poster_paths above (set on the
+                # worker thread via _on_video_complete). The old reach-across
+                # into ring_buffer._pending_slate_png is removed (CR-01 fix).
                 poster_path: Optional[Path] = None
                 base_name: Optional[str] = None
                 if self.video_ring_buffer is not None:
                     base_name = self.event_storage._generate_filename(event)
-                    src_png = getattr(
-                        self.video_ring_buffer, "_pending_slate_png", None
-                    )
                     if src_png is not None and src_png.exists():
                         day_dir = self.event_storage._get_day_dir(event.start_time)
                         dest_png = day_dir / f"{base_name}_poster.png"
@@ -1313,10 +1345,9 @@ class UnifiedEngine:
                         except OSError as move_err:
                             log.warning("poster_move_failed", error=str(move_err))
                             poster_path = None
-                    # Reset pending-slate state regardless of render/move outcome.
-                    self.video_ring_buffer._pending_slate_png = None
-                    self.video_ring_buffer._pending_slate_ts = None
-                    self.video_ring_buffer._pending_slate_duration = 0.0
+                    # _pending_slate_ts and _pending_slate_duration stay worker-local;
+                    # do NOT reset them here — they are cleared at the top of the
+                    # next save pass. _pending_slate_png reach-across retired (CR-01).
 
                 # Save to disk
                 try:
