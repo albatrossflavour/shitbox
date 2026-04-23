@@ -519,35 +519,36 @@ class _caplog_context:
 
 
 def test_cleanup_pending_slates_removes_old_files(tmp_path: Path) -> None:
-    """_cleanup_pending_slates removes only files whose mtime < process_start AND save_id < _save_counter."""
+    """G-04: _cleanup_pending_slates removes files with mtime < process_start,
+    regardless of numeric save_id. Real startup state is _save_counter == 0
+    — the prior AND-guard could never remove numeric orphans at startup."""
     vrb = _make_vrb(tmp_path)
     vrb._process_start_time = time.time()  # now — files created before this are "old"
-    vrb._save_counter = 10
+    vrb._save_counter = 0  # REAL startup state. WR-01 regression guard.
 
-    # File 1: old mtime + old save_id → must be REMOVED.
+    # File 1: old mtime, numeric name. Must be REMOVED (was incorrectly kept
+    # by the AND-guard).
     old_orphan = vrb._pending_slates_dir / "3.png"
     old_orphan.write_bytes(b"OLD")
-    # Set mtime to 1h ago.
     old_time = time.time() - 3600.0
     import os
     os.utime(str(old_orphan), (old_time, old_time))
 
-    # File 2: new mtime (created after process_start) → must be KEPT.
+    # File 2: new mtime. Must be KEPT (in-run writer — impossible at real
+    # startup, but an in-run sweep should never eat its own output).
     new_file = vrb._pending_slates_dir / "4.png"
     new_file.write_bytes(b"NEW")
-    # mtime is already "now" since we just wrote it.
 
-    # File 3: old mtime but save_id >= _save_counter → must be KEPT (id check fails).
-    id_fail = vrb._pending_slates_dir / "10.png"
-    id_fail.write_bytes(b"ID_FAIL")
-    os.utime(str(id_fail), (old_time, old_time))
+    # File 3: old mtime, non-numeric name. Must be REMOVED (existing behaviour).
+    junk = vrb._pending_slates_dir / "junk.png"
+    junk.write_bytes(b"JUNK")
+    os.utime(str(junk), (old_time, old_time))
 
     vrb._cleanup_pending_slates()
 
-    assert not old_orphan.exists(), "Old orphan should have been removed"
-    assert new_file.exists(), "New file should be kept"
-    assert id_fail.exists(), "File with save_id >= counter should be kept (id guard)"
+    assert not old_orphan.exists(), "Old numeric orphan must be removed (G-04)"
+    assert new_file.exists(), "New file must be kept"
+    assert not junk.exists(), "Old non-numeric orphan must be removed"
 
-    # The remaining count in pending_slates/ should be exactly 2.
     remaining = list(vrb._pending_slates_dir.glob("*.png"))
-    assert len(remaining) == 2, f"Expected 2 files remaining, got {[f.name for f in remaining]}"
+    assert len(remaining) == 1 and remaining[0] == new_file
