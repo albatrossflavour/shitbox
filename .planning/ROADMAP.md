@@ -46,6 +46,7 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [ ] **Phase 24: Phase 20 Physical Integration Completion** - Finish deferred 20-03 Task 3 (OpenSCAD review + Pi boot verify), produce 20-VERIFICATION.md (gap closure, waits on prints)
 - [ ] **Phase 25: Milestone v2.0 Nyquist Validation Sweep** - `/gsd-validate-phase` across phases 12/13/17/18/19/20/21 (gap closure)
 - [ ] **Phase 26: Event Video Title Cards** - Cinematic title frame between intro clip and event footage (location, date, event badge) via Pillow PNG → ffmpeg loop → concat demuxer
+- [ ] **Phase 27: Slate Visual Theming** - Redesign title slate from utilitarian text layout to a themed composition (typography, palette, motif, badge styling) fitting the Shit of Theseus identity
 
 ## Phase Details
 
@@ -465,6 +466,29 @@ Plans:
 
 **UI hint**: no (server-side render; website consumption of `poster_url` is a follow-up in home-ops)
 
+### Phase 27: Slate Visual Theming
+
+**Goal:** Redesign the title slate from the current utilitarian text-on-dark layout into a themed composition that fits the Shit of Theseus identity. Typography, colour palette, motif, badge styling, and (optional) per-event-type visual language. Rendering pipeline (Pillow PNG → MPEG-TS → concat) is unchanged; this is a visual design pass over `TitleCardRenderer` and whatever new assets it consumes.
+
+**Depends on:** Phase 26 (slate pipeline in place, `events.json` carries `poster_url`).
+
+**Requirements:** To be captured in `27-CONTEXT.md` when the phase starts. Scope tiers to be decided during spec:
+
+  - Minimum: one custom typeface, deliberate colour palette, a single motif element, badge polish.
+  - Stretch: per-event-type illustration or iconography, animated slate intro variants, crest-style driver credit block.
+
+**Success Criteria** (what must be TRUE):
+
+  1. The themed slate renders as both the poster PNG and the in-video slate with a visible design language (non-default typeface, intentional palette, at least one motif element) distinct from the Phase 26 utilitarian layout
+  2. All event types (HARD_BRAKE, BIG_CORNER, HIGH_G, ROUGH_ROAD, MANUAL_CAPTURE, ROLLOVER, BOOT) and the no-GPS whimsy fallback render correctly under the new theme
+  3. `TitleCardConfig` shape stays backward-compatible (no breaking config changes; existing installs render the themed slate without intervention)
+  4. G-02 measure-and-shrink fit behaviour preserved for long place names
+  5. Rendered slate fits the 1280×720 canvas with safe margins
+
+**Plans:** TBD
+
+**UI hint**: yes (user-facing visual; benefits from a design spike)
+
 ---
 
 ## Progress
@@ -497,3 +521,4 @@ Plans:
 | 24. Phase 20 Physical Integration Completion | v2.0 | TBD | Not started (waits on prints) | — |
 | 25. Milestone v2.0 Nyquist Validation Sweep | v2.0 | TBD | Not started | — |
 | 26. Event Video Title Cards | v2.0 | 4/5 | Gap closure | — |
+| 27. Slate Visual Theming | v2.0 | TBD | Not started | — |
