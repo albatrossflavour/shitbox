@@ -3,7 +3,7 @@ status: gaps_found
 phase: 26-event-video-title-cards
 source: [26-VERIFICATION.md]
 started: 2026-04-23T12:00:00Z
-updated: 2026-04-23T14:45:00Z
+updated: 2026-04-23T19:10:00Z
 ---
 
 ## Current Test
@@ -135,6 +135,67 @@ fix_sketch: |
   present in `capture_complete` + `event_poster_stashed` logs) not event_type.
   Needs a log-replay test asserting mp4 lands on the matching event_id.
 
+### G-06: EARLY save path type-scans video, publishes wrong video_url to events.json during save window
+severity: high
+source: on-device re-UAT 2026-04-23 18:58/18:59 (screenshots in ~/Downloads/t/)
+root_cause: |
+  `src/shitbox/events/engine.py:1358-1359` — `_check_post_captures` EARLY save
+  path still falls through to `_find_capture_video(event)` (type-scan) when the
+  `_event_video_paths[eid]` stash is empty. On this Pi, save_event fires ~25s
+  post-event while the MP4 takes ~78s to finish, so the stash is empty and
+  type-scan picks the MOST RECENT MP4 OF THE SAME TYPE — which is the PREVIOUS
+  event's MP4 (e.g. the 14:31 `manual_capture_143104_001.mp4` for an 18:50
+  manual capture). That wrong path is stamped into the event JSON and into
+  events.json at line 1412, rsynced to the NAS, and served to browsers until
+  `_on_video_complete` fires ~90s later and the late-update patches the JSON.
+
+  G-05 in plan 26-06 removed type-scan from the LATE branch only
+  (line 1294: "no _find_capture_video type-scan fallback (G-05 refusal)"). The
+  EARLY branch was left as-is. Symmetric bug, unsymmetric fix.
+evidence: |
+  Timeline for manual_capture at 18:50:34 on 2026-04-23:
+    18:50:34  event starts
+    18:50:59  event_saved — JSON written with has_video: true (WRONG path)
+    18:50:59  events_json_generated (count 98, WRONG video_url)
+    18:51:13  events_json_generated + capture_sync_index synced to NAS (WRONG)
+    18:52:21  event_video_updated — JSON patched with correct 185135_001.mp4
+    18:52:21  event_poster_updated — JSON gains poster_path/poster_url
+    18:52:38  events_json_generated (CORRECT)
+    18:53:05  capture_sync_index synced to NAS (CORRECT)
+  User screenshots (~8 min after capture):
+    18:58:52 — "Manual 06:50:34 pm" card played MP4 with duration 01:10, old
+      UTC slate, "lan, New South W..." clipped (= 14:31 MP4).
+    18:59:11 — same card played MP4 with duration 01:11, AEST slate,
+      "Narellan, NSW" fitted (= 18:51 MP4). Browser cache vs. NAS state flip.
+  G-02/G-03 slate fixes ARE working on new captures; the screenshots only
+  showed the bug because the card was pointing at the wrong MP4.
+fix_sketch: |
+  Two-part fix (approaches 1 + 3):
+
+  1) In `_check_post_captures` EARLY save path (engine.py:1358-1359), drop the
+     `_find_capture_video` fallback. Save with `video_path=None` if the stash
+     is empty; the late branch will fill it in via event_id-strict lookup.
+     Mirrors the G-05 pattern already applied to the LATE branch.
+
+  2) In the same block (engine.py:1412), skip
+     `self.event_storage.generate_events_json()` when `video_path is None`.
+     Event JSON still gets written to disk; events.json gets regenerated later
+     when the late-update path patches `video_path` (and also calls
+     generate_events_json). Prevents the race-window events.json from
+     publishing a no-video entry that a browser may cache.
+
+  Tests needed:
+  - RED: pin behavior that an event saved with empty stash gets video_path=None
+    in the JSON (not the prior-event MP4) and does NOT trigger an
+    events.json regen.
+  - GREEN: late-update subsequently patches video_path AND triggers the
+    events.json regen.
+  - Keep the existing `event_video_update_orphan` log; replace
+    `no_stash_no_type_match` with `no_stash_type_scan_refused` if the orphan
+    path is hit in EARLY (it would no longer be hit in practice since every
+    EARLY orphan becomes LATE-paired).
+
 ## Follow-up (out of Phase 26 scope)
 
 - **Home-ops website consumption**: `~/dev/home-ops/kubernetes/apps/default/shit-of-theseus/app/webroot/index.html:2541` hard-codes `poster="/captures/intro_poster.jpg"`. ROADMAP explicitly deferred to home-ops. Once G-01 lands and events.json has `poster_url`, a 10-line change there reads `d.poster_url || '/captures/intro_poster.jpg'` as the poster.
+- **Browser / nginx cache headers**: events.json is served with default caching. A cached stale events.json in the browser could extend the G-06 race-window observation even after the Pi/NAS have corrected. If G-06 fully closes the race, this is cosmetic; if a new race ever surfaces, look at serving events.json with `Cache-Control: no-store` or an ETag that tracks mtime.
