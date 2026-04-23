@@ -46,10 +46,26 @@ from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-# Matches overlay.py font choices (D-04). DejaVu ships on the Pi image.
-FONT_DISPLAY = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+# Matches overlay.py font choices (D-04). DejaVu mono still ships on the
+# Pi image for the coord row; the display typeface is now bundled in-tree
+# (D-10, D-11) because no fonts-cinzel apt package exists. SIL OFL 1.1
+# — see assets/cinzel/OFL.txt for the licence text shipped alongside.
+_ASSETS_DIR = Path(__file__).parent / "assets"
+_CINZEL_DIR = _ASSETS_DIR / "cinzel"
+
+FONT_DISPLAY_BOLD = str(_CINZEL_DIR / "Cinzel-Bold.ttf")
+FONT_DISPLAY_REGULAR = str(_CINZEL_DIR / "Cinzel-Regular.ttf")
+
+# Back-compat alias (D-09): the badge label call site
+# `f_badge = _font(FONT_DISPLAY, FONT_BADGE)` still wants Bold, and the
+# badge is deliberately unchanged. Keeping FONT_DISPLAY as the Bold
+# alias means zero-touch at the badge call site.
+FONT_DISPLAY = FONT_DISPLAY_BOLD
+
+# Coord row stays on Pi-image DejaVu (D-12) — the modern coord string
+# leaking into the Westeros frame is the joke.
 FONT_MONO = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
-LOGO_PATH = str(Path(__file__).parent / "assets" / "shitbox_rally_logo.png")
+LOGO_PATH = str(_ASSETS_DIR / "shitbox_rally_logo.png")
 
 # Default whimsy pool (D-09). Empty config list means "use these".
 DEFAULT_WHIMSY = [
@@ -317,21 +333,27 @@ class TitleCardRenderer:
 
         # f_hero is no longer allocated here — _fit_hero_to_canvas picks the
         # correct size per-render (G-02).
-        f_date = _font(FONT_DISPLAY, FONT_DATE)
-        f_driver = _font(FONT_DISPLAY, FONT_DRIVER)
+        # Date + driver rows use Cinzel Regular (D-04). Tonal contrast between
+        # Regular meta rows and Bold hero reinforces the ranked-location feel.
+        f_date = _font(FONT_DISPLAY_REGULAR, FONT_DATE)
+        f_driver = _font(FONT_DISPLAY_REGULAR, FONT_DRIVER)
         f_coord = _font(FONT_MONO, FONT_COORD)
+        # Badge label stays Bold — the badge is deliberately unchanged (D-09).
+        # FONT_DISPLAY is aliased to FONT_DISPLAY_BOLD so this call is zero-touch.
         f_badge = _font(FONT_DISPLAY, FONT_BADGE)
 
         img = Image.new("RGB", (CANVAS_W, CANVAS_H), BG_COLOUR)
         draw = ImageDraw.Draw(img)
 
-        # Hero row (D-05 — place name, ~140pt). D-10 (coord-only) skips this.
+        # Hero row (D-04, D-05 — place name, ~140pt). D-10 (coord-only) skips this.
         if hero_text:
-            # G-02: measure-and-shrink-fit. Abbreviation already applied in
-            # _resolve_strings; here we pick the largest size that fits within
-            # 1160px safe width, falling through to ellipsis truncation at 100pt.
+            # G-02: measure-and-shrink-fit. Cinzel Bold ALL CAPS at up to
+            # FONT_HERO=140pt. Empirically every realistic AU place name with
+            # the state suffix dropped fits at 140pt; shrink-fit rarely fires
+            # (27-RESEARCH.md Pitfall 3). Falling through to ellipsis
+            # truncation at 100pt for pathological inputs.
             fitted_text, fitted_font = _fit_hero_to_canvas(
-                draw, hero_text, FONT_DISPLAY, max_size=FONT_HERO
+                draw, hero_text, FONT_DISPLAY_BOLD, max_size=FONT_HERO
             )
             _draw_centered(draw, fitted_text, fitted_font, y=220, fill=TEXT_PRIMARY)
 
