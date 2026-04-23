@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: unknown
-stopped_at: Phase 27 context gathered
-last_updated: "2026-04-23T23:00:18.072Z"
-last_activity: 2026-04-23 -- Phase 27 execution started
+status: in_progress
+stopped_at: Phase 27 closed out (event-type badge colour dropped per user)
+last_updated: "2026-04-24T00:00:00Z"
+last_activity: 2026-04-24 -- Phase 27 complete — Cinzel display font, ALL CAPS hero, bare event-type label
 progress:
   total_phases: 13
-  completed_phases: 8
-  total_plans: 46
-  completed_plans: 45
-  percent: 98
+  completed_phases: 10
+  total_plans: 48
+  completed_plans: 48
+  percent: 77
 ---
 
 # Project State
@@ -22,12 +22,14 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 27 — slate-visual-theming
+**Current focus:** Phase 28+ — next pick from backlog (14/15/16/20/24/25 open)
 
 ## Current Position
 
-Phase: 27 (slate-visual-theming) — EXECUTING
-Plan: 1 of 2
+Phase: 27 (slate-visual-theming) — COMPLETE
+  2/2 plans; Cinzel Bold hero ALL CAPS with state suffix dropped, Cinzel Regular meta rows, coord row DejaVu Mono. Event-type badge colour fill dropped per on-Pi UAT feedback. On-Pi visual UAT confirmed 2026-04-24 ("videos look good, loving the layout").
+
+Phase: 26 (event-video-title-cards) — COMPLETE
   6/6 plans; gap closure G-01..G-08 shipped. 26-VERIFICATION.md 6/6 criteria VERIFIED on 2026-04-23 with on-Pi UAT confirming render.
 
 Phase: 23 (verification-closure-and-traceability-sweep) — COMPLETE
@@ -39,11 +41,11 @@ Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — COM
 Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
   5/5 plans; verified 2026-04-21. 4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Next: Phase 27 (Slate Visual Theming) ready to plan — 27-CONTEXT.md captured 2026-04-24. Scope is typography-only Min: Cinzel display font (bundled TTF), ALL CAPS hero with state suffix dropped, palette and badge styling deliberately preserved. Phase 24 (Phase 20 Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24.
+Next: Phase 24 (Phase 20 Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24. Phases 14/15/16 open in backlog. Separate `/gsd-debug` needed for Pi 5 firmware mailbox hang observed 2026-04-24 09:34:31 (cpufreq ondemand governor + brcmfmac WiFi race).
 
-Last activity: 2026-04-23 -- Phase 27 execution started
+Last activity: 2026-04-24
 
-Progress: 9/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
+Progress: 10/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
@@ -113,10 +115,10 @@ None.
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 27 context gathered
-Resume file: --resume-file
-Next action: spec Phase 27 (Slate Visual Theming). Suggested entry point: `/gsd-discuss-phase 27` to gather scope tier and visual direction before planning.
+Last session: 2026-04-24T00:00:00Z
+Stopped at: Phase 27 closed
+Resume file: None
+Next action: pick next phase from open backlog (14/15/16/20/24/25) or open `/gsd-debug` for Pi 5 firmware mailbox hang observed 2026-04-24 09:34:31. Phase 27 branch `gsd/phase-27-slate-visual-theming` still unmerged to main.
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
@@ -150,4 +152,4 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
 
-**Planned Phase:** 27 (Slate Visual Theming) — 2 plans — 2026-04-23T22:58:32.751Z
+**Completed Phase:** 27 (Slate Visual Theming) — 2/2 plans — 2026-04-24 (on-Pi UAT confirmed)

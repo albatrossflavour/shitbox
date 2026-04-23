@@ -46,7 +46,7 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [ ] **Phase 24: Phase 20 Physical Integration Completion** - Finish deferred 20-03 Task 3 (OpenSCAD review + Pi boot verify), produce 20-VERIFICATION.md (gap closure, waits on prints)
 - [ ] **Phase 25: Milestone v2.0 Nyquist Validation Sweep** - `/gsd-validate-phase` across phases 12/13/17/18/19/20/21 (gap closure)
 - [x] **Phase 26: Event Video Title Cards** - Cinematic title frame between intro clip and event footage (location, date, event badge) via Pillow PNG → ffmpeg loop → concat demuxer (completed 2026-04-23)
-- [ ] **Phase 27: Slate Visual Theming** - Redesign title slate from utilitarian text layout to a themed composition (typography, palette, motif, badge styling) fitting the Shit of Theseus identity
+- [x] **Phase 27: Slate Visual Theming** - Redesign title slate from utilitarian text layout to a themed composition (typography, palette, motif, badge styling) fitting the Shit of Theseus identity (completed 2026-04-23)
 
 ## Phase Details
 
@@ -485,7 +485,7 @@ Plans:
   4. G-02 measure-and-shrink fit behaviour preserved for long place names
   5. Rendered slate fits the 1280×720 canvas with safe margins
 
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 27-01-PLAN.md — Vendor Cinzel Bold/Regular + OFL.txt into `src/shitbox/capture/assets/cinzel/`, extend `pyproject.toml` `package-data` glob, Wave 0 packaging-sanity test
@@ -525,4 +525,4 @@ Plans:
 | 24. Phase 20 Physical Integration Completion | v2.0 | TBD | Not started (waits on prints) | — |
 | 25. Milestone v2.0 Nyquist Validation Sweep | v2.0 | TBD | Not started | — |
 | 26. Event Video Title Cards | v2.0 | 6/6 | Complete | 2026-04-23 |
-| 27. Slate Visual Theming | v2.0 | TBD | Not started | — |
+| 27. Slate Visual Theming | v2.0 | 2/2 | Complete    | 2026-04-23 |
