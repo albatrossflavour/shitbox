@@ -45,6 +45,7 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [x] **Phase 23: Verification Closure and Traceability Sweep** - Formal verify Phase 18, correct stale NARR-08b note, refresh REQUIREMENTS.md + ROADMAP.md tables (gap closure) (completed 2026-04-22)
 - [ ] **Phase 24: Phase 20 Physical Integration Completion** - Finish deferred 20-03 Task 3 (OpenSCAD review + Pi boot verify), produce 20-VERIFICATION.md (gap closure, waits on prints)
 - [ ] **Phase 25: Milestone v2.0 Nyquist Validation Sweep** - `/gsd-validate-phase` across phases 12/13/17/18/19/20/21 (gap closure)
+- [ ] **Phase 26: Event Video Title Cards** - Cinematic title frame between intro clip and event footage (location, date, event badge) via Pillow PNG → ffmpeg loop → concat demuxer
 
 ## Phase Details
 
@@ -436,6 +437,33 @@ Plans:
 
 **UI hint**: no
 
+### Phase 26: Event Video Title Cards
+
+**Goal:** Insert a 3-second cinematic title slate between the existing intro clip and the captured event footage. The slate shows place name (reverse-geocoded), date/time, coords, event-type badge (with diagonal hazard stripes for ROLLOVER), and driver credit when set. Rendered by Pillow to PNG, encoded to MPEG-TS via ffmpeg (silent AAC for concat-demuxer parity), and inserted into `ring_buffer._concatenate_segments()` between intro.ts and the first live segment. The rendered PNG also replaces the current generic first-frame intro poster on the public website, delivered as a `poster_url` on events.json.
+
+**Requirements:** Captured as D-01..D-17 in `.planning/phases/26-event-video-title-cards/26-CONTEXT.md`. No legacy XXX-NN requirement IDs assigned (this phase's spec lives in CONTEXT.md per the phase's design-doc-first nature).
+
+**Depends on:** Phase 22 (ROLLOVER EventType), Phase 13 (active driver in driver_state). Independent of Phase 24 physical integration.
+
+**Success Criteria** (what must be TRUE):
+
+  1. A saved event MP4 plays back as intro → 3s location slate → event footage, with the slate showing place name (or whimsy fallback), date/time, coords, event badge (except on manual captures), driver credit (when set), and the rally logo
+  2. `config.capture.title_card.enabled = false` disables the slate cleanly; captures revert to intro → footage and events.json omits `poster_url`
+  3. `<event>_poster.png` is persisted alongside the MP4; `events.json` carries `poster_url` for every event where the poster exists on disk
+  4. When GPS has no lock, the slate uses a whimsy line from the configurable pool and omits the coord row; when GPS is present but reverse_geocoder returns no place, the slate shows coords only
+  5. `src/shitbox/events/labels.py` is the single source of truth for event-type human labels and badge colours, consumable by the TTS path and website without Pillow/hardware imports
+  6. PiP overlay and HUD burn-in timestamps shift by `intro_duration + slate_duration` so the cabin feed and ASS subtitles align with the post-slate timeline
+
+**Plans:** 4 plans
+
+Plans:
+- [ ] 26-01-PLAN.md — Shared event-label + badge-colour module (src/shitbox/events/labels.py)
+- [ ] 26-02-PLAN.md — TitleCardConfig dataclass + config.yaml title_card block + whimsy pool defaults
+- [ ] 26-03-PLAN.md — TitleCardRenderer: Pillow PNG composition + ffmpeg MPEG-TS encoding with silent AAC parity
+- [ ] 26-04-PLAN.md — Wiring: slate insertion in _concatenate_segments, head_offset_s into PiP + ASS shifts, poster_path threading through save_event and generate_events_json, engine TitleCardRenderer instantiation + geocoder adapter
+
+**UI hint**: no (server-side render; website consumption of `poster_url` is a follow-up in home-ops)
+
 ---
 
 ## Progress
@@ -467,3 +495,4 @@ Plans:
 | 23. Verification Closure and Traceability Sweep | v2.0 | 3/3 | Complete    | 2026-04-22 |
 | 24. Phase 20 Physical Integration Completion | v2.0 | TBD | Not started (waits on prints) | — |
 | 25. Milestone v2.0 Nyquist Validation Sweep | v2.0 | TBD | Not started | — |
+| 26. Event Video Title Cards | v2.0 | 0/4 | Planned | — |
