@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: in_progress
-stopped_at: Phase 26 execution resumed — 26-06 gap closure
-last_updated: "2026-04-23T05:15:00.000Z"
+stopped_at: context exhaustion at 91% (2026-04-23)
+last_updated: "2026-04-23T09:54:12.922Z"
 last_activity: 2026-04-23 -- Phase 26 execution — running plan 26-06 (UAT gap closure)
 progress:
   total_phases: 13
@@ -29,6 +29,7 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 Phase: 26 (event-video-title-cards) — EXECUTING
 Plan: 6 of 6 — 26-06 (on-device UAT gap closure: G-01..G-05)
   Plans 01-05 complete (SUMMARY.md written). 26-06 closes five gaps recorded in 26-HUMAN-UAT:
+
     - G-01: event_video_updated late-update path misses poster delivery
     - G-02: slate title overflow handling
     - G-03: slate timestamp uses UTC instead of local time
@@ -118,8 +119,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23T04:42:39.394Z
-Stopped at: context exhaustion at 92% (2026-04-23)
+Last session: 2026-04-23T09:54:12.914Z
+Stopped at: context exhaustion at 91% (2026-04-23)
 Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)
