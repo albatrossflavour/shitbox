@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: ready_to_plan
-stopped_at: Phase 23 complete (verification closure); Phase 24 next (waits on prints)
-last_updated: "2026-04-22T11:02:33.617Z"
-last_activity: 2026-04-22 Phase 23 executed and verified
+stopped_at: Phase 26 context gathered — ready for /gsd-plan-phase 26
+last_updated: "2026-04-23T01:00:13.186Z"
+last_activity: 2026-04-23 Phase 26 context captured (title cards)
 progress:
-  total_phases: 13
+  total_phases: 14
   completed_phases: 8
   total_plans: 46
   completed_plans: 43
-  percent: 93
+  percent: 86
 ---
 
 # Project State
@@ -28,6 +28,7 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 
 Phase: 23 (verification-closure-and-traceability-sweep) — COMPLETE (VERIFICATION PASS)
   All 3 plans done:
+
     - 23-01: 18-VERIFICATION.md created (8 Phase 18 requirements satisfied)
     - 23-02: NARR-08b corrected in 19-VERIFICATION.md (stale BLOCKED → SATISFIED, score 11/11)
     - 23-03: REQUIREMENTS.md traceability refreshed (17 checkboxes + 19 rows flipped); ROADMAP.md Phase 21/22 rows updated
@@ -109,12 +110,13 @@ None.
 
 - Phase 21 added: hardware inventory and graceful degradation
 - Phase 22 added: IMU signal quality and rollover detection — gyro-based rollover/yaw event, on-chip LPF2 + 208 Hz ODR with decimation, stationary auto-zero with tolerance-based rejection
+- Phase 26 added (2026-04-23): event video title cards — cinematic title frame between intro clip and event footage (location, date, event badge) via Pillow PNG → ffmpeg loop → concat demuxer. SDK phase-add bug: returned phase_number 25 despite existing 25-milestone-v2-0-nyquist-validation-sweep; manually renamed dir and patched ROADMAP.md.
 
 ## Session Continuity
 
-Last session: 2026-04-22T11:02:33.611Z
-Stopped at: Phase 23 complete (verification closure and traceability sweep)
-Resume file: None
+Last session: --stopped-at
+Stopped at: Phase 26 context gathered — ready for /gsd-plan-phase 26
+Resume file: --resume-file
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
