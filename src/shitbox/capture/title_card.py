@@ -30,10 +30,11 @@ Fallback matrix (D-09 / D-10 / D-11 / D-12):
 from __future__ import annotations
 
 import random
+import re
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from shitbox.events.detector import EventType
 from shitbox.events.labels import (
@@ -85,6 +86,45 @@ TEXT_MONO = "#8b949e"
 MAX_PLACE_CHARS = 28
 MAX_DRIVER_CHARS = 40
 MAX_WHIMSY_CHARS = 40
+
+# G-02: AU state abbreviations. Applied BEFORE width measurement so
+# "Narellan, New South Wales" becomes "Narellan, NSW" before we decide
+# whether to shrink the font. Longest-first iteration prevents prefix
+# collisions if a future state entry shares a word-start with another.
+AU_STATE_ABBREVIATIONS: List[Tuple[str, str]] = [
+    ("Australian Capital Territory", "ACT"),
+    ("Northern Territory", "NT"),
+    ("Western Australia", "WA"),
+    ("South Australia", "SA"),
+    ("New South Wales", "NSW"),
+    ("Queensland", "QLD"),
+    ("Tasmania", "TAS"),
+    ("Victoria", "VIC"),
+]
+
+
+def _abbreviate_au_states(place: str) -> str:
+    """Abbreviate AU state names in a place string.
+
+    Word-boundary replacement so "South Australian wine" does NOT become
+    "SAn wine". Case-sensitive match (geocoder output is canonical-cased).
+    Idempotent: short forms pass through unchanged.
+    """
+    result = place
+    for long_form, short_form in AU_STATE_ABBREVIATIONS:
+        # \b on both sides: \bNew South Wales\b
+        pattern = r"\b" + re.escape(long_form) + r"\b"
+        result = re.sub(pattern, short_form, result)
+    return result
+
+
+# G-02: measure-and-shrink-fit. Applied AFTER abbreviation. Shrink step
+# is 10pt, floor is 100pt (FONT_HERO = 140pt default). If the abbreviated
+# string is still too wide at 100pt, ellipsis-truncate char-by-char until
+# it fits at 100pt.
+HERO_FONT_FLOOR = 100
+HERO_FONT_STEP = 10
+SAFE_MARGIN_PX = 60  # each side; total safe width = 1280 - 2*60 = 1160
 
 
 class TitleCardRenderer:
@@ -221,7 +261,10 @@ class TitleCardRenderer:
         hero_text: Optional[str]
         coord_text: Optional[str]
         if place:
-            hero_text = _truncate(place, MAX_PLACE_CHARS)
+            # G-02: abbreviate AU state names before char-truncation so
+            # "Narellan, New South Wales" (clips at 140pt) becomes "Narellan, NSW".
+            abbreviated = _abbreviate_au_states(place)
+            hero_text = _truncate(abbreviated, MAX_PLACE_CHARS)
             coord_text = f"{lat:.4f}, {lng:.4f}" if (lat is not None and lng is not None) else None
         elif geocoder_called:
             # D-10: we asked, got nothing; show coords only, no hero.
@@ -272,7 +315,8 @@ class TitleCardRenderer:
                 log.debug("slate_font_fallback", path=path, size=size, error=str(exc))
                 return ImageFont.load_default()
 
-        f_hero = _font(FONT_DISPLAY, FONT_HERO)
+        # f_hero is no longer allocated here — _fit_hero_to_canvas picks the
+        # correct size per-render (G-02).
         f_date = _font(FONT_DISPLAY, FONT_DATE)
         f_driver = _font(FONT_DISPLAY, FONT_DRIVER)
         f_coord = _font(FONT_MONO, FONT_COORD)
@@ -283,11 +327,20 @@ class TitleCardRenderer:
 
         # Hero row (D-05 — place name, ~140pt). D-10 (coord-only) skips this.
         if hero_text:
-            _draw_centered(draw, hero_text, f_hero, y=220, fill=TEXT_PRIMARY)
+            # G-02: measure-and-shrink-fit. Abbreviation already applied in
+            # _resolve_strings; here we pick the largest size that fits within
+            # 1160px safe width, falling through to ellipsis truncation at 100pt.
+            fitted_text, fitted_font = _fit_hero_to_canvas(
+                draw, hero_text, FONT_DISPLAY, max_size=FONT_HERO
+            )
+            _draw_centered(draw, fitted_text, fitted_font, y=220, fill=TEXT_PRIMARY)
 
         # Date/time row.
-        dt = datetime.fromtimestamp(start_time, tz=timezone.utc)
-        date_str = dt.strftime("%d %b %Y  %H:%M UTC")
+        # G-03: render in local time with the local TZ abbreviation (AEST/AEDT
+        # on the Pi). astimezone() with no arg uses the system local TZ; %Z
+        # emits the TZ name that strftime gets from the tzinfo object.
+        dt = datetime.fromtimestamp(start_time).astimezone()
+        date_str = dt.strftime("%d %b %Y  %H:%M %Z")
         _draw_centered(draw, date_str, f_date, y=400, fill=TEXT_SECONDARY)
 
         # Driver credit (D-12). Only rendered if caller passed a value through.
@@ -409,6 +462,50 @@ def _truncate(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 1] + "…"
+
+
+def _fit_hero_to_canvas(draw, text: str, font_path: str, max_size: int = FONT_HERO):
+    """Return (fitted_text, font) such that font renders fitted_text <= SAFE_WIDTH.
+
+    Pipeline: abbreviation is done BEFORE this call by the caller. Here:
+    1. Try max_size. If fits, return.
+    2. Shrink in HERO_FONT_STEP decrements down to HERO_FONT_FLOOR.
+    3. If still too wide at floor, char-truncate with '...' suffix.
+
+    `draw` is a Pillow ImageDraw; `font_path` is the TTF path.
+    """
+    from PIL import ImageFont
+
+    safe_w = CANVAS_W - 2 * SAFE_MARGIN_PX  # 1160 for 1280 canvas
+
+    def _measure(s: str, size: int):
+        f: object
+        try:
+            f = ImageFont.truetype(font_path, size)
+        except Exception:
+            f = ImageFont.load_default()
+        # Pillow >= 9.2: textlength returns a float width in px.
+        w = draw.textlength(s, font=f)
+        return w, f
+
+    # Step 1+2: abbreviate-already-done, try sizes max_size -> floor.
+    for size in range(max_size, HERO_FONT_FLOOR - 1, -HERO_FONT_STEP):
+        w, f = _measure(text, size)
+        if w <= safe_w:
+            return text, f
+
+    # Step 3: char-truncate at floor size.
+    floor_size = HERO_FONT_FLOOR
+    trimmed = text
+    while len(trimmed) > 1:
+        trimmed = trimmed[:-1]
+        candidate = trimmed.rstrip() + "..."
+        w, f = _measure(candidate, floor_size)
+        if w <= safe_w:
+            return candidate, f
+    # Unreachable in practice (a single-char string at 100pt fits 1160px).
+    _, f = _measure(text, floor_size)
+    return text, f
 
 
 def _text_width(draw, text: str, font) -> int:

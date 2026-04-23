@@ -14,7 +14,6 @@ from shitbox.capture.title_card import (
 )
 from shitbox.events.detector import Event, EventType
 
-
 # ---------- G-02: AU state abbreviations ----------
 
 
