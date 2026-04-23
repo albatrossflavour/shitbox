@@ -468,7 +468,7 @@ Plans:
 
 ### Phase 27: Slate Visual Theming
 
-**Goal:** Redesign the title slate from the current utilitarian text-on-dark layout into a themed composition that fits the Shit of Theseus identity. Typography, colour palette, motif, badge styling, and (optional) per-event-type visual language. Rendering pipeline (Pillow PNG → MPEG-TS → concat) is unchanged; this is a visual design pass over `TitleCardRenderer` and whatever new assets it consumes.
+**Goal:** Typography-only visual theming pass (Min tier narrowed to typography per D-01). Bundle the Cinzel serif (SIL OFL 1.1) into `src/shitbox/capture/assets/cinzel/`, swap the display typeface in `TitleCardRenderer` to Cinzel Bold for the hero / Cinzel Regular for the date and driver rows, render the hero ALL CAPS with the AU state suffix dropped (`Narellan, New South Wales` → `NARELLAN`). Palette, badge composition, coord-row DejaVu Mono, and `TitleCardConfig` shape all stay as Phase 26 shipped them. Rendering pipeline (Pillow PNG → MPEG-TS → concat) is unchanged.
 
 **Depends on:** Phase 26 (slate pipeline in place, `events.json` carries `poster_url`).
 
@@ -485,7 +485,11 @@ Plans:
   4. G-02 measure-and-shrink fit behaviour preserved for long place names
   5. Rendered slate fits the 1280×720 canvas with safe margins
 
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 27-01-PLAN.md — Vendor Cinzel Bold/Regular + OFL.txt into `src/shitbox/capture/assets/cinzel/`, extend `pyproject.toml` `package-data` glob, Wave 0 packaging-sanity test
+- [ ] 27-02-PLAN.md — Wire Cinzel Bold/Regular through `title_card.py` constants and `_compose_png`; ALL CAPS + state-drop hero and whimsy in `_resolve_strings`; Phase 27 typography tests + update Phase 26 state-abbrev assertions
 
 **UI hint**: yes (user-facing visual; benefits from a design spike)
 
