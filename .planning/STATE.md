@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: in_progress
-stopped_at: Phase 27 context gathered (typography-only Min tier — Cinzel + ALL CAPS hero, drop state)
-last_updated: "2026-04-24T00:00:00Z"
-last_activity: 2026-04-24 -- Phase 27 CONTEXT.md captured, ready to plan
+status: unknown
+stopped_at: Phase 27 context gathered
+last_updated: "2026-04-23T22:58:32.762Z"
+last_activity: 2026-04-24 -- Phase 27 CONTEXT.md captured (typography-only Min tier, GoT homage via Cinzel)
 progress:
   total_phases: 13
-  completed_phases: 9
+  completed_phases: 8
   total_plans: 46
-  completed_plans: 46
-  percent: 100
+  completed_plans: 45
+  percent: 98
 ---
 
 # Project State
@@ -148,3 +148,5 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **CPU temp 70.5°C at idle**: Hitting warning threshold. May need airflow improvement.
 - **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
+
+**Planned Phase:** 27 (Slate Visual Theming) — 2 plans — 2026-04-23T22:58:32.751Z
