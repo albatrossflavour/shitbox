@@ -450,3 +450,26 @@ def test_cinzel_fonts_load():
 
     assert bold_font is not None
     assert regular_font is not None
+
+
+# --- Phase 27 Plan 02 Task 1: font constants point at bundled Cinzel --------
+
+def test_font_display_constants_point_at_bundled_cinzel():
+    """Task 1 (SC-1, D-10, D-11): FONT_DISPLAY_BOLD / FONT_DISPLAY_REGULAR
+
+    resolve to the bundled Cinzel TTFs, FONT_DISPLAY is a back-compat alias
+    for the Bold path (so the badge call site stays zero-touch, D-09), and
+    FONT_MONO still points at the Pi-image DejaVu mono (D-12).
+    """
+    pytest.importorskip("PIL")
+    from pathlib import Path
+
+    from shitbox.capture import title_card
+
+    assert title_card.FONT_DISPLAY_BOLD.endswith("Cinzel-Bold.ttf")
+    assert title_card.FONT_DISPLAY_REGULAR.endswith("Cinzel-Regular.ttf")
+    assert title_card.FONT_DISPLAY == title_card.FONT_DISPLAY_BOLD
+    assert title_card.FONT_MONO.endswith("DejaVuSansMono.ttf")
+
+    assert Path(title_card.FONT_DISPLAY_BOLD).is_file()
+    assert Path(title_card.FONT_DISPLAY_REGULAR).is_file()
