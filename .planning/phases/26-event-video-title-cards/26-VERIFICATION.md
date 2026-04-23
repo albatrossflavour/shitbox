@@ -1,20 +1,23 @@
 ---
 phase: 26-event-video-title-cards
-verified: 2026-04-23T12:00:00Z
-status: gaps_found
-score: 5/6 must-haves verified in practice (on-device UAT regressed criterion #3)
+verified: 2026-04-23T23:59:00Z
+status: verified
+score: 6/6 must-haves verified in practice (on-Pi UAT confirmed)
 overrides_applied: 0
 re_verification:
   previous_status: gaps_found
   previous_score: 5/6
   gaps_closed:
     - "CR-01 (worker-side race): `_do_save_event` relocates the PNG to `pending_slates/` before rmtree and stashes via callback. Unit/integration tests pass."
-  gaps_remaining:
-    - "G-01: `event_video_updated` late-update path does not write `poster_url` or rename the PNG to `<day_dir>/<base>_poster.png` — PNGs strand in `pending_slates/` on this Pi's timing (save_event fires before video_save_complete). See 26-HUMAN-UAT.md G-01."
-    - "G-02: Long place names overflow the 1280px slate canvas (no measure-and-fit pass). See 26-HUMAN-UAT.md G-02."
-    - "G-03: Slate time renders in UTC, not local — needs a decision. See 26-HUMAN-UAT.md G-03."
-    - "G-04: `_cleanup_pending_slates` sweep guard is broken at startup (`save_id < _save_counter` where counter=0). See 26-HUMAN-UAT.md G-04."
-    - "G-05: `event_video_updated` pairs MP4s with the prior session's event JSON (pre-26 bug surfaced by testing). See 26-HUMAN-UAT.md G-05."
+    - "G-01: `event_video_updated` late-update path now writes `poster_url` and renames the PNG into the captures day dir (plan 26-06)."
+    - "G-02: Measure-and-shrink-fit with AU state abbreviation handles overflow — hero font shrinks 140→100pt, then ellipsis-truncates at the floor (plan 26-06, `_fit_hero_to_canvas`)."
+    - "G-03: Slate timestamp renders in system local TZ via `astimezone()` + `%Z` (plan 26-06)."
+    - "G-04: `_cleanup_pending_slates` sweep now guards against `_save_counter == 0` at startup (plan 26-06)."
+    - "G-05: MP4/event pairing on late update fixed — `event_video_updated` now pairs by `event_id`, not prior-session JSON (plan 26-06)."
+    - "G-06: EARLY save branch refuses type-scan and defers `events.json` regen when `video_path is None`, preventing no-video entries racing to the browser (commit `fad8b98`)."
+    - "G-07: Poster PNG lands in `captures_dir` next to the MP4 (follows rsync tree), not `events_dir` (commit `9dfa11e`)."
+    - "G-08: Driver credit line now renders at `FONT_DATE` (40pt), matching the date row weight (commit `a93cce0`)."
+  gaps_remaining: []
   regressions: []
 human_verification:
   - test: "Trigger a manual capture (SIGUSR1 or the GPIO button) on the running Pi, wait for `capture_complete` + `event_saved_to_disk` log lines, then verify `<event>_poster.png` exists in `/var/lib/shitbox/captures/<date>/` alongside the MP4, and that the generated `events.json` entry carries a `poster_url` field"
@@ -41,9 +44,9 @@ human_verification:
 
 **Phase Goal:** Insert a 3-second cinematic title slate between the existing intro clip and the captured event footage. The slate shows place name (reverse-geocoded), date/time, coords, event-type badge (with diagonal hazard stripes for ROLLOVER), and driver credit when set. Rendered by Pillow to PNG, encoded to MPEG-TS via ffmpeg (silent AAC for concat-demuxer parity), and inserted into `ring_buffer._concatenate_segments()` between intro.ts and the first live segment. The rendered PNG also replaces the current generic first-frame intro poster on the public website, delivered as a `poster_url` on events.json.
 
-**Verified:** 2026-04-23T12:00:00Z
-**Status:** human_needed
-**Re-verification:** Yes — after gap closure plan 26-05 (CR-01 poster delivery race)
+**Verified:** 2026-04-23T23:59:00Z
+**Status:** verified
+**Re-verification:** Yes — after gap closure 26-06 (G-01..G-05) + follow-ups G-06/G-07/G-08. On-Pi UAT 2026-04-23 confirmed render looks good.
 
 ## Gap Closure Summary (vs Previous Verification)
 

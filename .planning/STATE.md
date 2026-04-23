@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: in_progress
-stopped_at: context exhaustion at 91% (2026-04-23)
-last_updated: "2026-04-23T09:54:12.922Z"
-last_activity: 2026-04-23 -- Phase 26 execution — running plan 26-06 (UAT gap closure)
+stopped_at: Phase 26 closed out (on-Pi UAT passed 2026-04-23)
+last_updated: "2026-04-23T23:59:00Z"
+last_activity: 2026-04-23 -- Phase 26 complete — G-01..G-08 shipped and UAT'd
 progress:
   total_phases: 13
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 46
-  completed_plans: 45
-  percent: 98
+  completed_plans: 46
+  percent: 100
 ---
 
 # Project State
@@ -22,19 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 26 — event-video-title-cards
+**Current focus:** Phase 27 — slate-visual-theming (not started)
 
 ## Current Position
 
-Phase: 26 (event-video-title-cards) — EXECUTING
-Plan: 6 of 6 — 26-06 (on-device UAT gap closure: G-01..G-05)
-  Plans 01-05 complete (SUMMARY.md written). 26-06 closes five gaps recorded in 26-HUMAN-UAT:
-
-    - G-01: event_video_updated late-update path misses poster delivery
-    - G-02: slate title overflow handling
-    - G-03: slate timestamp uses UTC instead of local time
-    - G-04: ring-buffer sweep guard
-    - G-05: mp4 pairing on late update (coupled with G-01)
+Phase: 26 (event-video-title-cards) — COMPLETE
+  6/6 plans; gap closure G-01..G-08 shipped. 26-VERIFICATION.md 6/6 criteria VERIFIED on 2026-04-23 with on-Pi UAT confirming render.
 
 Phase: 23 (verification-closure-and-traceability-sweep) — COMPLETE
   3/3 plans; 23-VERIFICATION.md 5/5 success criteria VERIFIED.
@@ -45,11 +38,11 @@ Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — COM
 Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
   5/5 plans; verified 2026-04-21. 4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Next: Phase 24 (Phase 20 Physical Integration Completion) waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24.
+Next: Phase 27 (Slate Visual Theming) ready to spec — needs 27-CONTEXT.md (scope tier, typography, palette, motif). Phase 24 (Phase 20 Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24.
 
-Last activity: 2026-04-23 -- Phase 26 execution — running plan 26-06 (UAT gap closure)
+Last activity: 2026-04-23 -- Phase 26 closed out (G-01..G-08 + on-Pi UAT pass)
 
-Progress: 8/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
+Progress: 9/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
@@ -119,9 +112,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-23T09:54:12.914Z
-Stopped at: context exhaustion at 91% (2026-04-23)
+Last session: 2026-04-23T23:59:00Z
+Stopped at: Phase 26 closed out — on-Pi UAT passed, all gap closure landed.
 Resume file: None
+Next action: spec Phase 27 (Slate Visual Theming). Suggested entry point: `/gsd-discuss-phase 27` to gather scope tier and visual direction before planning.
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
@@ -155,4 +149,3 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
 
-**Planned Phase:** 26 (event-video-title-cards) — 6 plans — 2026-04-23T05:00:15.218Z
