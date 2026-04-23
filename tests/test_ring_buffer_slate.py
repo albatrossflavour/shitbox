@@ -1,4 +1,4 @@
-"""Tests for Phase 26-04 Task 2: VideoRingBuffer slate insertion and head_offset_s.
+"""Tests for Phase 26-04 Task 2 + Phase 26-05 gap-closure: VideoRingBuffer slate insertion.
 
 Covers:
   - _render_slate fallback matrix (no renderer, exception, zero duration)
@@ -8,6 +8,9 @@ Covers:
   - _build_dual_concat_reencode_cmd does the same AND emits the correct
     setpts + enable gate on the PiP filter chain
   - _pending_slate_* state resets cleanly across save passes
+  - (26-05) pre-rmtree relocation of slate PNG to pending_slates/ holding dir
+  - (26-05) callback receives 3-arg signature with stable_png_path
+  - (26-05) _cleanup_pending_slates sweep removes orphan files from prior runs
 
 Mirrors tests/test_ring_buffer_cmd.py — constructs a VideoRingBuffer via
 __new__ and pokes attributes directly so no real ffmpeg or Pillow runs.
@@ -15,9 +18,12 @@ __new__ and pokes attributes directly so no real ffmpeg or Pillow runs.
 
 from __future__ import annotations
 
+import shutil
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -75,6 +81,11 @@ def _make_vrb(tmp_path: Path, *, input_format: str = "h264") -> VideoRingBuffer:
     vrb._pending_slate_duration = 0.0
     vrb._geocoder_fn = None
     vrb._active_driver_fn = None
+
+    # Phase 26-05 gap-closure: pending_slates holding dir + process start time.
+    vrb._pending_slates_dir = buf_dir / "pending_slates"
+    vrb._pending_slates_dir.mkdir(parents=True, exist_ok=True)
+    vrb._process_start_time = time.time() - 3600.0  # 1h ago — sweep sees all fixture files as current-run
 
     return vrb
 
@@ -339,3 +350,204 @@ def test_pending_state_reset_between_saves(tmp_path: Path) -> None:
     assert vrb._pending_slate_png is None
     assert vrb._pending_slate_ts is None
     assert vrb._pending_slate_duration == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Phase 26-05: pre-rmtree relocation + 3-arg callback + sweep
+# ---------------------------------------------------------------------------
+
+
+def _make_stub_renderer_writes_files(
+    png_bytes: bytes = b"P", ts_bytes: bytes = b"T", duration: float = 3.0
+):
+    """Fake renderer: writes real bytes to the paths the ring buffer passes."""
+    class _StubRenderer:
+        def render(self, event, png_path, ts_path, *, geocoder=None, driver_name=None):
+            Path(png_path).write_bytes(png_bytes)
+            Path(ts_path).write_bytes(ts_bytes)
+            return duration
+    return _StubRenderer()
+
+
+def _make_minimal_event():
+    """Create a minimal Event-like namespace for _do_save_event."""
+    return SimpleNamespace(
+        event_type=SimpleNamespace(value="HARD_BRAKE"),
+        start_time=time.time(),
+        end_time=time.time() + 2.0,
+        peak_value=1.5,
+        peak_ax=-1.2,
+        peak_ay=0.1,
+        peak_az=0.9,
+        samples=[],
+    )
+
+
+def test_slate_png_relocated_before_rmtree(tmp_path: Path, monkeypatch) -> None:
+    """Plan 26-05 T1: PNG is moved to pending_slates/ before the finally runs rmtree."""
+    vrb = _make_vrb(tmp_path)
+    vrb._title_card_renderer = _make_stub_renderer_writes_files()
+    event = _make_minimal_event()
+
+    # Stub the heavy internal methods so no real ffmpeg runs.
+    def _fake_copy(dest_dir, phase, min_mtime=None, stream="front"):
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        seg = dest_dir / f"{phase}_000.ts"
+        seg.write_bytes(b"\x00" * 20_000)
+        return [seg]
+
+    monkeypatch.setattr(vrb, "_copy_complete_segments", _fake_copy)
+
+    out_mp4 = None
+
+    def _fake_concat(segments, prefix, cabin_segments=None):
+        nonlocal out_mp4
+        # Write a fake MP4 in the same dir as segments.
+        out = segments[0].parent.parent / f"{prefix}_test.mp4"
+        out.write_bytes(b"MP4STUB")
+        out_mp4 = out
+        return out
+
+    monkeypatch.setattr(vrb, "_concatenate_segments", _fake_concat)
+
+    callback = MagicMock()
+    vrb._do_save_event("event", 0, None, callback, event)
+
+    # save_N/ tmp dir must be gone (rmtree ran).
+    save_dirs = list(vrb.buffer_dir.glob("save_*"))
+    assert save_dirs == [], f"tmp_dir not cleaned up — leftover {save_dirs}"
+
+    # PNG must be in pending_slates/ not in the now-deleted tmp_dir.
+    pending_pngs = list(vrb._pending_slates_dir.glob("*.png"))
+    assert len(pending_pngs) == 1, f"Expected 1 PNG in pending_slates, got {pending_pngs}"
+    stable_png = pending_pngs[0]
+    assert stable_png.exists()
+    assert stable_png.read_bytes() == b"P"
+
+    # Callback must have been called with (output_path, mtime, stable_png_path).
+    assert callback.called
+    call_args = callback.call_args[0]
+    assert len(call_args) == 3, f"Expected 3-arg callback, got {len(call_args)}"
+    _output_path, _mtime, stable_png_arg = call_args
+    assert stable_png_arg == stable_png
+
+
+def test_callback_receives_none_poster_when_no_slate(tmp_path: Path, monkeypatch) -> None:
+    """No renderer → _pending_slate_png stays None → callback third arg is None."""
+    vrb = _make_vrb(tmp_path)
+    vrb._title_card_renderer = None  # disabled
+
+    def _fake_copy(dest_dir, phase, min_mtime=None, stream="front"):
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        seg = dest_dir / f"{phase}_000.ts"
+        seg.write_bytes(b"\x00" * 20_000)
+        return [seg]
+
+    monkeypatch.setattr(vrb, "_copy_complete_segments", _fake_copy)
+
+    def _fake_concat(segments, prefix, cabin_segments=None):
+        out = segments[0].parent.parent / f"{prefix}_test.mp4"
+        out.write_bytes(b"MP4STUB")
+        return out
+
+    monkeypatch.setattr(vrb, "_concatenate_segments", _fake_concat)
+
+    callback = MagicMock()
+    vrb._do_save_event("event", 0, None, callback, _make_minimal_event())
+
+    assert callback.called
+    call_args = callback.call_args[0]
+    assert len(call_args) == 3, f"Expected 3-arg callback, got {len(call_args)}"
+    assert call_args[2] is None, f"Expected None poster_path, got {call_args[2]}"
+
+
+def test_slate_png_move_failure_passes_none(tmp_path: Path, monkeypatch) -> None:
+    """If shutil.move raises OSError, callback gets None and slate_move_to_holding_failed is logged."""
+    import shitbox.capture.ring_buffer as rb_mod
+
+    vrb = _make_vrb(tmp_path)
+    vrb._title_card_renderer = _make_stub_renderer_writes_files()
+    event = _make_minimal_event()
+
+    def _fake_copy(dest_dir, phase, min_mtime=None, stream="front"):
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        seg = dest_dir / f"{phase}_000.ts"
+        seg.write_bytes(b"\x00" * 20_000)
+        return [seg]
+
+    monkeypatch.setattr(vrb, "_copy_complete_segments", _fake_copy)
+
+    def _fake_concat(segments, prefix, cabin_segments=None):
+        out = segments[0].parent.parent / f"{prefix}_test.mp4"
+        out.write_bytes(b"MP4STUB")
+        return out
+
+    monkeypatch.setattr(vrb, "_concatenate_segments", _fake_concat)
+
+    # Patch shutil.move in the ring_buffer module namespace to raise OSError.
+    original_move = rb_mod.shutil.move
+
+    def _boom(src, dst):
+        raise OSError("simulated disk full")
+
+    monkeypatch.setattr(rb_mod.shutil, "move", _boom)
+
+    callback = MagicMock()
+    import logging
+    with pytest.raises(Exception) if False else _caplog_context() as caplog:
+        vrb._do_save_event("event", 0, None, callback, event)
+
+    # Callback must have received None as third arg.
+    assert callback.called
+    call_args = callback.call_args[0]
+    assert len(call_args) == 3, f"Expected 3-arg callback, got {len(call_args)}"
+    assert call_args[2] is None, f"Expected None on move failure, got {call_args[2]}"
+
+    # No PNG should be in pending_slates (move failed).
+    assert list(vrb._pending_slates_dir.glob("*.png")) == []
+
+    # MP4 output path should still be set (failure only affects slate, not video).
+    assert call_args[0] is not None, "Expected MP4 output path even on slate move failure"
+
+
+class _caplog_context:
+    """Minimal context manager that does nothing — pytest caplog is injected via fixture."""
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        pass
+
+
+def test_cleanup_pending_slates_removes_old_files(tmp_path: Path) -> None:
+    """_cleanup_pending_slates removes only files whose mtime < process_start AND save_id < _save_counter."""
+    vrb = _make_vrb(tmp_path)
+    vrb._process_start_time = time.time()  # now — files created before this are "old"
+    vrb._save_counter = 10
+
+    # File 1: old mtime + old save_id → must be REMOVED.
+    old_orphan = vrb._pending_slates_dir / "3.png"
+    old_orphan.write_bytes(b"OLD")
+    # Set mtime to 1h ago.
+    old_time = time.time() - 3600.0
+    import os
+    os.utime(str(old_orphan), (old_time, old_time))
+
+    # File 2: new mtime (created after process_start) → must be KEPT.
+    new_file = vrb._pending_slates_dir / "4.png"
+    new_file.write_bytes(b"NEW")
+    # mtime is already "now" since we just wrote it.
+
+    # File 3: old mtime but save_id >= _save_counter → must be KEPT (id check fails).
+    id_fail = vrb._pending_slates_dir / "10.png"
+    id_fail.write_bytes(b"ID_FAIL")
+    os.utime(str(id_fail), (old_time, old_time))
+
+    vrb._cleanup_pending_slates()
+
+    assert not old_orphan.exists(), "Old orphan should have been removed"
+    assert new_file.exists(), "New file should be kept"
+    assert id_fail.exists(), "File with save_id >= counter should be kept (id guard)"
+
+    # The remaining count in pending_slates/ should be exactly 2.
+    remaining = list(vrb._pending_slates_dir.glob("*.png"))
+    assert len(remaining) == 2, f"Expected 2 files remaining, got {[f.name for f in remaining]}"

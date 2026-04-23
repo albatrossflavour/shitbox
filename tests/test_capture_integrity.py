@@ -132,7 +132,7 @@ def test_save_verification_missing_file(tmp_path: Path) -> None:
 
     callback_result: list[Optional[Path]] = []
 
-    def _callback(path: Optional[Path], _clip_start: float = 0.0) -> None:
+    def _callback(path: Optional[Path], _clip_start: float = 0.0, _poster=None) -> None:
         callback_result.append(path)
 
     with (
@@ -171,7 +171,7 @@ def test_save_verification_zero_byte(tmp_path: Path) -> None:
 
     callback_result: list[Optional[Path]] = []
 
-    def _callback(path: Optional[Path], _clip_start: float = 0.0) -> None:
+    def _callback(path: Optional[Path], _clip_start: float = 0.0, _poster=None) -> None:
         callback_result.append(path)
 
     with (
@@ -209,7 +209,7 @@ def test_save_verification_success(tmp_path: Path) -> None:
 
     callback_result: list[Optional[Path]] = []
 
-    def _callback(path: Optional[Path], _clip_start: float = 0.0) -> None:
+    def _callback(path: Optional[Path], _clip_start: float = 0.0, _poster=None) -> None:
         callback_result.append(path)
 
     with (
@@ -241,7 +241,7 @@ def test_save_verification_failure_alerts(tmp_path: Path) -> None:
 
     callback_result: list[Optional[Path]] = []
 
-    def _callback(path: Optional[Path], _clip_start: float = 0.0) -> None:
+    def _callback(path: Optional[Path], _clip_start: float = 0.0, _poster=None) -> None:
         callback_result.append(path)
 
     with (
@@ -519,7 +519,7 @@ def test_partial_save_pre_only(tmp_path: Path) -> None:
 
     callback_result: list[Optional[Path]] = []
 
-    def _callback(path: Optional[Path], _clip_start: float = 0.0) -> None:
+    def _callback(path: Optional[Path], _clip_start: float = 0.0, _poster=None) -> None:
         callback_result.append(path)
 
     with (

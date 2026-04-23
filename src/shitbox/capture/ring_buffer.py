@@ -124,6 +124,12 @@ class VideoRingBuffer:
         self._pending_slate_png: Optional[Path] = None
         self._pending_slate_duration: float = 0.0
 
+        # Phase 26 gap-closure (plan 26-05): stable holding dir for slate PNGs.
+        # The per-save tmp_dir is rmtree'd in _do_save_event's finally; the PNG
+        # is relocated here BEFORE that runs so the engine can consume it later.
+        self._pending_slates_dir: Path = self.buffer_dir / "pending_slates"
+        self._process_start_time: float = 0.0  # set in start() for the sweep
+
     def _configure_cameras(self) -> None:
         """Apply v4l2 controls to cameras before recording starts."""
         device_controls = [
@@ -179,6 +185,9 @@ class VideoRingBuffer:
             return
 
         self.buffer_dir.mkdir(parents=True, exist_ok=True)
+        self._pending_slates_dir.mkdir(parents=True, exist_ok=True)
+        self._process_start_time = time.time()
+        self._cleanup_pending_slates()
         self._cleanup_buffer()  # Clear stale segments from previous run
         self._prepare_intro()
         self._configure_cameras()
@@ -224,7 +233,7 @@ class VideoRingBuffer:
         prefix: str = "event",
         post_seconds: Optional[int] = None,
         pre_seconds: Optional[int] = None,
-        callback: Optional[Callable[[Optional[Path], float], None]] = None,
+        callback: Optional[Callable[[Optional[Path], float, Optional[Path]], None]] = None,
         event: Optional["Event"] = None,
     ) -> None:
         """Save pre-event buffer + post-event recording to a single MP4.
@@ -237,10 +246,14 @@ class VideoRingBuffer:
                           Defaults to self.post_event_seconds.
             pre_seconds: Seconds of pre-event footage to keep.
                          None means keep entire buffer.
-            callback: Called with (output Path or None, clip_start_mtime).
-                      clip_start_mtime is the filesystem mtime of the oldest
-                      pre-event segment — a GPS-clock wall-clock timestamp usable
-                      for cross-camera sync alignment.
+            callback: Called with (output Path or None, clip_start_mtime,
+                poster PNG Path or None). The poster path is the stable
+                holding-dir location the save worker has moved the rendered
+                slate PNG to before the per-save tmp dir is rmtree'd. None when
+                no slate was rendered or the move to holding failed.
+                clip_start_mtime is the filesystem mtime of the oldest
+                pre-event segment — a GPS-clock wall-clock timestamp usable
+                for cross-camera sync alignment.
             event: Optional source Event (phase 26). When provided and a
                    title-card renderer is wired, a slate is rendered into the
                    save tmp dir and inserted between intro.ts and the live
@@ -994,7 +1007,7 @@ class VideoRingBuffer:
         prefix: str,
         post_seconds: int,
         pre_seconds: Optional[int],
-        callback: Optional[Callable[[Optional[Path]], None]],
+        callback: Optional[Callable[[Optional[Path], float, Optional[Path]], None]],
         event: Optional["Event"] = None,
     ) -> None:
         """Worker that copies buffer segments, waits for post-event, then concatenates."""
@@ -1011,6 +1024,11 @@ class VideoRingBuffer:
         self._pending_slate_ts = None
         self._pending_slate_png = None
         self._pending_slate_duration = 0.0
+
+        # Phase 26 gap-closure (plan 26-05): stable_png_path holds the
+        # holding-dir location of the slate PNG after it has been relocated
+        # from tmp_dir. Initialised to None; set after the relocation move.
+        stable_png_path: Optional[Path] = None
 
         try:
             # 1. Copy completed buffer segments (pre-event footage)
@@ -1083,7 +1101,7 @@ class VideoRingBuffer:
             if not all_segments:
                 log.warning("video_save_no_segments", save_id=save_id)
                 if callback:
-                    callback(None, 0.0)
+                    callback(None, 0.0, None)
                 return
 
             # Phase 26: render the title-card slate into the save tmp dir so
@@ -1133,13 +1151,41 @@ class VideoRingBuffer:
                     pass  # Alert is best-effort; save callback must still fire
                 output_path = None
 
+            # Phase 26 gap-closure: relocate the slate PNG out of tmp_dir to the
+            # stable holding dir BEFORE the finally runs rmtree. stable_png_path
+            # (passed to the callback below) survives the rmtree; the caller owns
+            # the final rename into the per-day dir.
+            if self._pending_slate_png is not None:
+                src = self._pending_slate_png
+                if src.exists():
+                    dst = self._pending_slates_dir / f"{save_id}.png"
+                    try:
+                        self._pending_slates_dir.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(src), str(dst))
+                        stable_png_path = dst
+                        log.info(
+                            "slate_png_relocated",
+                            save_id=save_id,
+                            src=str(src),
+                            dst=str(dst),
+                        )
+                    except OSError as move_err:
+                        log.warning(
+                            "slate_move_to_holding_failed",
+                            save_id=save_id,
+                            src=str(src),
+                            dst=str(dst),
+                            error=str(move_err),
+                        )
+                        stable_png_path = None
+
             if callback:
-                callback(output_path, clip_start_mtime)
+                callback(output_path, clip_start_mtime, stable_png_path)
 
         except Exception as e:
             log.error("video_save_error", save_id=save_id, error=str(e))
             if callback:
-                callback(None, 0.0)
+                callback(None, 0.0, None)
         finally:
             with self._lock:
                 self._active_saves -= 1
@@ -1627,3 +1673,38 @@ class VideoRingBuffer:
         combined.unlink(missing_ok=True)
         for d in self.buffer_dir.glob("save_*"):
             shutil.rmtree(str(d), ignore_errors=True)
+
+    def _cleanup_pending_slates(self) -> None:
+        """Sweep pending_slates/ of orphan files from crashed prior runs.
+
+        Mirrors _cleanup_buffer's pattern. Guards against the rare in-run
+        race where `save_event` fires a thread before start() completes by
+        requiring BOTH mtime < process-start AND save-id-from-filename <
+        current _save_counter. (save_event does not itself check is_running
+        before spawning, so the sweep cannot assume no writer is racing it.)
+        Silent on empty dir.
+        """
+        try:
+            entries = list(self._pending_slates_dir.iterdir())
+        except FileNotFoundError:
+            return
+        removed = 0
+        for entry in entries:
+            try:
+                if not entry.is_file():
+                    continue
+                mtime_ok = entry.stat().st_mtime < self._process_start_time
+                try:
+                    save_id_from_name = int(entry.stem)
+                    id_ok = save_id_from_name < self._save_counter
+                except ValueError:
+                    id_ok = True  # unrecognised name — treat as orphan
+                if mtime_ok and id_ok:
+                    entry.unlink()
+                    removed += 1
+            except OSError:
+                continue
+        if removed > 0:
+            log.info("pending_slates_swept", removed=removed)
+        else:
+            log.debug("pending_slates_swept", removed=0)
