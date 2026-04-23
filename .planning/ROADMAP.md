@@ -457,10 +457,10 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
-- [ ] 26-01-PLAN.md — Shared event-label + badge-colour module (src/shitbox/events/labels.py)
-- [ ] 26-02-PLAN.md — TitleCardConfig dataclass + config.yaml title_card block + whimsy pool defaults
-- [ ] 26-03-PLAN.md — TitleCardRenderer: Pillow PNG composition + ffmpeg MPEG-TS encoding with silent AAC parity
-- [ ] 26-04-PLAN.md — Wiring: slate insertion in _concatenate_segments, head_offset_s into PiP + ASS shifts, poster_path threading through save_event and generate_events_json, engine TitleCardRenderer instantiation + geocoder adapter
+- [x] 26-01-PLAN.md — Shared event-label + badge-colour module (src/shitbox/events/labels.py)
+- [x] 26-02-PLAN.md — TitleCardConfig dataclass + config.yaml title_card block + whimsy pool defaults
+- [x] 26-03-PLAN.md — TitleCardRenderer: Pillow PNG composition + ffmpeg MPEG-TS encoding with silent AAC parity
+- [x] 26-04-PLAN.md — Wiring: slate insertion in _concatenate_segments, head_offset_s into PiP + ASS shifts, poster_path threading through save_event and generate_events_json, engine TitleCardRenderer instantiation + geocoder adapter
 
 **UI hint**: no (server-side render; website consumption of `poster_url` is a follow-up in home-ops)
 
