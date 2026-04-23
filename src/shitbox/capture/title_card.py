@@ -23,7 +23,7 @@ Fallback matrix (D-09 / D-10 / D-11 / D-12):
   - geocoder None OR no lat/lng → hero=whimsy (D-09), no coord row
   - geocoder called, None → hero=None, coord-only (D-10)
   - event_type MANUAL_CAPTURE → no badge (D-11), driver credit fills the slot
-  - event_type ROLLOVER → badge with 45° hazard stripes over red (D-07)
+  - event_type ROLLOVER → plain-text label (Phase 27.1 dropped the stripe box)
   - show_driver True AND driver_name truthy → 'Driver: ...' line (D-12)
 """
 
@@ -38,7 +38,6 @@ from typing import Callable, List, Optional, Tuple
 
 from shitbox.events.detector import EventType
 from shitbox.events.labels import (
-    ROLLOVER_STRIPE_COLOUR,
     colour_for,
     label_for,
 )
@@ -46,10 +45,26 @@ from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-# Matches overlay.py font choices (D-04). DejaVu ships on the Pi image.
-FONT_DISPLAY = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+# Matches overlay.py font choices (D-04). DejaVu mono still ships on the
+# Pi image for the coord row; the display typeface is now bundled in-tree
+# (D-10, D-11) because no fonts-cinzel apt package exists. SIL OFL 1.1
+# — see assets/cinzel/OFL.txt for the licence text shipped alongside.
+_ASSETS_DIR = Path(__file__).parent / "assets"
+_CINZEL_DIR = _ASSETS_DIR / "cinzel"
+
+FONT_DISPLAY_BOLD = str(_CINZEL_DIR / "Cinzel-Bold.ttf")
+FONT_DISPLAY_REGULAR = str(_CINZEL_DIR / "Cinzel-Regular.ttf")
+
+# Back-compat alias (D-09): the badge label call site
+# `f_badge = _font(FONT_DISPLAY, FONT_BADGE)` still wants Bold, and the
+# badge is deliberately unchanged. Keeping FONT_DISPLAY as the Bold
+# alias means zero-touch at the badge call site.
+FONT_DISPLAY = FONT_DISPLAY_BOLD
+
+# Coord row stays on Pi-image DejaVu (D-12) — the modern coord string
+# leaking into the Westeros frame is the joke.
 FONT_MONO = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
-LOGO_PATH = str(Path(__file__).parent / "assets" / "shitbox_rally_logo.png")
+LOGO_PATH = str(_ASSETS_DIR / "shitbox_rally_logo.png")
 
 # Default whimsy pool (D-09). Empty config list means "use these".
 DEFAULT_WHIMSY = [
@@ -261,10 +276,15 @@ class TitleCardRenderer:
         hero_text: Optional[str]
         coord_text: Optional[str]
         if place:
-            # G-02: abbreviate AU state names before char-truncation so
-            # "Narellan, New South Wales" (clips at 140pt) becomes "Narellan, NSW".
-            abbreviated = _abbreviate_au_states(place)
-            hero_text = _truncate(abbreviated, MAX_PLACE_CHARS)
+            # D-06 (Phase 27): drop the state suffix entirely. Everything after
+            # the first comma is stripped from the hero — "Narellan, New South
+            # Wales" becomes "Narellan". _abbreviate_au_states stays in the
+            # module as a utility but is no longer called on this path.
+            hero_raw = place.split(",", 1)[0].strip()
+            # D-05 (Phase 27): ALL CAPS hero. Applied AFTER truncation so the
+            # character count is measured on the natural-case string; Unicode
+            # upper-case round-trips the ellipsis character ("…") unchanged.
+            hero_text = _truncate(hero_raw, MAX_PLACE_CHARS).upper()
             coord_text = f"{lat:.4f}, {lng:.4f}" if (lat is not None and lng is not None) else None
         elif geocoder_called:
             # D-10: we asked, got nothing; show coords only, no hero.
@@ -272,9 +292,12 @@ class TitleCardRenderer:
             coord_text = f"{lat:.4f}, {lng:.4f}"
         else:
             # D-09: no GPS or no geocoder → whimsy line, no coords.
+            # D-07 (Phase 27): whimsy rendered ALL CAPS in Cinzel for
+            # consistency with the hero. `.upper()` is outside _truncate so
+            # the ellipsis character is not double-processed.
             hero_text = _truncate(
                 random.choice(self.whimsy_lines), MAX_WHIMSY_CHARS
-            )
+            ).upper()
             coord_text = None
 
         # Badge (D-11): manual captures drop the badge so the driver credit
@@ -317,21 +340,27 @@ class TitleCardRenderer:
 
         # f_hero is no longer allocated here — _fit_hero_to_canvas picks the
         # correct size per-render (G-02).
-        f_date = _font(FONT_DISPLAY, FONT_DATE)
-        f_driver = _font(FONT_DISPLAY, FONT_DRIVER)
+        # Date + driver rows use Cinzel Regular (D-04). Tonal contrast between
+        # Regular meta rows and Bold hero reinforces the ranked-location feel.
+        f_date = _font(FONT_DISPLAY_REGULAR, FONT_DATE)
+        f_driver = _font(FONT_DISPLAY_REGULAR, FONT_DRIVER)
         f_coord = _font(FONT_MONO, FONT_COORD)
+        # Badge label stays Bold — the badge is deliberately unchanged (D-09).
+        # FONT_DISPLAY is aliased to FONT_DISPLAY_BOLD so this call is zero-touch.
         f_badge = _font(FONT_DISPLAY, FONT_BADGE)
 
         img = Image.new("RGB", (CANVAS_W, CANVAS_H), BG_COLOUR)
         draw = ImageDraw.Draw(img)
 
-        # Hero row (D-05 — place name, ~140pt). D-10 (coord-only) skips this.
+        # Hero row (D-04, D-05 — place name, ~140pt). D-10 (coord-only) skips this.
         if hero_text:
-            # G-02: measure-and-shrink-fit. Abbreviation already applied in
-            # _resolve_strings; here we pick the largest size that fits within
-            # 1160px safe width, falling through to ellipsis truncation at 100pt.
+            # G-02: measure-and-shrink-fit. Cinzel Bold ALL CAPS at up to
+            # FONT_HERO=140pt. Empirically every realistic AU place name with
+            # the state suffix dropped fits at 140pt; shrink-fit rarely fires
+            # (27-RESEARCH.md Pitfall 3). Falling through to ellipsis
+            # truncation at 100pt for pathological inputs.
             fitted_text, fitted_font = _fit_hero_to_canvas(
-                draw, hero_text, FONT_DISPLAY, max_size=FONT_HERO
+                draw, hero_text, FONT_DISPLAY_BOLD, max_size=FONT_HERO
             )
             _draw_centered(draw, fitted_text, fitted_font, y=220, fill=TEXT_PRIMARY)
 
@@ -535,50 +564,15 @@ def _draw_badge(
     anchor_x: int,
     anchor_y: int,
 ) -> None:
-    """Draw a filled rectangle badge with centred label text.
+    """Render the event-type label as bare text at the badge anchor.
 
-    Layout: rect height ~60px, width fits the label with 20px padding each
-    side. ROLLOVER additionally composites a 45° hazard-stripe overlay at
-    ~30% alpha to unambiguously distinguish it from HIGH_G red.
+    Phase 27.1: dropped the coloured fill and rollover stripe overlay. The
+    label renders in TEXT_PRIMARY (white) at the same anchor point so the
+    slate layout is unchanged. `colour`/`is_rollover`/`img` remain in the
+    signature so callers stay zero-touch.
     """
-    from PIL import Image, ImageDraw
+    del img, colour, is_rollover  # kept for signature stability; no fill now.
 
-    padding_x = 20
-    padding_y = 12
-    text_w = _text_width(draw, label, font)
-    badge_w = text_w + padding_x * 2
-    badge_h = max(60, FONT_BADGE + padding_y * 2)
-
-    # Solid fill first.
-    draw.rectangle(
-        (anchor_x, anchor_y, anchor_x + badge_w, anchor_y + badge_h),
-        fill=colour,
-    )
-
-    # Hazard stripes for rollover (D-07). Drawn on a transparent RGBA overlay
-    # sized exactly like the badge, then composited so stripes sit on top of
-    # the red fill but under the label.
-    if is_rollover:
-        overlay = Image.new("RGBA", (badge_w, badge_h), (0, 0, 0, 0))
-        odraw = ImageDraw.Draw(overlay)
-        stripe_rgba = (*_hex_to_rgb(ROLLOVER_STRIPE_COLOUR), 76)  # ~30% alpha
-        step = 24
-        # Diagonal lines every `step` pixels across a band wide enough to
-        # cover the full rectangle at 45° (h + w from top-left anchor).
-        for offset in range(-badge_h, badge_w + badge_h, step):
-            odraw.line(
-                (offset, badge_h, offset + badge_h, 0),
-                fill=stripe_rgba,
-                width=12,
-            )
-        img.paste(overlay, (anchor_x, anchor_y), overlay)
-
-    # Label text centered within the badge.
-    text_x = anchor_x + (badge_w - text_w) // 2
-    text_y = anchor_y + (badge_h - FONT_BADGE) // 2 - 2  # slight optical nudge
-    draw.text((text_x, text_y), label, font=font, fill="#ffffff")
-
-
-def _hex_to_rgb(hex_colour: str):
-    h = hex_colour.lstrip("#")
-    return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
+    badge_h = max(60, FONT_BADGE + 24)
+    text_y = anchor_y + (badge_h - FONT_BADGE) // 2 - 2  # match prior optical nudge
+    draw.text((anchor_x, text_y), label, font=font, fill=TEXT_PRIMARY)
