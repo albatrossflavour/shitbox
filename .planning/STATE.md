@@ -4,7 +4,7 @@ milestone: v2.0
 milestone_name: — Rally Ready
 status: unknown
 stopped_at: Phase 26 context gathered — ready for /gsd-plan-phase 26
-last_updated: "2026-04-23T02:26:00.823Z"
+last_updated: "2026-04-23T03:32:54.567Z"
 last_activity: 2026-04-23 -- Phase 26 execution started
 progress:
   total_phases: 13
@@ -151,4 +151,4 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
 
-**Planned Phase:** 26 (Event Video Title Cards) — 4 plans — 2026-04-23T01:27:56.715Z
+**Planned Phase:** 26 (Event Video Title Cards) — 5 plans — 2026-04-23T03:32:54.553Z
