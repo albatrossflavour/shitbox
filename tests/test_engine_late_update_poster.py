@@ -180,15 +180,18 @@ def test_poster_delivered_via_late_update_when_save_event_fires_first(
     engine._on_video_complete(eid, mp4_path, stable_png)
 
     # Step 3: assertions.
-    # The PNG was moved out of pending_slates/ and into day_dir with
-    # <base>_poster.png name.
+    # The PNG was moved out of pending_slates/ and into the captures day dir
+    # (G-07, plan 26-08 — NOT the events day dir; rsync only ships captures).
     assert not stable_png.exists(), "PNG must be moved out of pending_slates"
-    day_dirs = [d for d in events_dir.iterdir() if d.is_dir()]
-    assert len(day_dirs) == 1
-    day_dir = day_dirs[0]
+    captures_day_dirs = [d for d in captures_dir.iterdir() if d.is_dir()]
+    assert len(captures_day_dirs) == 1
+    day_dir = captures_day_dirs[0]
     posters = list(day_dir.glob("*_poster.png"))
-    assert len(posters) == 1, f"Expected 1 poster in day_dir, got {posters}"
+    assert len(posters) == 1, f"Expected 1 poster in captures day_dir, got {posters}"
     assert posters[0].stem == f"{json_path.stem}_poster"
+    assert not any(events_dir.rglob("*_poster.png")), (
+        "Poster must not be stranded in events_dir (rsync won't ship it)"
+    )
 
     # The event JSON carries poster_path (via update_event_poster) and
     # video_path (via update_event_video).

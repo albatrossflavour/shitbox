@@ -1306,7 +1306,14 @@ class UnifiedEngine:
             self.event_storage.update_event_video(json_path, path)
             if src_png is not None:
                 base_name = json_path.stem
-                day_dir = json_path.parent
+                # G-07 (plan 26-08): place the poster next to the MP4 in
+                # captures_dir — the tree rsync ships to the NAS. events_dir
+                # (where json_path lives) is Pi-local JSON+CSV.
+                day_str = json_path.parent.name
+                if self.event_storage.captures_dir is not None:
+                    day_dir = self.event_storage.captures_dir / day_str
+                else:
+                    day_dir = json_path.parent
                 dest_png = day_dir / f"{base_name}_poster.png"
                 try:
                     day_dir.mkdir(parents=True, exist_ok=True)
@@ -1384,7 +1391,15 @@ class UnifiedEngine:
                 if self.video_ring_buffer is not None:
                     base_name = self.event_storage._generate_filename(event)
                     if src_png is not None and src_png.exists():
-                        day_dir = self.event_storage._get_day_dir(event.start_time)
+                        # G-07 (plan 26-08): place the poster next to the MP4
+                        # in captures_dir — the tree rsync ships to the NAS.
+                        day_dir = self.event_storage.get_captures_day_dir(
+                            event.start_time
+                        )
+                        if day_dir is None:
+                            day_dir = self.event_storage._get_day_dir(
+                                event.start_time
+                            )
                         dest_png = day_dir / f"{base_name}_poster.png"
                         try:
                             day_dir.mkdir(parents=True, exist_ok=True)

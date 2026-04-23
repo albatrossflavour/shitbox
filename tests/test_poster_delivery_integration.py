@@ -261,13 +261,17 @@ def test_poster_survives_rmtree_and_appears_in_events_json(shared_harness):
     # Now run _check_post_captures (telemetry-thread equivalent).
     h.engine._check_post_captures()
 
-    # Post-engine-consume: PNG moved to day_dir, events.json carries poster_url.
-    day_dirs = [d for d in h.events_dir.iterdir() if d.is_dir()]
-    assert len(day_dirs) == 1, f"Expected 1 day dir, got {day_dirs}"
+    # Post-engine-consume: PNG moved to the captures day_dir (G-07, plan 26-08 —
+    # next to the MP4 so rsync ships it to the NAS); events.json carries poster_url.
+    day_dirs = [d for d in h.captures_dir.iterdir() if d.is_dir()]
+    assert len(day_dirs) == 1, f"Expected 1 captures day dir, got {day_dirs}"
     day_dir = day_dirs[0]
     poster_pngs = list(day_dir.glob("*_poster.png"))
+    assert not any(h.events_dir.rglob("*_poster.png")), (
+        "Poster stranded in events_dir (rsync won't ship it)"
+    )
     assert len(poster_pngs) == 1, (
-        f"Expected 1 <base>_poster.png in day_dir, got {poster_pngs}"
+        f"Expected 1 <base>_poster.png in captures day_dir, got {poster_pngs}"
     )
     assert list(h.vrb._pending_slates_dir.glob("*.png")) == []
     with h.engine._event_paths_lock:

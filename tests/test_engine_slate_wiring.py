@@ -410,12 +410,14 @@ def test_check_post_captures_consumes_from_poster_dict(
     with engine._event_paths_lock:
         assert eid not in engine._event_poster_paths
 
-    # A _poster.png should now exist in the day_dir (under events base_dir).
-    # _get_day_dir uses storage.base_dir (events_dir), not captures_dir.
-    day_dirs = [d for d in events_dir.iterdir() if d.is_dir()]
-    assert len(day_dirs) == 1
-    poster_pngs = list(day_dirs[0].glob("*_poster.png"))
+    # A _poster.png should now exist in the captures day dir (G-07, plan 26-08:
+    # posters land next to the MP4 so rsync ships them to the NAS — NOT in
+    # events_dir, which stays Pi-local JSON+CSV).
+    captures_day_dirs = [d for d in captures_dir.iterdir() if d.is_dir()]
+    assert len(captures_day_dirs) == 1
+    poster_pngs = list(captures_day_dirs[0].glob("*_poster.png"))
     assert len(poster_pngs) == 1
+    assert not any(events_dir.rglob("*_poster.png"))
 
 
 def test_check_post_captures_does_not_touch_pending_slate_png(

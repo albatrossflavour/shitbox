@@ -66,6 +66,21 @@ class EventStorage:
         day_dir.mkdir(exist_ok=True)
         return day_dir
 
+    def get_captures_day_dir(self, timestamp: float) -> Optional[Path]:
+        """Get captures day dir for a timestamp — None if captures_dir unset.
+
+        G-07 (plan 26-08): the poster PNG must land here (next to the MP4)
+        rather than next to the JSON. rsync only ships captures_dir to the
+        NAS; events_dir is Pi-local JSON+CSV.
+        """
+        if self.captures_dir is None:
+            return None
+        dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        day_str = dt.strftime("%Y-%m-%d")
+        day_dir = self.captures_dir / day_str
+        day_dir.mkdir(parents=True, exist_ok=True)
+        return day_dir
+
     def _generate_filename(self, event: Event) -> str:
         """Generate base filename for an event."""
         dt = datetime.fromtimestamp(event.start_time, tz=timezone.utc)
