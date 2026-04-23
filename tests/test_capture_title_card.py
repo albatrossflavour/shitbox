@@ -413,3 +413,40 @@ def test_render_end_to_end_integration(png_and_ts):
     assert duration == 1.0
     assert png_path.exists() and png_path.stat().st_size > 0
     assert ts_path.exists() and ts_path.stat().st_size > 0
+
+
+# Phase 27 (SC-3, D-10, D-11): Wave 0 packaging-sanity — bundled Cinzel
+# TTFs must load via Pillow from the in-tree asset path. If this test
+# fails, pyproject.toml's package-data glob is wrong OR the vendored
+# files are missing, and every slate on the Pi would fall through to
+# ImageFont.load_default() (10pt bitmap typewriter text).
+def test_cinzel_fonts_load():
+    pytest.importorskip("PIL")
+    from pathlib import Path
+
+    from PIL import ImageFont
+
+    assets_dir = (
+        Path(__file__).resolve().parent.parent
+        / "src"
+        / "shitbox"
+        / "capture"
+        / "assets"
+        / "cinzel"
+    )
+    bold_path = assets_dir / "Cinzel-Bold.ttf"
+    regular_path = assets_dir / "Cinzel-Regular.ttf"
+    ofl_path = assets_dir / "OFL.txt"
+
+    assert bold_path.is_file(), f"missing {bold_path}"
+    assert regular_path.is_file(), f"missing {regular_path}"
+    assert ofl_path.is_file(), f"missing {ofl_path}"
+
+    # Pillow must load both TTFs without raising; a fallback to
+    # ImageFont.load_default() would return an ImageFont of a different
+    # type, so we assert the concrete truetype load succeeds.
+    bold_font = ImageFont.truetype(str(bold_path), 140)
+    regular_font = ImageFont.truetype(str(regular_path), 40)
+
+    assert bold_font is not None
+    assert regular_font is not None
