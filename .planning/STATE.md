@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: unknown
-stopped_at: Phase 26 context gathered — ready for /gsd-plan-phase 26
-last_updated: "2026-04-23T03:46:31.022Z"
-last_activity: 2026-04-23 -- Phase --phase execution started
+status: in_progress
+stopped_at: Phase 26 execution resumed — 26-06 gap closure
+last_updated: "2026-04-23T05:15:00.000Z"
+last_activity: 2026-04-23 -- Phase 26 execution — running plan 26-06 (UAT gap closure)
 progress:
   total_phases: 13
   completed_phases: 8
@@ -22,18 +22,21 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase --phase — 26
+**Current focus:** Phase 26 — event-video-title-cards
 
 ## Current Position
 
-Phase: --phase (26) — EXECUTING
-Plan: 1 of --name
-  All 3 plans done:
+Phase: 26 (event-video-title-cards) — EXECUTING
+Plan: 6 of 6 — 26-06 (on-device UAT gap closure: G-01..G-05)
+  Plans 01-05 complete (SUMMARY.md written). 26-06 closes five gaps recorded in 26-HUMAN-UAT:
+    - G-01: event_video_updated late-update path misses poster delivery
+    - G-02: slate title overflow handling
+    - G-03: slate timestamp uses UTC instead of local time
+    - G-04: ring-buffer sweep guard
+    - G-05: mp4 pairing on late update (coupled with G-01)
 
-    - 23-01: 18-VERIFICATION.md created (8 Phase 18 requirements satisfied)
-    - 23-02: NARR-08b corrected in 19-VERIFICATION.md (stale BLOCKED → SATISFIED, score 11/11)
-    - 23-03: REQUIREMENTS.md traceability refreshed (17 checkboxes + 19 rows flipped); ROADMAP.md Phase 21/22 rows updated
-  23-VERIFICATION.md: 5/5 success criteria VERIFIED; one informational note re IMU-02 checkbox/table mismatch (pre-existing Phase 22 Pi UAT deferral, out of scope for this phase).
+Phase: 23 (verification-closure-and-traceability-sweep) — COMPLETE
+  3/3 plans; 23-VERIFICATION.md 5/5 success criteria VERIFIED.
 
 Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — COMPLETE
   7/7 plans; verified 2026-04-22 with deferred Pi UAT on IMU-02 sustained poll rate.
@@ -43,7 +46,7 @@ Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
 
 Next: Phase 24 (Phase 20 Physical Integration Completion) waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24.
 
-Last activity: 2026-04-23 -- Phase --phase execution started
+Last activity: 2026-04-23 -- Phase 26 execution — running plan 26-06 (UAT gap closure)
 
 Progress: 8/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
@@ -115,9 +118,9 @@ None.
 
 ## Session Continuity
 
-Last session: --stopped-at
-Stopped at: Phase 26 context gathered — ready for /gsd-plan-phase 26
-Resume file: --resume-file
+Last session: 2026-04-23T04:42:39.394Z
+Stopped at: context exhaustion at 92% (2026-04-23)
+Resume file: None
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
@@ -151,4 +154,4 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **RPi.GPIO on Pi 5**: The existing 9-clock bit-bang I2C recovery in sampler._i2c_bus_reset() uses RPi.GPIO which is not officially supported on Pi 5 — recovery calls likely silently fail. Not critical now that bit-bang bus is stable, but worth replacing with lgpio if lockups recur.
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
 
-**Planned Phase:** 26 (Event Video Title Cards) — 5 plans — 2026-04-23T03:32:54.553Z
+**Planned Phase:** 26 (event-video-title-cards) — 6 plans — 2026-04-23T05:00:15.218Z
