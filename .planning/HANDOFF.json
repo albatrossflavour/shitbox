@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-04-23T10:25:43.233Z",
+  "phase": null,
+  "phase_name": "between-phases",
+  "phase_dir": null,
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "G-08 driver font size matches date", "status": "done", "commit": "a93cce0"},
+    {"id": 2, "name": "Phase 26 closeout (ROADMAP/STATE/VERIFICATION)", "status": "done", "commit": "bc7aeef"},
+    {"id": 3, "name": "Brain coherence sweep (shitbox-rally-2026.md)", "status": "done", "commit": "Brain vault, not shitbox repo"},
+    {"id": 4, "name": "Merge phase-26 branch to main (merge commit, pushed, local branch deleted)", "status": "done", "commit": "7e25a4e"}
+  ],
+  "remaining_tasks": [
+    {"id": 5, "name": "Phase 27 Slate Visual Theming — spec via /gsd-discuss-phase 27", "status": "not_started"},
+    {"id": 6, "name": "Phase 20 / 24 physical integration", "status": "blocked_on_prints"},
+    {"id": 7, "name": "Phase 25 Nyquist validation sweep", "status": "queued_after_24"}
+  ],
+  "blockers": [],
+  "human_actions_pending": [
+    {"action": "Decide Phase 27 scope tier (min / stretch) before /gsd-discuss-phase 27", "context": "Phase 27 is a visual design pass over TitleCardRenderer — typography, palette, motif. Scope tier affects asset sourcing and timeline.", "blocking": false}
+  ],
+  "decisions": [
+    {"decision": "Merge phase-26 via merge commit (--no-ff), not squash", "rationale": "Preserves G-01..G-08 atomic gap-closure history; matches prior phase merge style (Phase 18 precedent)", "phase": "26"},
+    {"decision": "Driver credit rendered at FONT_DATE (40pt) instead of 28pt", "rationale": "On-Pi UAT feedback — driver line should read with same weight as date row. Coord row nudged y=500→520 to keep breathing room.", "phase": "26"},
+    {"decision": "Phase 27 scoped as standalone visual design phase, not 26 gap closure", "rationale": "Phase 26 pipeline is structurally complete and UAT-verified; theming is a distinct design pass with its own scope tiers and asset sourcing", "phase": "27"}
+  ],
+  "uncommitted_files": [],
+  "next_action": "/gsd-resume-work then /gsd-discuss-phase 27 to spec Slate Visual Theming. Alternative entry points: /gsd-plan-phase 27 (skip discuss), /gsd-check-todos (2 pending).",
+  "context_notes": "Phase 26 closed out cleanly. On-Pi UAT on 2026-04-23 confirmed render looks good; only request was the driver-font tweak which landed in a93cce0. main is at 7e25a4e on origin. Working tree clean. Next natural move is specing Phase 27 — should be a small design-oriented phase, pipeline code stays as-is."
+}
