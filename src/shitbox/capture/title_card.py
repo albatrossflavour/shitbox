@@ -71,7 +71,7 @@ CANVAS_H = 720
 FONT_HERO = 140
 FONT_DATE = 40
 FONT_COORD = 28
-FONT_DRIVER = 28
+FONT_DRIVER = FONT_DATE
 FONT_BADGE = 36
 
 # Palette — dark documentary look, matches the website (GitHub-ish).
@@ -351,7 +351,7 @@ class TitleCardRenderer:
 
         # Coord row (D-10 anchor when no hero; decorative otherwise).
         if coord_text:
-            _draw_centered(draw, coord_text, f_coord, y=500, fill=TEXT_MONO)
+            _draw_centered(draw, coord_text, f_coord, y=520, fill=TEXT_MONO)
 
         # Badge bottom-left (D-05).
         if show_badge:
