@@ -1677,12 +1677,13 @@ class VideoRingBuffer:
     def _cleanup_pending_slates(self) -> None:
         """Sweep pending_slates/ of orphan files from crashed prior runs.
 
-        Mirrors _cleanup_buffer's pattern. Guards against the rare in-run
-        race where `save_event` fires a thread before start() completes by
-        requiring BOTH mtime < process-start AND save-id-from-filename <
-        current _save_counter. (save_event does not itself check is_running
-        before spawning, so the sweep cannot assume no writer is racing it.)
-        Silent on empty dir.
+        G-04 fix: any file whose mtime predates this process's start is an
+        orphan by definition. save_event cannot fire until start() returns,
+        so an in-run writer will always produce mtime > _process_start_time.
+        The save_id guard the original implementation had was broken at
+        startup (_save_counter == 0 means numeric orphans could never satisfy
+        `save_id < _save_counter`) and is not needed for correctness — see
+        26-REVIEW.md WR-01.
         """
         try:
             entries = list(self._pending_slates_dir.iterdir())
@@ -1693,13 +1694,7 @@ class VideoRingBuffer:
             try:
                 if not entry.is_file():
                     continue
-                mtime_ok = entry.stat().st_mtime < self._process_start_time
-                try:
-                    save_id_from_name = int(entry.stem)
-                    id_ok = save_id_from_name < self._save_counter
-                except ValueError:
-                    id_ok = True  # unrecognised name — treat as orphan
-                if mtime_ok and id_ok:
+                if entry.stat().st_mtime < self._process_start_time:
                     entry.unlink()
                     removed += 1
             except OSError:
