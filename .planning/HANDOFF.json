@@ -1,34 +1,44 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-23T10:25:43.233Z",
-  "phase": null,
-  "phase_name": "between-phases",
-  "phase_dir": null,
+  "timestamp": "2026-04-23T23:57:33.730Z",
+  "phase": "27",
+  "phase_name": "slate-visual-theming",
+  "phase_dir": ".planning/phases/27-slate-visual-theming",
   "plan": null,
   "task": null,
   "total_tasks": null,
-  "status": "paused",
+  "status": "phase_complete_awaiting_next_pick",
   "completed_tasks": [
-    {"id": 1, "name": "G-08 driver font size matches date", "status": "done", "commit": "a93cce0"},
-    {"id": 2, "name": "Phase 26 closeout (ROADMAP/STATE/VERIFICATION)", "status": "done", "commit": "bc7aeef"},
-    {"id": 3, "name": "Brain coherence sweep (shitbox-rally-2026.md)", "status": "done", "commit": "Brain vault, not shitbox repo"},
-    {"id": 4, "name": "Merge phase-26 branch to main (merge commit, pushed, local branch deleted)", "status": "done", "commit": "7e25a4e"}
+    {"id": 1, "name": "Wave 1: vendor Cinzel TTFs + packaging", "status": "done", "commit": "a0ff8df"},
+    {"id": 2, "name": "Wave 2: Cinzel typography + ALL CAPS hero + state drop", "status": "done", "commit": "dbdb634"},
+    {"id": 3, "name": "Code review (0 critical, 1 warning, 3 info)", "status": "done", "commit": "7b53e0c"},
+    {"id": 4, "name": "Verification (5/5 SCs satisfied)", "status": "done", "commit": "68b866a"},
+    {"id": 5, "name": "User on-Pi UAT approval", "status": "done", "commit": null},
+    {"id": 6, "name": "Drop coloured badge fill + rollover stripes per UAT feedback", "status": "done", "commit": "2eb7711"},
+    {"id": 7, "name": "Phase 27 close-out (STATE + ROADMAP)", "status": "done", "commit": "c630b0c"},
+    {"id": 8, "name": "Merge gsd/phase-27-slate-visual-theming to main (--no-ff)", "status": "done", "commit": "3b4982d"}
   ],
   "remaining_tasks": [
-    {"id": 5, "name": "Phase 27 Slate Visual Theming — spec via /gsd-discuss-phase 27", "status": "not_started"},
-    {"id": 6, "name": "Phase 20 / 24 physical integration", "status": "blocked_on_prints"},
-    {"id": 7, "name": "Phase 25 Nyquist validation sweep", "status": "queued_after_24"}
+    {"id": 101, "name": "Push local main to origin/main (9 commits ahead)", "status": "not_started"},
+    {"id": 102, "name": "Investigate Pi 5 firmware mailbox hang (2026-04-24 09:34:31) via /gsd-debug", "status": "not_started"},
+    {"id": 103, "name": "Pick next phase: 14/15/16/20/24/25", "status": "not_started"},
+    {"id": 104, "name": "(non-blocking) WR-01 OFL.txt Reserved Font Name hygiene", "status": "not_started"},
+    {"id": 105, "name": "(non-blocking) IN-01 remove dead AU_STATE_ABBREVIATIONS helper", "status": "not_started"}
   ],
-  "blockers": [],
+  "blockers": [
+    {"description": "Pi 5 firmware mailbox timeout cascades to brcmfmac WiFi + xHCI, systemd kills shitbox-telemetry on 10s watchdog. First seen 2026-04-24 09:34:31 coincident with Phase 27 deploy + manual capture. Palliative: pin cpufreq governor to performance. Needs /gsd-debug root-cause pass.", "type": "technical", "workaround": "Pin cpufreq governor to performance; Phase 27 code is verified working otherwise."}
+  ],
   "human_actions_pending": [
-    {"action": "Decide Phase 27 scope tier (min / stretch) before /gsd-discuss-phase 27", "context": "Phase 27 is a visual design pass over TitleCardRenderer — typography, palette, motif. Scope tier affects asset sourcing and timeline.", "blocking": false}
+    {"action": "Decide whether to push main to origin now or after next phase", "context": "Phase 27 merged locally; 9 commits ahead of origin/main. User not asked before pause.", "blocking": false},
+    {"action": "Decide whether Pi 5 firmware hang needs its own /gsd-debug session before rally", "context": "Platform-level issue; unrelated to typography but coincident with deploy.", "blocking": false}
   ],
   "decisions": [
-    {"decision": "Merge phase-26 via merge commit (--no-ff), not squash", "rationale": "Preserves G-01..G-08 atomic gap-closure history; matches prior phase merge style (Phase 18 precedent)", "phase": "26"},
-    {"decision": "Driver credit rendered at FONT_DATE (40pt) instead of 28pt", "rationale": "On-Pi UAT feedback — driver line should read with same weight as date row. Coord row nudged y=500→520 to keep breathing room.", "phase": "26"},
-    {"decision": "Phase 27 scoped as standalone visual design phase, not 26 gap closure", "rationale": "Phase 26 pipeline is structurally complete and UAT-verified; theming is a distinct design pass with its own scope tiers and asset sourcing", "phase": "27"}
+    {"decision": "Scope Phase 27 to typography-only; keep palette, badge composition, coord row unchanged", "rationale": "User wanted a focused first pass; broader theming deferred", "phase": "27"},
+    {"decision": "Drop coloured badge fill + rollover stripe overlay after UAT", "rationale": "User feedback on shipped slate: 'we don't need the colour around the event type'. Kept function signature stable so callers are zero-touch.", "phase": "27"},
+    {"decision": "Drop AU state suffix entirely (Narellan, NSW -> NARELLAN)", "rationale": "User wanted a ranked-location feel; the state abbreviation felt redundant at hero weight", "phase": "27"},
+    {"decision": "Bundle Cinzel TTFs in-tree under SIL OFL 1.1 via pyproject.toml package-data glob", "rationale": "No fonts-cinzel apt package exists; Raspberry Pi OS does not ship it", "phase": "27"}
   ],
   "uncommitted_files": [],
-  "next_action": "/gsd-resume-work then /gsd-discuss-phase 27 to spec Slate Visual Theming. Alternative entry points: /gsd-plan-phase 27 (skip discuss), /gsd-check-todos (2 pending).",
-  "context_notes": "Phase 26 closed out cleanly. On-Pi UAT on 2026-04-23 confirmed render looks good; only request was the driver-font tweak which landed in a93cce0. main is at 7e25a4e on origin. Working tree clean. Next natural move is specing Phase 27 — should be a small design-oriented phase, pipeline code stays as-is."
+  "next_action": "Decide: (a) push to origin/main, (b) open /gsd-debug for Pi 5 firmware hang, or (c) pick next open phase (14/15/16/20/24/25).",
+  "context_notes": "Phase 27 is fully shipped and merged to main. User greenlit ship on 2026-04-24 after on-Pi UAT ('videos look good, loving the layout'). The only follow-up inside Phase 27 scope — removing coloured badge fill — was done before merge. Pi 5 firmware mailbox hang is a platform-level issue unrelated to typography, but it occurred immediately after deploy so keep it in mind when picking next work — it may affect fieldwork if not addressed before the rally."
 }
