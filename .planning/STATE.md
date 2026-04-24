@@ -4,52 +4,65 @@ milestone: v2.0
 milestone_name: — Rally Ready
 status: ready_to_plan
 stopped_at: 
-last_updated: "2026-04-24T08:45:29.584Z"
-last_activity: 2026-04-24 -- Phase 15 execution started
+last_updated: "2026-04-24T09:30:00.000Z"
+last_activity: 2026-04-24 -- Phase 17 human UAT passed; security_enforcement disabled
 progress:
-  total_phases: 13
-  completed_phases: 9
-  total_plans: 51
-  completed_plans: 49
-  percent: 69
+  total_phases: 16
+  completed_phases: 12
+  total_plans: 59
+  completed_plans: 59
+  percent: 75
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-09)
+See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 15 — undervoltage-and-monitoring
+**Current focus:** Phase 14 — Sensor Calibration (CAL-01, hard dependency for Phase 17 accuracy)
 
 ## Current Position
 
-Phase: 17
-Plan: Not started
-  Wave 0: 15-01 (alerts.py helper). Wave 1: 15-02 (PWR-01/02 fix), 15-03 (MON-03 capture alerts), 15-04 (MON-01/02 paperwork, checkpoint). Wave 2: 15-05 (D-13 Health page, checkpoint). Plans committed in 449e381, checker iter 2 passed clean.
+Phase: 14 — Sensor Calibration
+Status: ready to plan (no directory yet)
+  CAL-01 still Active in PROJECT.md. All sensors must be validated stationary + in-motion before relying on Phase 17 displays for accuracy. Run `/gsd-discuss-phase 14` or `/gsd-plan-phase 14` to begin.
 
-Phase: 27 (slate-visual-theming) — COMPLETE
-  2/2 plans; Cinzel Bold hero ALL CAPS with state suffix dropped, Cinzel Regular meta rows, coord row DejaVu Mono. Event-type badge colour fill dropped per on-Pi UAT feedback. On-Pi visual UAT confirmed 2026-04-24 ("videos look good, loving the layout").
+### Recently completed (v2.0)
 
-Phase: 26 (event-video-title-cards) — COMPLETE
-  6/6 plans; gap closure G-01..G-08 shipped. 26-VERIFICATION.md 6/6 criteria VERIFIED on 2026-04-23 with on-Pi UAT confirming render.
+| Phase | Name | Plans | Verified | Notes |
+|-------|------|-------|----------|-------|
+| 12 | Schema Foundation and Logbook API | 4/4 | 2026-04-09 | |
+| 13 | Driver Tracking | 4/4 | 2026-04-09 | |
+| 15 | Undervoltage and Monitoring | 5/5 | 2026-04-24 | executor worktree merged a1851fb |
+| 17 | Driver Display | 2/2 | 2026-04-24 | human UAT passed (timelapse thumbnail) ef2634f |
+| 18 | Website Revamp | 5/5 | 2026-04-11 | |
+| 19 | Website Narrative Rebuild | 12/12 | 2026-04-17 | |
+| 20 | Physical Integration | 3/3 | on disk | ROADMAP checkbox not yet ticked; Phase 24 finishes deferred 20-03 Task 3 |
+| 21 | Hardware Inventory and Graceful Degradation | 5/5 | 2026-04-21 | ROADMAP checkbox not yet ticked; WR-01..WR-04 carried forward |
+| 22 | IMU Signal Quality and Rollover Detection | 7/7 | 2026-04-22 | ROADMAP checkbox not yet ticked |
+| 23 | Verification Closure and Traceability Sweep | 3/3 | 2026-04-22 | |
+| 26 | Event Video Title Cards | 6/6 | 2026-04-23 | gap closure G-01..G-08 shipped |
+| 27 | Slate Visual Theming | 2/2 | 2026-04-24 | branch `gsd/phase-27-slate-visual-theming` unmerged to main |
 
-Phase: 23 (verification-closure-and-traceability-sweep) — COMPLETE
-  3/3 plans; 23-VERIFICATION.md 5/5 success criteria VERIFIED.
+### Pending
 
-Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — COMPLETE
-  7/7 plans; verified 2026-04-22 with deferred Pi UAT on IMU-02 sustained poll rate.
+| Phase | Name | Status |
+|-------|------|--------|
+| 14 | Sensor Calibration | not started — next priority |
+| 16 | Video Capture Tuning | not started |
+| 24 | Phase 20 Physical Integration Completion | waits on 3D prints |
+| 25 | Milestone v2.0 Nyquist Validation Sweep | queued after 24 |
 
-Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
-  5/5 plans; verified 2026-04-21. 4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
+Next: `/gsd-discuss-phase 14` (or `/gsd-plan-phase 14` if context is already in your head).
 
-Next: `/gsd-plan-phase 15` using the just-committed 15-CONTEXT.md. Phase 24 (Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24. Phases 14/16 open in backlog. Separate `/gsd-debug` needed for Pi 5 firmware mailbox hang observed 2026-04-24 09:34:31 (cpufreq ondemand governor + brcmfmac WiFi race).
+Outstanding bookkeeping (non-blocking): tick ROADMAP.md checkboxes for phases 20/21/22; merge `gsd/phase-27-slate-visual-theming` into main.
 
 Last activity: 2026-04-24
 
-Progress: 10/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
+Progress: 12/16 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
@@ -119,10 +132,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-24T06:38:16.771Z
-Stopped at: context exhaustion after plan-phase (2026-04-24)
-Resume file: `.planning/phases/15-undervoltage-and-monitoring/.continue-here.md`
-Next action: `/gsd-execute-phase 15` — 5 plans committed (`449e381`), checker passed iter 2. Wave 0: 15-01; Wave 1: 15-02/15-03/15-04 parallel (15-04 checkpoints for home-ops); Wave 2: 15-05. Phase 27 branch `gsd/phase-27-slate-visual-theming` still unmerged to main (separate concern).
+Last session: 2026-04-24T09:30:00Z
+Stopped at: Phase 17 human UAT passed; bookkeeping rolled up
+Resume file: None
+Next action: `/gsd-discuss-phase 14` — Sensor Calibration (CAL-01). Hard prerequisite for trusting Phase 17 numbers in the car.
 
 ## Out-of-Band Hardware Work (2026-04-10)
 

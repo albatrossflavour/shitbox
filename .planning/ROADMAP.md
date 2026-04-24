@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 — Operational Hardening** — Phases 1-11 (shipped 2026-04-09)
-- 🚧 **v2.0 — Rally Ready** — Phases 12-18 (in progress)
+- 🚧 **v2.0 — Rally Ready** — Phases 12-27 (12/16 complete)
 
 ## Phases
 
@@ -39,9 +39,9 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [x] **Phase 17: Driver Display** - Fullscreen 7" kiosk productionised with live data, alerts, and active driver (completed 2026-04-10)
 - [x] **Phase 18: Website Revamp** - Notes, fuel, and driver data integrated; Grafana improved (completed 2026-04-11)
 - [x] **Phase 19: Website Narrative Rebuild** - Day-centric IA with before/live/archive modes, timeline spine, progress-bar day nav (completed 2026-04-17)
-- [ ] **Phase 20: Physical Integration** - 3D-printed enclosures for Pi, screen, and camera; dash mounting; system verification
-- [ ] **Phase 21: Hardware Inventory and Graceful Degradation** - Per-device manifest, boot-time presence validation, graceful handling of missing/lost I2C and USB devices, TTS/OLED/UI status
-- [ ] **Phase 22: IMU Signal Quality and Rollover Detection** - LSM6DSOX register programming, ROLLOVER event type, stationary auto-zero (awaiting final milestone verifier)
+- [x] **Phase 20: Physical Integration** - 3D-printed enclosures for Pi, screen, and camera; dash mounting; system verification (3/3 plans on disk; 20-03 Task 3 deferred to Phase 24 pending prints)
+- [x] **Phase 21: Hardware Inventory and Graceful Degradation** - Per-device manifest, boot-time presence validation, graceful handling of missing/lost I2C and USB devices, TTS/OLED/UI status (completed 2026-04-21; WR-01..WR-04 hardening follow-ups)
+- [x] **Phase 22: IMU Signal Quality and Rollover Detection** - LSM6DSOX register programming, ROLLOVER event type, stationary auto-zero (completed 2026-04-22)
 - [x] **Phase 23: Verification Closure and Traceability Sweep** - Formal verify Phase 18, correct stale NARR-08b note, refresh REQUIREMENTS.md + ROADMAP.md tables (gap closure) (completed 2026-04-22)
 - [ ] **Phase 24: Phase 20 Physical Integration Completion** - Finish deferred 20-03 Task 3 (OpenSCAD review + Pi boot verify), produce 20-VERIFICATION.md (gap closure, waits on prints)
 - [ ] **Phase 25: Milestone v2.0 Nyquist Validation Sweep** - `/gsd-validate-phase` across phases 12/13/17/18/19/20/21 (gap closure)
@@ -194,7 +194,7 @@ active driver, a scrolling event ticker, and visible alert overlays for critical
 **Plans**: 2 plans
 
 - [x] 17-01-PLAN.md — Backend fixes: DS18B20 cabin temp fallback + thermal/undervoltage SSE alert bridge + Wave 0 tests
-- [ ] 17-02-PLAN.md — Kiosk 800x480 index.html rework: layout, overlays, 5-event ticker, waypoint haversine
+- [x] 17-02-PLAN.md — Kiosk 800x480 index.html rework: layout, overlays, 5-event ticker, waypoint haversine
 
 **UI hint**: yes
 
@@ -298,9 +298,9 @@ sensor placement but are not hard blockers)
 **Plans**: 3 plans
 
 Plans:
-- [ ] 20-01-PLAN.md — Pi 5 stack enclosure (measure + OpenSCAD design)
-- [ ] 20-02-PLAN.md — Screen bezel + VESA backplate + dash bracket (measure + OpenSCAD design)
-- [ ] 20-03-PLAN.md — Camera cradle + full system verification
+- [x] 20-01-PLAN.md — Pi 5 stack enclosure (measure + OpenSCAD design)
+- [x] 20-02-PLAN.md — Screen bezel + VESA backplate + dash bracket (measure + OpenSCAD design)
+- [x] 20-03-PLAN.md — Camera cradle + full system verification (Task 3 deferred to Phase 24, awaiting prints)
 
 **UI hint**: no
 
@@ -330,11 +330,11 @@ regardless of what is missing.
 **Plans**: 5 plans
 
 Plans:
-- [ ] 21-01-PLAN.md — Manifest config + HardwareState + probe primitives
-- [ ] 21-02-PLAN.md — HardwareSupervisor thread + speaker TTS lines
-- [ ] 21-03-PLAN.md — Collector base + sampler + ring_buffer hw_state hooks
-- [ ] 21-04-PLAN.md — OLED line 3 + SSE hardware payload + dashboard HARDWARE panel
-- [ ] 21-05-PLAN.md — Engine wiring + graceful boot (HW-05) + BME680 integration test
+- [x] 21-01-PLAN.md — Manifest config + HardwareState + probe primitives
+- [x] 21-02-PLAN.md — HardwareSupervisor thread + speaker TTS lines
+- [x] 21-03-PLAN.md — Collector base + sampler + ring_buffer hw_state hooks
+- [x] 21-04-PLAN.md — OLED line 3 + SSE hardware payload + dashboard HARDWARE panel
+- [x] 21-05-PLAN.md — Engine wiring + graceful boot (HW-05) + BME680 integration test
 
 **UI hint**: yes (dashboard hardware panel)
 
