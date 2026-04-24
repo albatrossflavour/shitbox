@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: in_progress
+status: unknown
 stopped_at: context exhaustion at 90% (2026-04-24)
-last_updated: "2026-04-24T05:14:20.099Z"
+last_updated: "2026-04-24T06:17:59.790Z"
 last_activity: 2026-04-24
 progress:
   total_phases: 13
   completed_phases: 8
-  total_plans: 46
+  total_plans: 51
   completed_plans: 45
-  percent: 98
+  percent: 88
 ---
 
 # Project State
@@ -156,3 +156,5 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 - **DS18B20 errors**: Still appearing but should reduce with retry fix. Both probes intermittently not ready.
 
 **Completed Phase:** 27 (Slate Visual Theming) — 2/2 plans — 2026-04-24 (on-Pi UAT confirmed)
+
+**Planned Phase:** 15 (undervoltage-and-monitoring) — 5 plans — 2026-04-24T06:17:59.780Z

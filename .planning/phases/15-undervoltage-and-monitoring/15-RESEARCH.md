@@ -656,14 +656,14 @@ line number, every function name, and every file path was read directly from the
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Sustain-read count N (2 vs 3).**
    - What we know: `thermal_monitor._loop()` sleeps `POLL_INTERVAL_S = 5.0` seconds between
      reads. Two reads = 5 s sustain; three reads = 10 s.
    - What's unclear: the canonical "transient cranking dip" duration on the Ford Laser. Starter
      motor load drops battery ~1-2 s.
-   - Recommendation: N=2 (10 s total including first-observation). Longer than any crank, shorter
+   - RESOLVED: N=2 (10 s total including first-observation). Longer than any crank, shorter
      than driver attention span. Document the number inline so it can be tuned from a single
      constant.
 
@@ -672,21 +672,21 @@ line number, every function name, and every file path was read directly from the
      takes `STALL_TIMEOUT_SECONDS = 30.0` s to detect. Each failed cycle is ~30 s before the next
      restart chance.
    - What's unclear: How many repeated restarts indicate "the camera is really gone" vs "bus hiccup."
-   - Recommendation: 3 consecutive restart attempts within a rolling 5-minute window. Matches
+   - RESOLVED: 3 consecutive restart attempts within a rolling 5-minute window. Matches
      Phase 21 backoff philosophy (5s → 15s → 60s → 5 min cap).
 
 3. **Health-page placement of system_conditions rows.**
    - What we know: Existing hardware modal renders devices grouped by tier (critical first).
    - What's unclear: whether system conditions get their own section ("System") or mix in as
      additional "critical" rows.
-   - Recommendation: separate section with its own label, rendered above devices. They describe
+   - RESOLVED: separate section with its own label, rendered above devices. They describe
      state of subsystems, not state of physical hardware.
 
 4. **Recovery TTS phrasing consistency.**
    - What we know: Phase 5 style is second-person, addresses Michael, terse and observational.
    - What's unclear: Whether "power restored" should feel relieved (tonal match to
      `speak_boot_thanks`) or matter-of-fact (tonal match to `speak_thermal_recovered`).
-   - Recommendation: Matter-of-fact. Longer-form relief phrases already exist for boot/service-
+   - RESOLVED: Matter-of-fact. Longer-form relief phrases already exist for boot/service-
      recovered paths.
 
 ---
