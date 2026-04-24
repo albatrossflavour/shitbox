@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: unknown
-stopped_at: context exhaustion at 90% (2026-04-24)
-last_updated: "2026-04-24T06:17:59.790Z"
+stopped_at: context exhaustion at 95% (2026-04-24)
+last_updated: "2026-04-24T06:19:11.740Z"
 last_activity: 2026-04-24
 progress:
   total_phases: 13
@@ -118,10 +118,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-24T05:14:20.091Z
-Stopped at: context exhaustion at 90% (2026-04-24)
-Resume file: None
-Next action: `/gsd-plan-phase 15` — research and UI-SPEC already present, planner runs first. Phase 27 branch `gsd/phase-27-slate-visual-theming` still unmerged to main (separate concern).
+Last session: 2026-04-24T06:38:16.771Z
+Stopped at: context exhaustion after plan-phase (2026-04-24)
+Resume file: `.planning/phases/15-undervoltage-and-monitoring/.continue-here.md`
+Next action: `/gsd-execute-phase 15` — 5 plans committed (`449e381`), checker passed iter 2. Wave 0: 15-01; Wave 1: 15-02/15-03/15-04 parallel (15-04 checkpoints for home-ops); Wave 2: 15-05. Phase 27 branch `gsd/phase-27-slate-visual-theming` still unmerged to main (separate concern).
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
