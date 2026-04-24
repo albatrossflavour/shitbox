@@ -15,8 +15,30 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from shitbox.capture import buzzer
+from shitbox.capture.speaker import (
+    speak_capture_failed,
+    speak_ffmpeg_stall,
+    speak_service_recovered,
+)
 from shitbox.hardware import state as hw_state
 from shitbox.utils.logging import get_logger
+
+# Graceful-degradation import per Phase 21 D-04 ("never refuse boot").
+# The ring buffer must keep running and beeping on a stall even if the
+# health/alerts module is absent for any reason.
+try:
+    from shitbox.health import alerts
+except ImportError:  # pragma: no cover — defensive fallback
+    class _NoopAlerts:
+        @staticmethod
+        def fire_alert(*_a: Any, **_k: Any) -> None:
+            pass
+
+        @staticmethod
+        def fire_recovery(*_a: Any, **_k: Any) -> None:
+            pass
+
+    alerts = _NoopAlerts()  # type: ignore[assignment]
 
 if TYPE_CHECKING:
     from shitbox.capture.title_card import TitleCardRenderer
@@ -111,6 +133,11 @@ class VideoRingBuffer:
         self._stall_check_armed: bool = False
         self._last_segment_mtime: float = 0.0
         self._last_segment_size: int = 0
+
+        # Phase 15 MON-03: consecutive ffmpeg restart counter. Reset only on
+        # recovery (a clean segment observed after a prior failure), not on
+        # every restart. Escalates to CAPTURE_DOWN at >= 3.
+        self._consecutive_restart_count: int = 0
 
         # Phase 26: title-card slate. All three set by the engine (plan 26-04
         # Task 3); left as default sentinels so the ring buffer runs unchanged
@@ -908,6 +935,30 @@ class VideoRingBuffer:
                 if self._process is not None and self._process.poll() is None:
                     self._read_stderr()
 
+                # Phase 15 MON-03: recovery check. If a prior iteration
+                # incremented the restart counter and the stall detector is
+                # now armed (segments flowing again), announce recovery and
+                # reset the counter. _check_stall is called at most once per
+                # cycle so timers do not double-advance.
+                stall_now: Optional[bool] = None
+                if (
+                    self._consecutive_restart_count > 0
+                    and self._stall_check_armed
+                    and self._process is not None
+                    and self._process.poll() is None
+                ):
+                    stall_now = self._check_stall()
+                    if not stall_now:
+                        alerts.fire_recovery(
+                            "CAPTURE_FAILURE",
+                            active=False,
+                            message="RECORDING RESUMED",
+                            tts_fn=speak_service_recovered,
+                            sustain_required=1,
+                            recovery_subtype="CAPTURE_RESTORED",
+                        )
+                        self._consecutive_restart_count = 0
+
                 # Restart if ffmpeg crashed
                 if self._process is not None and self._process.poll() is not None:
                     rc = self._process.returncode
@@ -930,12 +981,25 @@ class VideoRingBuffer:
                             time.sleep(1.0)
                         continue
                     self._start_ffmpeg()
+                    self._consecutive_restart_count += 1
+                    if self._consecutive_restart_count >= 3:
+                        alerts.fire_alert(
+                            "CAPTURE_DOWN",
+                            active=True,
+                            message="CAPTURE DOWN",
+                            tts_fn=speak_capture_failed,
+                            sustain_required=1,
+                        )
                     last_audio_retry = time.time()
                     continue
 
-                # Restart if ffmpeg is alive but has stopped writing segments
+                # Restart if ffmpeg is alive but has stopped writing segments.
+                # Reuse the cached stall_now value if the recovery branch
+                # already called _check_stall this cycle; otherwise evaluate now.
                 if self._process is not None and self._process.poll() is None:
-                    if self._check_stall():
+                    if stall_now is None:
+                        stall_now = self._check_stall()
+                    if stall_now:
                         stderr = self._read_stderr()
                         log.warning(
                             "video_ring_buffer_ffmpeg_stalled",
@@ -945,10 +1009,26 @@ class VideoRingBuffer:
                         )
                         hw_state.report_degraded(self.role)
                         buzzer.beep_ffmpeg_stall()
+                        alerts.fire_alert(
+                            "CAPTURE_FAILURE",
+                            active=True,
+                            message="CAPTURE STALLED",
+                            tts_fn=speak_ffmpeg_stall,
+                            sustain_required=1,
+                        )
                         # Kill before replacing _process reference to avoid zombies
                         self._kill_current()
                         self._reset_stall_state()
                         self._start_ffmpeg()
+                        self._consecutive_restart_count += 1
+                        if self._consecutive_restart_count >= 3:
+                            alerts.fire_alert(
+                                "CAPTURE_DOWN",
+                                active=True,
+                                message="CAPTURE DOWN",
+                                tts_fn=speak_capture_failed,
+                                sustain_required=1,
+                            )
                         last_audio_retry = time.time()
                         continue
 
