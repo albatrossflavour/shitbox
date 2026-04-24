@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: in_progress
-stopped_at: Phase 15 context gathered — ready for /gsd-plan-phase 15
-last_updated: "2026-04-24T01:00:00Z"
-last_activity: 2026-04-24 -- Phase 15 discuss-phase complete; 10 decisions locked, Health page expansion added
+stopped_at: Phase 15 UI-SPEC approved — ready for /gsd-plan-phase 15
+last_updated: "2026-04-24T02:00:00Z"
+last_activity: 2026-04-24 -- Phase 15 research + validation + UI-SPEC approved; 6/6 UI dimensions passed (spacing FLAG non-blocking, pre-existing row padding)
 progress:
   total_phases: 13
   completed_phases: 10
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 15 — context gathered, ready for `/gsd-plan-phase 15`; backlog after: 14/16/20/24/25
+**Current focus:** Phase 15 — research + UI-SPEC locked, ready for `/gsd-plan-phase 15`; backlog after: 14/16/20/24/25
 
 ## Current Position
 
-Phase: 15 (undervoltage-and-monitoring) — DISCUSS-PHASE COMPLETE
-  10 decisions locked. PWR-01 bitmask fix (mask+sustain), PWR-02 alert+recovery, reuse ALERT subtype channel, ffmpeg-stall as sole capture-failure trigger, delete MQTT scrape job, tiny `health/alerts.py` helper as Phase 21 seam, Health-page sticky state expansion (D-13, user add). 15-CONTEXT.md + 15-DISCUSSION-LOG.md committed. Next: `/gsd-plan-phase 15`.
+Phase: 15 (undervoltage-and-monitoring) — READY TO PLAN
+  10 decisions + D-13 Health-page expansion locked. Research HIGH confidence (bug site at thermal_monitor.py:297 — compare-on-raw, fix needs `raw & 0xf` + sustain counter move). UI-SPEC APPROVED: 6/6 dimensions passed (Spacing FLAG on pre-existing 10px `hw-row-lg` padding, non-blocking). Artifacts: 15-CONTEXT.md + 15-DISCUSSION-LOG.md + 15-RESEARCH.md + 15-VALIDATION.md + 15-UI-SPEC.md all committed. Next: `/gsd-plan-phase 15` (research and UI-SPEC survive re-entry, go straight to planner).
 
 Phase: 27 (slate-visual-theming) — COMPLETE
   2/2 plans; Cinzel Bold hero ALL CAPS with state suffix dropped, Cinzel Regular meta rows, coord row DejaVu Mono. Event-type badge colour fill dropped per on-Pi UAT feedback. On-Pi visual UAT confirmed 2026-04-24 ("videos look good, loving the layout").
@@ -118,10 +118,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-24T01:00:00Z
-Stopped at: Phase 15 context gathered — 10 decisions locked, Health page expansion added (D-13)
-Resume file: .planning/phases/15-undervoltage-and-monitoring/15-CONTEXT.md
-Next action: `/gsd-plan-phase 15`. Phase 27 branch `gsd/phase-27-slate-visual-theming` still unmerged to main (separate concern).
+Last session: 2026-04-24T02:00:00Z
+Stopped at: Phase 15 UI-SPEC approved (6/6 dimensions, spacing FLAG non-blocking)
+Resume file: .planning/phases/15-undervoltage-and-monitoring/15-UI-SPEC.md
+Next action: `/gsd-plan-phase 15` — research and UI-SPEC already present, planner runs first. Phase 27 branch `gsd/phase-27-slate-visual-theming` still unmerged to main (separate concern).
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
