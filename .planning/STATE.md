@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: unknown
-stopped_at: context exhaustion at 95% (2026-04-24)
-last_updated: "2026-04-24T06:19:11.740Z"
-last_activity: 2026-04-24
+stopped_at: ""
+last_updated: "2026-04-24T06:41:11.072Z"
+last_activity: 2026-04-24 -- Phase 15 execution started
 progress:
   total_phases: 13
   completed_phases: 8
@@ -22,12 +22,13 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 15 — research + UI-SPEC locked, ready for `/gsd-plan-phase 15`; backlog after: 14/16/20/24/25
+**Current focus:** Phase 15 — undervoltage-and-monitoring (EXECUTING, 5 plans)
 
 ## Current Position
 
-Phase: 15 (undervoltage-and-monitoring) — READY TO PLAN
-  10 decisions + D-13 Health-page expansion locked. Research HIGH confidence (bug site at thermal_monitor.py:297 — compare-on-raw, fix needs `raw & 0xf` + sustain counter move). UI-SPEC APPROVED: 6/6 dimensions passed (Spacing FLAG on pre-existing 10px `hw-row-lg` padding, non-blocking). Artifacts: 15-CONTEXT.md + 15-DISCUSSION-LOG.md + 15-RESEARCH.md + 15-VALIDATION.md + 15-UI-SPEC.md all committed. Next: `/gsd-plan-phase 15` (research and UI-SPEC survive re-entry, go straight to planner).
+Phase: 15 (undervoltage-and-monitoring) — EXECUTING
+Plan: 0 of 5 complete
+  Wave 0: 15-01 (alerts.py helper). Wave 1: 15-02 (PWR-01/02 fix), 15-03 (MON-03 capture alerts), 15-04 (MON-01/02 paperwork, checkpoint). Wave 2: 15-05 (D-13 Health page, checkpoint). Plans committed in 449e381, checker iter 2 passed clean.
 
 Phase: 27 (slate-visual-theming) — COMPLETE
   2/2 plans; Cinzel Bold hero ALL CAPS with state suffix dropped, Cinzel Regular meta rows, coord row DejaVu Mono. Event-type badge colour fill dropped per on-Pi UAT feedback. On-Pi visual UAT confirmed 2026-04-24 ("videos look good, loving the layout").
@@ -46,7 +47,7 @@ Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
 
 Next: `/gsd-plan-phase 15` using the just-committed 15-CONTEXT.md. Phase 24 (Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24. Phases 14/16 open in backlog. Separate `/gsd-debug` needed for Pi 5 firmware mailbox hang observed 2026-04-24 09:34:31 (cpufreq ondemand governor + brcmfmac WiFi race).
 
-Last activity: 2026-04-24
+Last activity: 2026-04-24 -- Phase 15 execution started
 
 Progress: 10/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
