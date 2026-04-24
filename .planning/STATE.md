@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: blocked
-stopped_at: physical-integration
-last_updated: "2026-04-24T09:45:00.000Z"
-last_activity: 2026-04-24 -- v2.0 code work paused; all remaining phases blocked on Pi case prints + in-car install
+status: physical-integration upstream of v2.0; TPMS spike actionable
+stopped_at: context exhaustion at 90% (2026-04-24)
+last_updated: "2026-04-24T09:37:51.531Z"
+last_activity: 2026-04-24
 progress:
-  total_phases: 16
-  completed_phases: 12
-  total_plans: 59
-  completed_plans: 59
-  percent: 75
+  total_phases: 13
+  completed_phases: 9
+  total_plans: 51
+  completed_plans: 50
+  percent: 98
 ---
 
 # Project State
@@ -35,10 +35,12 @@ Status: physical-integration upstream of v2.0; TPMS spike actionable
     → unblocks Phases 14 (sensor cal) and 16 (ELP 4K) → Phase 25 closes v2.0
 
   Newly actionable (parts arrived 2026-04-24):
+
     - TPMS Path A spike: CC1101 + ESP32-S3 in hand. RF sniff/decode of the
       aftermarket TPMS transmissions. Independent of v2.0 critical path —
       can run in parallel with the case redesign. Likely a /gsd-spike or
       new phase depending on scope.
+
     - GX12 case redesign: drives the clamshell rework that unblocks the
       print queue. Brain `project_pi_case_v2.md` needs updating before
       next print run.
@@ -69,7 +71,19 @@ Status: physical-integration upstream of v2.0; TPMS spike actionable
 | 16 | Video Capture Tuning | ELP 4K mounted in car at final position |
 | 25 | Milestone v2.0 Nyquist Validation Sweep | Phase 24 complete |
 
-Next: nothing actionable on the code side. Resume here when the case is printed and the rig is mounted.
+Next: Pi case v2 design conversation — GX12 connectors arrived, case needs reworking before next print run.
+
+  Topics to walk through next session:
+    - Read `~/Brain/projects/project_pi_case_v2.md` first — has v1 bugs to fix
+    - GX12 cutouts: how many connectors total (one-wire bus, GPIO buttons), panel-mount geometry, body diameter, internal clearance for connector backs
+    - Pi 5 port layout sanity check — USB-C is at the DISPLAY end of the long edge, not the USB-A end (memory: feedback_pi5_port_layout)
+    - Existing v1 bug list from the v2 doc
+    - Print orientation, wall thickness, support strategy
+    - Whether to also accommodate the dust sensor adapter / future ADS1015 in this revision or leave it for v3
+
+  Once the design is settled, the print → mount → Phase 24 → 14/16/25 chain unblocks.
+
+  TPMS spike (CC1101 RF sniff/decode) is a parallel track — does not block the case work.
 
 Last activity: 2026-04-24
 
@@ -143,8 +157,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-24T09:45:00Z
-Stopped at: v2.0 code work paused — all four remaining phases blocked on Pi case prints + in-car install
+Last session: 2026-04-24T09:37:51.524Z
+Stopped at: context exhaustion at 90% (2026-04-24)
 Resume file: None
 Next action: physical world — print Pi case (see Brain `project_pi_case_v2.md`), assemble, mount in car. Then return for Phase 24 OpenSCAD review + boot verify, after which Phases 14, 16, 25 unblock in sequence.
 
