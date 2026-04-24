@@ -34,7 +34,7 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [x] **Phase 12: Schema Foundation and Logbook API** - New DB tables, notes and fuel endpoints, sync pipeline extension (completed 2026-04-09)
 - [x] **Phase 13: Driver Tracking** - Active driver interface, stint tracking, event attribution (completed 2026-04-09)
 - [ ] **Phase 14: Sensor Calibration** - All sensors validated and calibrated; event thresholds re-confirmed
-- [ ] **Phase 15: Undervoltage and Monitoring** - Undervoltage fix confirmed, monitoring gaps closed, critical events visible
+- [x] **Phase 15: Undervoltage and Monitoring** - Undervoltage fix confirmed, monitoring gaps closed, critical events visible (completed 2026-04-24)
 - [ ] **Phase 16: Video Capture Tuning** - Camera modes empirically listed; optimal settings confirmed
 - [x] **Phase 17: Driver Display** - Fullscreen 7" kiosk productionised with live data, alerts, and active driver (completed 2026-04-10)
 - [x] **Phase 18: Website Revamp** - Notes, fuel, and driver data integrated; Grafana improved (completed 2026-04-11)
@@ -144,13 +144,13 @@ closed; critical system events surface on the live dashboard.
   4. The Prometheus scrape job label conflict (shitbox-mqtt-exporter) is resolved with no duplicate or missing metric series
   5. Thermal alerts, undervoltage events, and capture failures are all visible in the live dashboard UI
 
-**Plans:** 5 plans
+**Plans:** 5/5 plans complete
 
-- [ ] 15-01-PLAN.md — Create alerts.py helper (sustain, transition, recovery) + speak_power_restored TTS + unit tests (Wave 0, foundation for downstream plans)
-- [ ] 15-02-PLAN.md — PWR-01 + PWR-02: fix thermal_monitor sticky-bit bug, wire undervoltage ALERT + POWER RESTORED recovery, regression tests (Wave 1)
-- [ ] 15-03-PLAN.md — MON-03: wire capture-failure alerts (CAPTURE_FAILURE, CAPTURE_DOWN escalation, CAPTURE_RESTORED recovery) into ring_buffer._health_monitor + tests (Wave 1)
-- [ ] 15-04-PLAN.md — MON-01 + MON-02 paperwork: flip REQUIREMENTS.md checkboxes + delete dead shitbox-mqtt-exporter tree from home-ops (Wave 1, has human-verify checkpoint)
-- [ ] 15-05-PLAN.md — D-13 Health page: system_conditions payload + SYSTEM section in modal + sc-* badges + showAlert green recovery branch + tests (Wave 2, has human-verify checkpoint)
+- [x] 15-01-PLAN.md — Create alerts.py helper (sustain, transition, recovery) + speak_power_restored TTS + unit tests (Wave 0, foundation for downstream plans)
+- [x] 15-02-PLAN.md — PWR-01 + PWR-02: fix thermal_monitor sticky-bit bug, wire undervoltage ALERT + POWER RESTORED recovery, regression tests (Wave 1)
+- [x] 15-03-PLAN.md — MON-03: wire capture-failure alerts (CAPTURE_FAILURE, CAPTURE_DOWN escalation, CAPTURE_RESTORED recovery) into ring_buffer._health_monitor + tests (Wave 1)
+- [x] 15-04-PLAN.md — MON-01 + MON-02 paperwork: flip REQUIREMENTS.md checkboxes + delete dead shitbox-mqtt-exporter tree from home-ops (Wave 1, has human-verify checkpoint)
+- [x] 15-05-PLAN.md — D-13 Health page: system_conditions payload + SYSTEM section in modal + sc-* badges + showAlert green recovery branch + tests (Wave 2, has human-verify checkpoint)
 
 **UI hint**: yes
 
@@ -519,7 +519,7 @@ Plans:
 | 12. Schema Foundation and Logbook API | v2.0 | 4/4 | Complete    | 2026-04-09 |
 | 13. Driver Tracking | v2.0 | 4/4 | Complete    | 2026-04-09 |
 | 14. Sensor Calibration | v2.0 | TBD | Not started | — |
-| 15. Undervoltage and Monitoring | v2.0 | TBD | Not started | — |
+| 15. Undervoltage and Monitoring | v2.0 | 5/5 | Complete    | 2026-04-24 |
 | 16. Video Capture Tuning | v2.0 | TBD | Not started | — |
 | 17. Driver Display | v2.0 | 1/2 | Complete    | 2026-04-10 |
 | 18. Website Revamp | v2.0 | 5/5 | Complete    | 2026-04-11 |

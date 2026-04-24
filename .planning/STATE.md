@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: active
+status: ready_to_plan
 stopped_at: 
 last_updated: "2026-04-24T08:45:29.584Z"
 last_activity: 2026-04-24 -- Phase 15 execution started
 progress:
   total_phases: 13
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 51
   completed_plans: 49
-  percent: 96
+  percent: 69
 ---
 
 # Project State
@@ -26,8 +26,8 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 
 ## Current Position
 
-Phase: 15 (undervoltage-and-monitoring) — EXECUTING
-Plan: 1 of 5
+Phase: 17
+Plan: Not started
   Wave 0: 15-01 (alerts.py helper). Wave 1: 15-02 (PWR-01/02 fix), 15-03 (MON-03 capture alerts), 15-04 (MON-01/02 paperwork, checkpoint). Wave 2: 15-05 (D-13 Health page, checkpoint). Plans committed in 449e381, checker iter 2 passed clean.
 
 Phase: 27 (slate-visual-theming) — COMPLETE
@@ -47,7 +47,7 @@ Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
 
 Next: `/gsd-plan-phase 15` using the just-committed 15-CONTEXT.md. Phase 24 (Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24. Phases 14/16 open in backlog. Separate `/gsd-debug` needed for Pi 5 firmware mailbox hang observed 2026-04-24 09:34:31 (cpufreq ondemand governor + brcmfmac WiFi race).
 
-Last activity: 2026-04-24 -- Phase 15 execution started
+Last activity: 2026-04-24
 
 Progress: 10/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 

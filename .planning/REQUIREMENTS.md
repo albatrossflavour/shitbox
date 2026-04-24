@@ -48,14 +48,14 @@
 
 ### Undervoltage (PWR)
 
-- [ ] **PWR-01**: Undervoltage hardware fix confirmed; software correctly detects current undervoltage using bits 0-3 only (not sticky historical bits)
-- [ ] **PWR-02**: Undervoltage alert surfaces visibly in the live dashboard and triggers a spoken TTS alert
+- [x] **PWR-01**: Undervoltage hardware fix confirmed; software correctly detects current undervoltage using bits 0-3 only (not sticky historical bits)
+- [x] **PWR-02**: Undervoltage alert surfaces visibly in the live dashboard and triggers a spoken TTS alert
 
 ### Monitoring (MON)
 
 - [x] **MON-01**: HLTH-01 closed — CPU temp, disk %, and sync backlog metrics confirmed reaching Prometheus end-to-end; `insert_readings_batch` cpu_percent bug fixed
 - [x] **MON-02**: Prometheus scrape job label conflict resolved (job: shitbox-mqtt-exporter no longer collides with shitbox metrics)
-- [ ] **MON-03**: All critical events (thermal, undervoltage, capture failure) surface visibly in the live dashboard
+- [x] **MON-03**: All critical events (thermal, undervoltage, capture failure) surface visibly in the live dashboard
 
 ### Narrative (NARR)
 
@@ -147,11 +147,11 @@
 | CAL-02 | Phase 14 | Pending |
 | VID-01 | Phase 16 | Pending |
 | VID-02 | Phase 16 | Pending |
-| PWR-01 | Phase 15 | Pending |
-| PWR-02 | Phase 15 | Pending |
-| MON-01 | Phase 15 | Pending |
-| MON-02 | Phase 15 | Pending |
-| MON-03 | Phase 15 | Pending |
+| PWR-01 | Phase 15 | Complete |
+| PWR-02 | Phase 15 | Complete |
+| MON-01 | Phase 15 | Complete |
+| MON-02 | Phase 15 | Complete |
+| MON-03 | Phase 15 | Complete |
 | NARR-01 | Phase 19 | Complete |
 | NARR-02 | Phase 19 | Complete |
 | NARR-03 | Phase 19 | Complete |
