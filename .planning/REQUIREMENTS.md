@@ -53,8 +53,8 @@
 
 ### Monitoring (MON)
 
-- [ ] **MON-01**: HLTH-01 closed — CPU temp, disk %, and sync backlog metrics confirmed reaching Prometheus end-to-end; `insert_readings_batch` cpu_percent bug fixed
-- [ ] **MON-02**: Prometheus scrape job label conflict resolved (job: shitbox-mqtt-exporter no longer collides with shitbox metrics)
+- [x] **MON-01**: HLTH-01 closed — CPU temp, disk %, and sync backlog metrics confirmed reaching Prometheus end-to-end; `insert_readings_batch` cpu_percent bug fixed
+- [x] **MON-02**: Prometheus scrape job label conflict resolved (job: shitbox-mqtt-exporter no longer collides with shitbox metrics)
 - [ ] **MON-03**: All critical events (thermal, undervoltage, capture failure) surface visibly in the live dashboard
 
 ### Narrative (NARR)
