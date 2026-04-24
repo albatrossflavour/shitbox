@@ -526,3 +526,56 @@ Plans:
 | 25. Milestone v2.0 Nyquist Validation Sweep | v2.0 | TBD | Not started | — |
 | 26. Event Video Title Cards | v2.0 | 6/6 | Complete | 2026-04-23 |
 | 27. Slate Visual Theming | v2.0 | 2/2 | Complete    | 2026-04-23 |
+
+## Backlog — Captured, Not Yet Actionable
+
+Parking spot for hardware/feature work the user has decided on but which is
+not ready to spec as a phase. Order is not significant. Each item lists the
+constraint that is keeping it out of active planning so the trigger is
+obvious when it clears.
+
+### TPMS integration (cheap kit, hackable signal)
+
+- Aftermarket TPMS kit ordered (budget unit, 433 MHz transmitters).
+- **Path A — RF decode:** CC1101 433 MHz transceiver on order. Plan is to
+  sniff the per-sensor transmissions and decode pressure/temperature
+  directly. Preferred path — single component, integrates cleanly into the
+  I2C/SPI sensor story.
+- **Path B — display scrape:** ESP32-S3 camera board on order as fallback.
+  If the RF protocol resists decoding in a reasonable time, point the cam
+  at the kit's own display and OCR the readings. Less elegant but a known
+  escape hatch.
+- **Unblocked when:** CC1101 arrives and the RF attempt either works or is
+  formally abandoned for Path B.
+- **Affects:** sensor manifest (Phase 21 equivalent), collector shape
+  (new TyrePressureCollector), dashboard tiles, website summary.
+
+### GX12 3-pin connectors for one-wire + GPIO buttons
+
+- GX12 3-pin connectors ordered. Intent is to terminate the one-wire bus
+  (DS18B20 probes) and the GPIO buttons in proper panel-mount connectors
+  instead of pigtails through the case.
+- **Case impact:** the Pi case design changes — panel cutouts for the GX12
+  bodies and internal space for the connector backs. v2 clamshell drawing
+  in `project_pi_case_v2.md` needs updating before the next print run.
+- **Unblocked when:** connectors arrive, clamshell model reworked, printer
+  queue has time.
+- **Affects:** Phase 24 (Phase 20 gap closure) / future case revision.
+
+### Retire SEN0460 (PM2.5) — replace with dual GP2Y1010AU0F
+
+- SEN0460 is being dropped due to reliability. Dust sensing becomes a
+  two-sensor story:
+  - **Internal:** one `GP2Y1010AU0F` inside the cabin, wired to the Pi
+    via an `ADS1015` 4-channel ADC on I2C. Straight analog read, no
+    bus-sharing drama.
+  - **External:** a second `GP2Y1010AU0F` under the wind baffle on the
+    roof rack, read by a dedicated ESP32 and reported back over MQTT /
+    HTTP to the Pi (keeps long analog runs out of the loom).
+- Both sensors use the Core Electronics dust-sensor adapter
+  (<https://core-electronics.com.au/dust-sensor-adapter.html>) to normalise
+  cabling and the LED/photodiode pulse timing.
+- **Unblocked when:** parts arrive (sensors, ADS1015, adapters, ESP32),
+  and GX12 work is far enough along that the loom story is stable.
+- **Affects:** sensor manifest, SEN0460 code paths (to be removed), config
+  schema (new cabin/external dust collectors), website + Grafana panels.
