@@ -6,12 +6,9 @@ shitbox.health.thermal_monitor — this is expected and correct.
 """
 
 import threading
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from shitbox.health.thermal_monitor import ThermalMonitorService  # type: ignore[import]
-
 
 # ---------------------------------------------------------------------------
 # THRM-01: Temperature published to shared state
@@ -182,7 +179,6 @@ def test_under_voltage_triggers_buzzer() -> None:
 def test_vcgencmd_not_found_graceful() -> None:
     """THRM-03: FileNotFoundError from vcgencmd → _read_throttled returns None, no exception."""
     service = ThermalMonitorService()
-    import subprocess
 
     with patch("subprocess.run", side_effect=FileNotFoundError):
         result = service._read_throttled()
@@ -255,4 +251,147 @@ def test_undervoltage_pushes_dashboard_alert() -> None:
     assert "UNDERVOLTAGE" in str(event["message"]), (
         f"expected 'UNDERVOLTAGE' in message, got {event['message']!r}"
     )
+    alerts_mod.clear_state()
+
+
+# --- Phase 15 PWR-01 / PWR-02 regressions ---
+
+
+def test_pwr01_sticky_bits_ignored() -> None:
+    """PWR-01/D-01: bitmask with only sticky bits 16-19 set must NOT fire."""
+    from shitbox.health import alerts as alerts_mod
+    alerts_mod.clear_state()
+
+    service = ThermalMonitorService()
+    # 0x50000: bit 16 + bit 18 set — sticky throttling-occurred + sticky soft-temp-occurred.
+    # Low nibble == 0 — no current undervoltage.
+    with (
+        patch.object(service, "_read_throttled", return_value=0x50000),
+        patch("shitbox.health.thermal_monitor.beep_under_voltage") as mock_beep,
+        patch("shitbox.health.thermal_monitor.speak_under_voltage") as mock_tts,
+        patch("shitbox.health.alerts.dashboard_push_event") as mock_push,
+    ):
+        for _ in range(5):
+            service._check_throttled()
+
+    mock_push.assert_not_called()
+    mock_beep.assert_not_called()
+    mock_tts.assert_not_called()
+    alerts_mod.clear_state()
+
+
+def test_pwr01_sustain_required() -> None:
+    """PWR-01/D-02: low nibble set for only 1 cycle must NOT fire (sustain_required=2)."""
+    from shitbox.health import alerts as alerts_mod
+    alerts_mod.clear_state()
+
+    service = ThermalMonitorService()
+    raws = [0x1, 0x0]
+    with (
+        patch.object(service, "_read_throttled", side_effect=raws),
+        patch("shitbox.health.thermal_monitor.beep_under_voltage"),
+        patch("shitbox.health.thermal_monitor.speak_under_voltage"),
+        patch("shitbox.health.alerts.dashboard_push_event") as mock_push,
+    ):
+        service._check_throttled()
+        service._check_throttled()
+
+    mock_push.assert_not_called()
+    alerts_mod.clear_state()
+
+
+def test_pwr01_single_read_no_fire() -> None:
+    """PWR-01/D-02: a single raw=0x1 read with no follow-up must NOT fire."""
+    from shitbox.health import alerts as alerts_mod
+    alerts_mod.clear_state()
+
+    service = ThermalMonitorService()
+    with (
+        patch.object(service, "_read_throttled", return_value=0x1),
+        patch("shitbox.health.thermal_monitor.beep_under_voltage"),
+        patch("shitbox.health.thermal_monitor.speak_under_voltage"),
+        patch("shitbox.health.alerts.dashboard_push_event") as mock_push,
+    ):
+        service._check_throttled()
+
+    mock_push.assert_not_called()
+    alerts_mod.clear_state()
+
+
+def test_pwr02_undervoltage_fires_then_recovers() -> None:
+    """PWR-02/D-03: sustained active fires UNDERVOLTAGE; sustained clear fires _CLEARED."""
+    from shitbox.health import alerts as alerts_mod
+    alerts_mod.clear_state()
+
+    service = ThermalMonitorService()
+    # Two cycles active (arms + fires), then two cycles clear (arms + fires recovery)
+    raws = [0x1, 0x1, 0x0, 0x0]
+    with (
+        patch.object(service, "_read_throttled", side_effect=raws),
+        patch("shitbox.health.thermal_monitor.beep_under_voltage") as mock_beep,
+        patch("shitbox.health.thermal_monitor.speak_under_voltage") as mock_failure_tts,
+        patch("shitbox.health.thermal_monitor.speak_power_restored") as mock_recovery_tts,
+        patch("shitbox.health.alerts.dashboard_push_event") as mock_push,
+    ):
+        for _ in range(4):
+            service._check_throttled()
+
+    assert mock_push.call_count == 2, f"expected 2 ALERT events, got {mock_push.call_count}"
+    subtypes = [call[0][0]["subtype"] for call in mock_push.call_args_list]
+    messages = [call[0][0]["message"] for call in mock_push.call_args_list]
+    assert subtypes == ["UNDERVOLTAGE", "UNDERVOLTAGE_CLEARED"]
+    assert messages[0] == "UNDERVOLTAGE DETECTED"
+    assert messages[1] == "POWER RESTORED"
+    mock_failure_tts.assert_called_once()
+    mock_recovery_tts.assert_called_once()
+    mock_beep.assert_called_once()  # beep fires once on the failure transition
+    alerts_mod.clear_state()
+
+
+def test_pwr02_tts_once_on_transition() -> None:
+    """PWR-02/D-12: five cycles of sustained active fire TTS exactly once."""
+    from shitbox.health import alerts as alerts_mod
+    alerts_mod.clear_state()
+
+    service = ThermalMonitorService()
+    with (
+        patch.object(service, "_read_throttled", return_value=0x1),
+        patch("shitbox.health.thermal_monitor.beep_under_voltage"),
+        patch("shitbox.health.thermal_monitor.speak_under_voltage") as mock_tts,
+        patch("shitbox.health.alerts.dashboard_push_event"),
+    ):
+        for _ in range(5):
+            service._check_throttled()
+
+    mock_tts.assert_called_once()
+    alerts_mod.clear_state()
+
+
+def test_pwr01_low_nibble_change_clears_sticky_gate() -> None:
+    """PWR-01: the fix must not re-introduce a full-word change gate.
+
+    Two reads of 0x50001 (sticky + current-undervoltage set) followed by
+    two reads of 0x50000 (sticky stays, current clears) MUST fire exactly
+    one UNDERVOLTAGE then one UNDERVOLTAGE_CLEARED — the sticky bits are
+    stable across all four reads, so a full-word gate would never change
+    and never fire anything.
+    """
+    from shitbox.health import alerts as alerts_mod
+    alerts_mod.clear_state()
+
+    service = ThermalMonitorService()
+    raws = [0x50001, 0x50001, 0x50000, 0x50000]
+    with (
+        patch.object(service, "_read_throttled", side_effect=raws),
+        patch("shitbox.health.thermal_monitor.beep_under_voltage"),
+        patch("shitbox.health.thermal_monitor.speak_under_voltage"),
+        patch("shitbox.health.thermal_monitor.speak_power_restored"),
+        patch("shitbox.health.alerts.dashboard_push_event") as mock_push,
+    ):
+        for _ in range(4):
+            service._check_throttled()
+
+    assert mock_push.call_count == 2
+    subtypes = [call[0][0]["subtype"] for call in mock_push.call_args_list]
+    assert subtypes == ["UNDERVOLTAGE", "UNDERVOLTAGE_CLEARED"]
     alerts_mod.clear_state()
