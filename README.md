@@ -188,6 +188,7 @@ scripts/
   trigger-capture.sh # manual capture via SIGUSR1
 systemd/
   shitbox-telemetry.service
+  cpufreq-performance.service  # pins governor to performance (Pi 5 mailbox workaround)
 grafana/
   dashboards/        # Grafana dashboard JSON
 ```

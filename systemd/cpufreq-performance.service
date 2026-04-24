@@ -1,0 +1,27 @@
+[Unit]
+# Pi 5 firmware mailbox workaround.
+#
+# The default `ondemand` cpufreq governor races with the brcmfmac WiFi
+# driver over the firmware mailbox. When the ondemand worker asks the
+# firmware to change the ARM clock at the same moment brcmfmac is
+# talking to firmware, the mailbox can time out (ETIMEDOUT -110). The
+# cascade is nasty: mailbox hang -> clock change fails -> WiFi dies ->
+# xhci-hcd.1 USB controller dies. All USB devices on that controller
+# are gone until reboot (including the USB speaker, so TTS is silent).
+#
+# Pinning the governor to `performance` keeps clocks at max and stops
+# the ondemand worker poking the mailbox periodically. Burns a bit more
+# power; the car's 12 V supply doesn't care.
+Description=Pin CPU governor to performance (Pi 5 firmware mailbox workaround)
+DefaultDependencies=no
+After=sysinit.target
+Before=basic.target shitbox-telemetry.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$g"; done'
+ExecStop=/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo ondemand > "$g"; done'
+
+[Install]
+WantedBy=multi-user.target

@@ -112,8 +112,13 @@ fi
 echo ""
 echo "=== Installing systemd service ==="
 cp "$INSTALL_DIR/systemd/shitbox-telemetry.service" /etc/systemd/system/
+cp "$INSTALL_DIR/systemd/cpufreq-performance.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable shitbox-telemetry.service
+# Pin cpufreq governor to performance — Pi 5 ondemand governor races
+# the brcmfmac WiFi driver over the firmware mailbox and can kill the
+# xhci-hcd.1 USB controller. See unit file for full context.
+systemctl enable --now cpufreq-performance.service
 
 # Copy config if not exists
 echo ""

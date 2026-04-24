@@ -579,3 +579,22 @@ obvious when it clears.
   and GX12 work is far enough along that the loom story is stable.
 - **Affects:** sensor manifest, SEN0460 code paths (to be removed), config
   schema (new cabin/external dust collectors), website + Grafana panels.
+
+### Auto-recover from USB controller death
+
+- Pi 5 firmware mailbox race between the `ondemand` cpufreq governor and
+  the brcmfmac WiFi driver can kill `xhci-hcd.1`. When that happens all
+  USB devices on that controller disappear until reboot, including the
+  USB speaker (so TTS goes silent), and the event loop keeps running
+  blind. Occurred once (2026-04-24 09:34:31) — palliative is the
+  `cpufreq-performance.service` unit pinning the governor to
+  `performance` (shipped in this repo + install.sh).
+- Want a proper recovery path: detect when a critical USB device
+  disappears (speaker, camera, GPS if on USB) and either re-bind the
+  xhci controller via sysfs, or trip the watchdog for a clean reboot,
+  rather than silently degrading.
+- **Unblocked when:** palliative holds long enough to confirm the race
+  is the only trigger, or we see a second occurrence and need a real
+  fix.
+- **Affects:** watchdog/self-healing (Phase 7 equivalent), sensor
+  manifest (Phase 21), TTS engine fall-through behaviour.
