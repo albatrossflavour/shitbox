@@ -26,19 +26,22 @@ of rough roads, power cycles, heat, and vibration without human intervention.
 
 ## Current Position
 
-Phase: — (all remaining v2.0 phases blocked on physical integration)
-Status: blocked — awaiting Pi case prints + in-car install
+Phase: — (v2.0 phases gated; backlog work newly unblocked 2026-04-24)
+Status: physical-integration upstream of v2.0; TPMS spike actionable
 
-  All four pending v2.0 phases sit behind the same hardware milestone:
+  v2.0 critical path:
+    GX12 connectors arrived → case redesign (GX12 cutouts in v2 clamshell)
+    → print → mount in car → Phase 24 (OpenSCAD review + boot verify)
+    → unblocks Phases 14 (sensor cal) and 16 (ELP 4K) → Phase 25 closes v2.0
 
-  Pi case prints → mount in car → Phase 24 (OpenSCAD review + boot verify)
-  → unblocks Phases 14 (sensor calibration in-motion) and 16 (ELP 4K tuning)
-  → Phase 25 (Nyquist validation sweep) closes v2.0
-
-  No code-side action available until prints land. Bench portions of Phase 14
-  (DS18B20 ice/boiling reference, INA226 multimeter compare) could in theory
-  run earlier but are deferred to keep the calibration as one coherent pass
-  with the in-car work.
+  Newly actionable (parts arrived 2026-04-24):
+    - TPMS Path A spike: CC1101 + ESP32-S3 in hand. RF sniff/decode of the
+      aftermarket TPMS transmissions. Independent of v2.0 critical path —
+      can run in parallel with the case redesign. Likely a /gsd-spike or
+      new phase depending on scope.
+    - GX12 case redesign: drives the clamshell rework that unblocks the
+      print queue. Brain `project_pi_case_v2.md` needs updating before
+      next print run.
 
 ### Recently completed (v2.0)
 

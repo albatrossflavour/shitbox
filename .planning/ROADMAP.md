@@ -551,8 +551,9 @@ obvious when it clears.
   If the RF protocol resists decoding in a reasonable time, point the cam
   at the kit's own display and OCR the readings. Less elegant but a known
   escape hatch.
-- **Unblocked when:** CC1101 arrives and the RF attempt either works or is
-  formally abandoned for Path B.
+- **Status:** parts arrived 2026-04-24 (CC1101 + ESP32-S3 in hand). Ready
+  to start Path A spike — sniff transmissions, attempt protocol decode.
+  Falls to Path B if RF decode resists in a reasonable time.
 - **Affects:** sensor manifest (Phase 21 equivalent), collector shape
   (new TyrePressureCollector), dashboard tiles, website summary.
 
@@ -564,8 +565,9 @@ obvious when it clears.
 - **Case impact:** the Pi case design changes — panel cutouts for the GX12
   bodies and internal space for the connector backs. v2 clamshell drawing
   in `project_pi_case_v2.md` needs updating before the next print run.
-- **Unblocked when:** connectors arrive, clamshell model reworked, printer
-  queue has time.
+- **Status:** connectors arrived 2026-04-24. Now on the critical path —
+  v2 clamshell model needs GX12 cutouts before next print run, which
+  itself gates Phase 24 and the rest of v2.0.
 - **Affects:** Phase 24 (Phase 20 gap closure) / future case revision.
 
 ### Retire SEN0460 (PM2.5) — replace with dual GP2Y1010AU0F
