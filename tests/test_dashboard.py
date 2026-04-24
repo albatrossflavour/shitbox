@@ -397,3 +397,152 @@ def test_sse_slow_has_active_driver_key(mbtiles_fixture):
     assert "active_driver" in payload, (
         f"'active_driver' key missing from /sse/slow payload. Got keys: {list(payload.keys())}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 15-05 — system_conditions payload regression coverage
+#
+# UI-SPEC contract (lines 170-209): exactly 5 scalar fields per row, always
+# three rows in order undervoltage → thermal → capture. State is derived from
+# alerts.snapshot() fired/active/last_change_ts — no other fields.
+# ---------------------------------------------------------------------------
+
+
+def _make_alert_status(
+    subtype: str, *, fired: bool, active: bool, last_change_ts: float,
+):
+    """Build an AlertStatus with the real dataclass shape from 15-01."""
+    from shitbox.health.alerts import AlertStatus
+
+    return AlertStatus(
+        subtype=subtype,
+        active=active,
+        fired=fired,
+        active_sustain_count=2 if active else 0,
+        clear_sustain_count=0 if active else 2,
+        last_change_ts=last_change_ts,
+    )
+
+
+def test_system_conditions_payload_shape_is_five_scalars(monkeypatch):
+    """UI-SPEC lines 170-209: each row emits EXACTLY role, label, tier, state, since_ms."""
+    from shitbox.dashboard.sse import _system_conditions_payload
+
+    monkeypatch.setattr("shitbox.dashboard.sse.alerts.snapshot", lambda: {})
+    rows = _system_conditions_payload()
+    assert len(rows) == 3
+    for row in rows:
+        assert set(row.keys()) == {"role", "label", "tier", "state", "since_ms"}
+        assert row["tier"] == "critical"
+
+
+def test_system_conditions_payload_always_three_rows_in_order(monkeypatch):
+    """UI-SPEC lines 126-148: always undervoltage → thermal → capture, even when empty."""
+    from shitbox.dashboard.sse import _system_conditions_payload
+
+    monkeypatch.setattr("shitbox.dashboard.sse.alerts.snapshot", lambda: {})
+    rows = _system_conditions_payload()
+    assert [r["role"] for r in rows] == ["undervoltage", "thermal", "capture"]
+    assert [r["label"] for r in rows] == ["UNDERVOLTAGE", "THERMAL", "CAPTURE"]
+    assert all(r["state"] == "clear" for r in rows)
+    assert all(r["since_ms"] is None for r in rows)
+
+
+def test_system_conditions_payload_active_undervoltage(monkeypatch):
+    import time as _time
+
+    from shitbox.dashboard.sse import _system_conditions_payload
+
+    now = _time.time()
+    fake_snap = {
+        "UNDERVOLTAGE": _make_alert_status(
+            "UNDERVOLTAGE", fired=True, active=True, last_change_ts=now - 1.0,
+        ),
+    }
+    monkeypatch.setattr("shitbox.dashboard.sse.alerts.snapshot", lambda: fake_snap)
+    rows = {r["role"]: r for r in _system_conditions_payload()}
+    assert rows["undervoltage"]["state"] == "active"
+    assert 900 <= rows["undervoltage"]["since_ms"] <= 1500
+    assert rows["thermal"]["state"] == "clear"
+    assert rows["capture"]["state"] == "clear"
+
+
+def test_system_conditions_payload_restored_undervoltage(monkeypatch):
+    """fired=True + active=False is the transient mid-recovery state."""
+    import time as _time
+
+    from shitbox.dashboard.sse import _system_conditions_payload
+
+    now = _time.time()
+    fake_snap = {
+        "UNDERVOLTAGE": _make_alert_status(
+            "UNDERVOLTAGE", fired=True, active=False, last_change_ts=now - 2.0,
+        ),
+    }
+    monkeypatch.setattr("shitbox.dashboard.sse.alerts.snapshot", lambda: fake_snap)
+    rows = {r["role"]: r for r in _system_conditions_payload()}
+    assert rows["undervoltage"]["state"] == "restored"
+
+
+def test_system_conditions_payload_cleared_after_recovery_is_clear(monkeypatch):
+    """Post-recovery (helper has flipped fired=False) → row returns to clear."""
+    import time as _time
+
+    from shitbox.dashboard.sse import _system_conditions_payload
+
+    now = _time.time()
+    fake_snap = {
+        "UNDERVOLTAGE": _make_alert_status(
+            "UNDERVOLTAGE", fired=False, active=False, last_change_ts=now - 2.0,
+        ),
+    }
+    monkeypatch.setattr("shitbox.dashboard.sse.alerts.snapshot", lambda: fake_snap)
+    rows = {r["role"]: r for r in _system_conditions_payload()}
+    assert rows["undervoltage"]["state"] == "clear"
+    assert rows["undervoltage"]["since_ms"] is None
+
+
+def test_system_conditions_payload_capture_down_rolls_up_same_role(monkeypatch):
+    """CAPTURE_FAILURE and CAPTURE_DOWN both roll up into the capture row.
+
+    Active wins over restored; the row reports state=active.
+    """
+    import time as _time
+
+    from shitbox.dashboard.sse import _system_conditions_payload
+
+    now = _time.time()
+    fake_snap = {
+        "CAPTURE_FAILURE": _make_alert_status(
+            "CAPTURE_FAILURE", fired=True, active=True, last_change_ts=now - 1.0,
+        ),
+        "CAPTURE_DOWN": _make_alert_status(
+            "CAPTURE_DOWN", fired=True, active=True, last_change_ts=now - 0.5,
+        ),
+    }
+    monkeypatch.setattr("shitbox.dashboard.sse.alerts.snapshot", lambda: fake_snap)
+    rows = {r["role"]: r for r in _system_conditions_payload()}
+    assert rows["capture"]["state"] == "active"
+    assert rows["capture"]["label"] == "CAPTURE"
+    assert rows["capture"]["tier"] == "critical"
+
+
+def test_system_conditions_payload_no_forbidden_fields(monkeypatch):
+    """UI-SPEC lock: no `key`, `subtype`, `message`, or `last_seen` fields."""
+    import time as _time
+
+    from shitbox.dashboard.sse import _system_conditions_payload
+
+    now = _time.time()
+    fake_snap = {
+        "UNDERVOLTAGE": _make_alert_status(
+            "UNDERVOLTAGE", fired=True, active=True, last_change_ts=now,
+        ),
+    }
+    monkeypatch.setattr("shitbox.dashboard.sse.alerts.snapshot", lambda: fake_snap)
+    rows = _system_conditions_payload()
+    for row in rows:
+        assert "key" not in row
+        assert "subtype" not in row
+        assert "message" not in row
+        assert "last_seen" not in row

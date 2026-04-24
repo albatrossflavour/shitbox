@@ -29,6 +29,20 @@ from sse_starlette.sse import EventSourceResponse
 from shitbox.dashboard.snapshot import read_snapshot
 from shitbox.hardware import state as hw_state
 
+# Graceful-degradation import per D-04 / RESEARCH Pattern 2.
+# The dashboard must still serve /sse/slow even if the alerts helper is
+# absent (e.g. during unit tests that mock the dashboard subsystem). The
+# no-op stub keeps `_system_conditions_payload` emitting three clear rows.
+try:
+    from shitbox.health import alerts
+except ImportError:  # pragma: no cover — only triggered when alerts is unavailable
+    class _NoopAlertsSnapshot:
+        @staticmethod
+        def snapshot() -> Dict[str, Any]:  # type: ignore[override]
+            return {}
+
+    alerts = _NoopAlertsSnapshot()  # type: ignore[assignment]
+
 log = structlog.get_logger(__name__)
 
 _HARDWARE_LABELS: Dict[str, str] = {
@@ -68,6 +82,74 @@ def _hardware_payload() -> List[Dict[str, Any]]:
             "since_ms": since_ms,
         })
     return out
+
+
+# Phase 15-05 (D-13) — system-condition payload for the Health modal.
+#
+# UI-SPEC contract (lines 170-209): exactly five scalar fields per row,
+# always three rows in order undervoltage → thermal → capture. No history
+# arrays, no bitmasks, no message text — log detail lives in structlog.
+_SYSTEM_CONDITION_LABELS: Dict[str, str] = {
+    "undervoltage": "UNDERVOLTAGE",
+    "thermal": "THERMAL",
+    "capture": "CAPTURE",
+}
+
+# Maps alerts subtype → role. Recovery subtypes (*_CLEARED / *_RESTORED) do
+# NOT appear here: the helper bookkeeps on the base subtype and the `fired`
+# and `active` fields on that entry drive the row state.
+_SUBTYPE_TO_ROLE: Dict[str, str] = {
+    "UNDERVOLTAGE": "undervoltage",
+    "THERMAL_WARNING": "thermal",
+    "THERMAL_CRITICAL": "thermal",
+    "CAPTURE_FAILURE": "capture",
+    "CAPTURE_DOWN": "capture",
+}
+
+
+def _system_conditions_payload() -> List[Dict[str, Any]]:
+    """Render the three system conditions for /sse/slow.
+
+    Always emits all three rows so the frontend always has a complete set.
+    State is derived from alerts.snapshot():
+      - fired and active         → "active"
+      - fired and not active     → "restored"
+      - neither                  → "clear"
+    ``since_ms`` is int millis since ``last_change_ts`` when available, else None.
+    """
+    now = time.time()
+    snap = alerts.snapshot()
+
+    role_state: Dict[str, Dict[str, Any]] = {
+        "undervoltage": {"state": "clear", "since_ms": None},
+        "thermal": {"state": "clear", "since_ms": None},
+        "capture": {"state": "clear", "since_ms": None},
+    }
+    for subtype, status in snap.items():
+        role = _SUBTYPE_TO_ROLE.get(subtype)
+        if role is None:
+            continue
+        if status.fired and status.active:
+            role_state[role]["state"] = "active"
+            role_state[role]["since_ms"] = int((now - status.last_change_ts) * 1000)
+        elif status.fired and not status.active:
+            # Do not overwrite an active roll-up from another subtype under the same role
+            if role_state[role]["state"] != "active":
+                role_state[role]["state"] = "restored"
+                role_state[role]["since_ms"] = int((now - status.last_change_ts) * 1000)
+
+    out: List[Dict[str, Any]] = []
+    for role, label in _SYSTEM_CONDITION_LABELS.items():
+        rs = role_state[role]
+        out.append({
+            "role": role,
+            "label": label,
+            "tier": "critical",
+            "state": rs["state"],
+            "since_ms": rs["since_ms"],
+        })
+    return out
+
 
 MAX_CLIENTS: int = 8
 KEEPALIVE_SECONDS: int = 15
@@ -187,6 +269,7 @@ async def sse_slow(request: Request) -> Response:
                             "active_driver": snap.get("active_driver"),
                             "recording_active": snap.get("recording_active", False),
                             "hardware": _hardware_payload(),
+                            "system_conditions": _system_conditions_payload(),
                         },
                         default=str,
                     ),
