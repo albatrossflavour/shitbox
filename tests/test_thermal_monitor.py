@@ -157,15 +157,26 @@ def test_throttle_logs_only_on_change() -> None:
 
 
 def test_under_voltage_triggers_buzzer() -> None:
-    """THRM-03: Bitmask with bit 0 set triggers beep_under_voltage."""
+    """THRM-03: Sustained bitmask with bit 0 set triggers beep_under_voltage.
+
+    Phase 15 PWR-01/D-02: sustain_required=2 — a single read no longer fires
+    immediately. Two consecutive low-nibble-non-zero reads are required.
+    """
+    from shitbox.health import alerts as alerts_mod
+    alerts_mod.clear_state()
+
     service = ThermalMonitorService()
     with (
         patch.object(service, "_read_throttled", return_value=0x1),
         patch("shitbox.health.thermal_monitor.beep_under_voltage") as mock_uv,
+        patch("shitbox.health.thermal_monitor.speak_under_voltage"),
+        patch("shitbox.health.alerts.dashboard_push_event"),
     ):
+        service._check_throttled()
         service._check_throttled()
 
     mock_uv.assert_called_once()
+    alerts_mod.clear_state()
 
 
 def test_vcgencmd_not_found_graceful() -> None:
@@ -213,18 +224,25 @@ def test_thermal_warning_pushes_dashboard_alert() -> None:
 
 
 def test_undervoltage_pushes_dashboard_alert() -> None:
-    """DISP-04/D-05: _check_throttled() with bit 0 set must call dashboard_push_event.
+    """DISP-04/D-05: sustained _check_throttled() with bit 0 set pushes ALERT.
 
-    This test is RED until Task 3 adds the dashboard_push_event call site in
-    the undervoltage branch of thermal_monitor._check_throttled.
+    Phase 15 PWR-01/D-02: emission is now owned by the alerts helper and
+    gated by sustain_required=2 — two consecutive low-nibble-non-zero reads
+    fire exactly one UNDERVOLTAGE push_event. Mock target is the helper's
+    bound name (``shitbox.health.alerts.dashboard_push_event``) since the
+    helper now owns the emission, not the thermal_monitor module.
     """
+    from shitbox.health import alerts as alerts_mod
+    alerts_mod.clear_state()
+
     service = ThermalMonitorService()
     with (
         patch.object(service, "_read_throttled", return_value=0x1),  # bit 0 = under_voltage
         patch("shitbox.health.thermal_monitor.beep_under_voltage"),
         patch("shitbox.health.thermal_monitor.speak_under_voltage"),
-        patch("shitbox.health.thermal_monitor.dashboard_push_event") as mock_push,
+        patch("shitbox.health.alerts.dashboard_push_event") as mock_push,
     ):
+        service._check_throttled()
         service._check_throttled()
 
     mock_push.assert_called_once()
@@ -237,3 +255,4 @@ def test_undervoltage_pushes_dashboard_alert() -> None:
     assert "UNDERVOLTAGE" in str(event["message"]), (
         f"expected 'UNDERVOLTAGE' in message, got {event['message']!r}"
     )
+    alerts_mod.clear_state()

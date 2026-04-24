@@ -22,6 +22,7 @@ from shitbox.capture.buzzer import (
 
 try:
     from shitbox.capture.speaker import (
+        speak_power_restored,
         speak_thermal_critical,
         speak_thermal_recovered,
         speak_thermal_warning,
@@ -41,6 +42,9 @@ except ImportError:
     def speak_under_voltage() -> None:  # type: ignore[misc]
         pass
 
+    def speak_power_restored() -> None:  # type: ignore[misc]
+        pass
+
 
 try:
     from shitbox.dashboard.sse import push_event as dashboard_push_event
@@ -50,6 +54,7 @@ except ImportError:
         pass
 
 
+from shitbox.health import alerts
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -288,29 +293,48 @@ class ThermalMonitorService:
         self._check_throttled()
 
     def _check_throttled(self) -> None:
-        """Read and decode throttle bitmask; alert on under-voltage."""
+        """Read and decode throttle bitmask; feed the alerts helper every cycle.
+
+        PWR-01 fix: the alert trigger is ``raw & 0xf`` only. Sticky since-boot
+        bits 16-19 are decoded for logging but never drive the alert. The
+        alerts helper owns sustain counting and once-on-transition emission
+        for both the UNDERVOLTAGE edge and the UNDERVOLTAGE_CLEARED recovery.
+        """
         raw = self._read_throttled()
         if raw is None:
             return
 
-        with self._lock:
-            if raw == self._last_throttled_raw:
-                return  # No change — stay silent
-            self._last_throttled_raw = raw
-        decoded = _decode_throttled(raw)
-        log.warning(
-            "throttle_state_changed",
-            raw_hex=hex(raw),
-            current=decoded["current"],
-            since_boot=decoded["since_boot"],
-        )
+        low = raw & 0xf
+        active = bool(low)
 
-        if decoded["current"].get("under_voltage"):
+        with self._lock:
+            prev = self._last_throttled_raw
+            self._last_throttled_raw = raw
+        if prev is None or (prev & 0xf) != low:
+            decoded = _decode_throttled(raw)
+            log.warning(
+                "throttle_state_changed",
+                raw_hex=hex(raw),
+                current=decoded["current"],
+                since_boot=decoded["since_boot"],
+            )
+
+        def _undervoltage_side_effects() -> None:
             beep_under_voltage()
             speak_under_voltage()
-            dashboard_push_event({
-                "type": "ALERT",
-                "subtype": "UNDERVOLTAGE",
-                "message": "UNDERVOLTAGE DETECTED",
-                "ts": time.time(),
-            })
+
+        alerts.fire_alert(
+            "UNDERVOLTAGE",
+            active,
+            "UNDERVOLTAGE DETECTED",
+            _undervoltage_side_effects,
+            sustain_required=2,
+        )
+        alerts.fire_recovery(
+            "UNDERVOLTAGE",
+            active,
+            "POWER RESTORED",
+            speak_power_restored,
+            sustain_required=2,
+            recovery_subtype="UNDERVOLTAGE_CLEARED",
+        )
