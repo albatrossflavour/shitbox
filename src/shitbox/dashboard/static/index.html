@@ -40,6 +40,22 @@
     .hw-degraded .hw-glyph { color: #d29922; }
     .hw-degraded .hw-state { color: #f85149; }
     .hw-present .hw-glyph { color: #238636; }
+    /* System condition row states — mirror .hw-* pattern (Phase 15 D-13) */
+    .sc-clear .hw-glyph { color: #8b949e; }
+    .sc-clear .hw-state { color: #8b949e; }
+    .sc-active .hw-glyph { color: #da3633; }
+    .sc-active .hw-state { color: #f85149; }
+    .sc-recovering .hw-glyph { color: #d29922; }
+    .sc-recovering .hw-state { color: #d29922; }
+    .sc-restored .hw-glyph { color: #238636; }
+    .sc-restored .hw-state { color: #238636; }
+    .hw-section-eyebrow {
+      color: #8b949e;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 12px 0 4px 0;
+    }
     .badge-critical { background: #da3633; color: #fff; }
     .badge-important { background: #d29922; color: #000; }
     .badge-best_effort { background: #8b949e; color: #fff; }
@@ -383,7 +399,7 @@
        style="position: fixed; inset: 0; background: #0d1117; z-index: 1000; box-sizing: border-box;">
 
     <!-- Title pinned top-left -->
-    <h2 style="position: absolute; top: 24px; left: 48px; font-size: 39px; font-weight: 600; margin: 0; color: #e6edf3;">Hardware</h2>
+    <h2 style="position: absolute; top: 24px; left: 48px; font-size: 39px; font-weight: 600; margin: 0; color: #e6edf3;">Health</h2>
 
     <!-- Critical banner pinned below title -->
     <div x-show="criticalMissing()" class="hw-banner"
@@ -393,6 +409,19 @@
     <!-- Scrollable list: absolutely positioned between header band and footer band -->
     <div style="position: absolute; top: 140px; bottom: 110px; left: 48px; right: 48px;
                 overflow-y: auto; padding-right: 8px; -webkit-overflow-scrolling: touch;">
+      <!-- SYSTEM conditions — above HARDWARE list (UI-SPEC lines 126-148) -->
+      <div class="hw-section-eyebrow">SYSTEM</div>
+      <template x-for="row in systemConditions" :key="row.role">
+        <div class="hw-row hw-row-lg" :class="'sc-' + row.state + ' hw-tier-critical'">
+          <span class="hw-glyph" x-text="scGlyph(row.state)"></span>
+          <span class="hw-label" x-text="row.label"></span>
+          <span class="badge" :class="'badge-' + row.tier" x-text="row.tier"></span>
+          <span class="hw-state" x-text="scStateText(row.state)"></span>
+          <span class="hw-since" x-text="sinceText(row.since_ms)"></span>
+        </div>
+      </template>
+
+      <div class="hw-section-eyebrow" style="margin-top: 12px;">HARDWARE</div>
       <template x-for="row in sortedHardware()" :key="row.role">
         <div class="hw-row hw-row-lg" :class="'hw-' + row.state + ' hw-tier-' + row.tier">
           <span class="hw-glyph" x-text="stateGlyph(row.state)"></span>
@@ -438,6 +467,7 @@
       return {
         speed: 0, imuTemp: '—', socTemp: '—',
         hardware: [],
+        systemConditions: [],
         gpsBadge: 'NO FIX', gpsBadgeClass: 'bg-red-700',
         syncBadge: 'SYNC OFFLINE', syncBadgeClass: 'bg-red-700',
         netBadge: 'NET OFFLINE', netBadgeClass: 'bg-red-700',
@@ -536,14 +566,18 @@
         showAlert(payload) {
           if (this._alertTimer) { clearTimeout(this._alertTimer); this._alertTimer = null; }
           const isSystem = payload.type === 'ALERT';
-          const colour = isSystem
-            ? '#da3633'
-            : (this.EVENT_COLOURS[payload.type] || '#8b949e');
+          const subtype = payload.subtype || '';
+          const isRecovery = isSystem && (subtype.endsWith('_CLEARED') || subtype.endsWith('_RESTORED'));
+          const colour = isRecovery
+            ? '#238636'                                   // green — recovery
+            : (isSystem
+                ? '#da3633'                               // red — failure/active
+                : (this.EVENT_COLOURS[payload.type] || '#8b949e'));
           const message = isSystem
             ? payload.message
             : `${payload.type} · ${(payload.peak_g || 0).toFixed(1)}g`;
           this.alertOverlay = { message, colour, isSystem };
-          const duration = isSystem ? 10000 : 3000;
+          const duration = isRecovery ? 3000 : (isSystem ? 10000 : 3000);
           this._alertTimer = setTimeout(() => { this.alertOverlay = null; }, duration);
         },
         openFast() {
@@ -586,6 +620,7 @@
             this.recBadgeClass = d.recording_active ? 'bg-red-700' : 'bg-gray-700';
             this.activeDriver = d.active_driver;
             this.hardware = d.hardware || [];
+            this.systemConditions = d.system_conditions || [];
             if (d.lat != null && d.lng != null) {
               const ll = [d.lat, d.lng];
               if (!this.marker) {
@@ -810,10 +845,14 @@
         openHardwareModal() { this.showHardwareModal = true; },
         hwBadgeClass() {
           const h = this.hardware;
+          const sc = this.systemConditions || [];
+          // Any active system condition → red (mirrors critical missing hardware)
+          if (sc.some(r => r.state === 'active')) return 'bg-red-700';
           if (!h.length) return 'bg-gray-700';
           if (h.some(r => r.tier === 'critical' && r.state === 'missing')) return 'bg-red-700';
           if (h.some(r => r.tier === 'important' && r.state === 'missing')) return 'bg-yellow-600';
-          if (h.some(r => r.state === 'degraded')) return 'bg-yellow-600';
+          if (h.some(r => r.state === 'degraded' || r.state === 'recovering'))
+            return 'bg-yellow-600';
           return 'bg-green-700';
         },
         hwStatusTitle() {
@@ -849,6 +888,13 @@
         },
         stateGlyph(state) {
           return { present: '●', degraded: '◐', missing: '○' }[state] || '?';
+        },
+        scStateText(state) {
+          return { clear: 'CLEAR', active: 'ACTIVE', recovering: 'RECOVERING', restored: 'RESTORED' }[state]
+            || (state || 'CLEAR').toUpperCase();
+        },
+        scGlyph(state) {
+          return { clear: '○', active: '●', recovering: '◐', restored: '●' }[state] || '?';
         },
         sinceText(ms) {
           if (ms == null) return '—';
