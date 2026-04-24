@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: ready_to_plan
-stopped_at: 
-last_updated: "2026-04-24T09:30:00.000Z"
-last_activity: 2026-04-24 -- Phase 17 human UAT passed; security_enforcement disabled
+status: blocked
+stopped_at: physical-integration
+last_updated: "2026-04-24T09:45:00.000Z"
+last_activity: 2026-04-24 -- v2.0 code work paused; all remaining phases blocked on Pi case prints + in-car install
 progress:
   total_phases: 16
   completed_phases: 12
@@ -22,13 +22,23 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 14 — Sensor Calibration (CAL-01, hard dependency for Phase 17 accuracy)
+**Current focus:** Physical integration — Pi case prints + in-car install (gates all remaining v2.0 work)
 
 ## Current Position
 
-Phase: 14 — Sensor Calibration
-Status: ready to plan (no directory yet)
-  CAL-01 still Active in PROJECT.md. All sensors must be validated stationary + in-motion before relying on Phase 17 displays for accuracy. Run `/gsd-discuss-phase 14` or `/gsd-plan-phase 14` to begin.
+Phase: — (all remaining v2.0 phases blocked on physical integration)
+Status: blocked — awaiting Pi case prints + in-car install
+
+  All four pending v2.0 phases sit behind the same hardware milestone:
+
+  Pi case prints → mount in car → Phase 24 (OpenSCAD review + boot verify)
+  → unblocks Phases 14 (sensor calibration in-motion) and 16 (ELP 4K tuning)
+  → Phase 25 (Nyquist validation sweep) closes v2.0
+
+  No code-side action available until prints land. Bench portions of Phase 14
+  (DS18B20 ice/boiling reference, INA226 multimeter compare) could in theory
+  run earlier but are deferred to keep the calibration as one coherent pass
+  with the in-car work.
 
 ### Recently completed (v2.0)
 
@@ -47,18 +57,16 @@ Status: ready to plan (no directory yet)
 | 26 | Event Video Title Cards | 6/6 | 2026-04-23 | gap closure G-01..G-08 shipped |
 | 27 | Slate Visual Theming | 2/2 | 2026-04-24 | branch `gsd/phase-27-slate-visual-theming` unmerged to main |
 
-### Pending
+### Pending — all blocked on physical integration
 
-| Phase | Name | Status |
-|-------|------|--------|
-| 14 | Sensor Calibration | not started — next priority |
-| 16 | Video Capture Tuning | not started |
-| 24 | Phase 20 Physical Integration Completion | waits on 3D prints |
-| 25 | Milestone v2.0 Nyquist Validation Sweep | queued after 24 |
+| Phase | Name | Blocked by |
+|-------|------|------------|
+| 24 | Phase 20 Physical Integration Completion | 3D prints (case, screen mount, camera cradle) |
+| 14 | Sensor Calibration | car install (in-motion calibration + threshold revalidation) |
+| 16 | Video Capture Tuning | ELP 4K mounted in car at final position |
+| 25 | Milestone v2.0 Nyquist Validation Sweep | Phase 24 complete |
 
-Next: `/gsd-discuss-phase 14` (or `/gsd-plan-phase 14` if context is already in your head).
-
-Outstanding bookkeeping (non-blocking): tick ROADMAP.md checkboxes for phases 20/21/22; merge `gsd/phase-27-slate-visual-theming` into main.
+Next: nothing actionable on the code side. Resume here when the case is printed and the rig is mounted.
 
 Last activity: 2026-04-24
 
@@ -132,10 +140,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-24T09:30:00Z
-Stopped at: Phase 17 human UAT passed; bookkeeping rolled up
+Last session: 2026-04-24T09:45:00Z
+Stopped at: v2.0 code work paused — all four remaining phases blocked on Pi case prints + in-car install
 Resume file: None
-Next action: `/gsd-discuss-phase 14` — Sensor Calibration (CAL-01). Hard prerequisite for trusting Phase 17 numbers in the car.
+Next action: physical world — print Pi case (see Brain `project_pi_case_v2.md`), assemble, mount in car. Then return for Phase 24 OpenSCAD review + boot verify, after which Phases 14, 16, 25 unblock in sequence.
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
