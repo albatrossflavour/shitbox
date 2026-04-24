@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: in_progress
-stopped_at: Phase 27 closed out (event-type badge colour dropped per user)
-last_updated: "2026-04-24T00:00:00Z"
-last_activity: 2026-04-24 -- Phase 27 complete — Cinzel display font, ALL CAPS hero, bare event-type label
+stopped_at: Phase 15 context gathered — ready for /gsd-plan-phase 15
+last_updated: "2026-04-24T01:00:00Z"
+last_activity: 2026-04-24 -- Phase 15 discuss-phase complete; 10 decisions locked, Health page expansion added
 progress:
   total_phases: 13
   completed_phases: 10
@@ -22,9 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 28+ — next pick from backlog (14/15/16/20/24/25 open)
+**Current focus:** Phase 15 — context gathered, ready for `/gsd-plan-phase 15`; backlog after: 14/16/20/24/25
 
 ## Current Position
+
+Phase: 15 (undervoltage-and-monitoring) — DISCUSS-PHASE COMPLETE
+  10 decisions locked. PWR-01 bitmask fix (mask+sustain), PWR-02 alert+recovery, reuse ALERT subtype channel, ffmpeg-stall as sole capture-failure trigger, delete MQTT scrape job, tiny `health/alerts.py` helper as Phase 21 seam, Health-page sticky state expansion (D-13, user add). 15-CONTEXT.md + 15-DISCUSSION-LOG.md committed. Next: `/gsd-plan-phase 15`.
 
 Phase: 27 (slate-visual-theming) — COMPLETE
   2/2 plans; Cinzel Bold hero ALL CAPS with state suffix dropped, Cinzel Regular meta rows, coord row DejaVu Mono. Event-type badge colour fill dropped per on-Pi UAT feedback. On-Pi visual UAT confirmed 2026-04-24 ("videos look good, loving the layout").
@@ -41,7 +44,7 @@ Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — COM
 Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
   5/5 plans; verified 2026-04-21. 4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
 
-Next: Phase 24 (Phase 20 Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24. Phases 14/15/16 open in backlog. Separate `/gsd-debug` needed for Pi 5 firmware mailbox hang observed 2026-04-24 09:34:31 (cpufreq ondemand governor + brcmfmac WiFi race).
+Next: `/gsd-plan-phase 15` using the just-committed 15-CONTEXT.md. Phase 24 (Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24. Phases 14/16 open in backlog. Separate `/gsd-debug` needed for Pi 5 firmware mailbox hang observed 2026-04-24 09:34:31 (cpufreq ondemand governor + brcmfmac WiFi race).
 
 Last activity: 2026-04-24
 
@@ -115,10 +118,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-24T00:00:00Z
-Stopped at: Phase 27 closed
-Resume file: None
-Next action: pick next phase from open backlog (14/15/16/20/24/25) or open `/gsd-debug` for Pi 5 firmware mailbox hang observed 2026-04-24 09:34:31. Phase 27 branch `gsd/phase-27-slate-visual-theming` still unmerged to main.
+Last session: 2026-04-24T01:00:00Z
+Stopped at: Phase 15 context gathered — 10 decisions locked, Health page expansion added (D-13)
+Resume file: .planning/phases/15-undervoltage-and-monitoring/15-CONTEXT.md
+Next action: `/gsd-plan-phase 15`. Phase 27 branch `gsd/phase-27-slate-visual-theming` still unmerged to main (separate concern).
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
