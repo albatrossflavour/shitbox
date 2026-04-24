@@ -144,7 +144,13 @@ closed; critical system events surface on the live dashboard.
   4. The Prometheus scrape job label conflict (shitbox-mqtt-exporter) is resolved with no duplicate or missing metric series
   5. Thermal alerts, undervoltage events, and capture failures are all visible in the live dashboard UI
 
-**Plans**: TBD
+**Plans:** 5 plans
+
+- [ ] 15-01-PLAN.md — Create alerts.py helper (sustain, transition, recovery) + speak_power_restored TTS + unit tests (Wave 0, foundation for downstream plans)
+- [ ] 15-02-PLAN.md — PWR-01 + PWR-02: fix thermal_monitor sticky-bit bug, wire undervoltage ALERT + POWER RESTORED recovery, regression tests (Wave 1)
+- [ ] 15-03-PLAN.md — MON-03: wire capture-failure alerts (CAPTURE_FAILURE, CAPTURE_DOWN escalation, CAPTURE_RESTORED recovery) into ring_buffer._health_monitor + tests (Wave 1)
+- [ ] 15-04-PLAN.md — MON-01 + MON-02 paperwork: flip REQUIREMENTS.md checkboxes + delete dead shitbox-mqtt-exporter tree from home-ops (Wave 1, has human-verify checkpoint)
+- [ ] 15-05-PLAN.md — D-13 Health page: system_conditions payload + SYSTEM section in modal + sc-* badges + showAlert green recovery branch + tests (Wave 2, has human-verify checkpoint)
 
 **UI hint**: yes
 
