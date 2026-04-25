@@ -118,12 +118,13 @@ def test_stall_detected_after_timeout(tmp_path: Path, monkeypatch: pytest.Monkey
     # Second call with unchanged file and recent mtime — still False
     assert vrb._check_stall() is False
 
-    # Advance time past the stall timeout
-    segment_mtime = vrb._last_segment_mtime
+    # Advance monotonic clock past the stall timeout. Stall age is measured
+    # against time.monotonic() (REVIEW WR-03) so a GPS wall-clock step does
+    # not register as a stall.
+    seen_at = vrb._last_segment_seen_monotonic
     monkeypatch.setattr(
-        time,
-        "time",
-        lambda: segment_mtime + VideoRingBuffer.STALL_TIMEOUT_SECONDS + 1,
+        "shitbox.capture.ring_buffer.time.monotonic",
+        lambda: seen_at + VideoRingBuffer.STALL_TIMEOUT_SECONDS + 1,
     )
 
     # Third call — timeout elapsed with no activity
@@ -483,9 +484,14 @@ def test_mon03_capture_restored_fires(tmp_path: Path) -> None:
         except SystemExit:
             pass
 
-    mock_recovery.assert_called_once()
-    call = mock_recovery.call_args
-    assert call.args[0] == "CAPTURE_FAILURE"
-    assert call.kwargs.get("recovery_subtype") == "CAPTURE_RESTORED"
-    assert call.kwargs.get("message") == "RECORDING RESUMED"
+    # Recovery branch fires CAPTURE_FAILURE → CAPTURE_RESTORED for UI/TTS,
+    # plus CAPTURE_DOWN to clear the escalation latch (REVIEW WR-02) so a
+    # second escalation episode can re-fire CAPTURE_DOWN.
+    assert mock_recovery.call_count == 2
+    failure_call, down_call = mock_recovery.call_args_list
+    assert failure_call.args[0] == "CAPTURE_FAILURE"
+    assert failure_call.kwargs.get("recovery_subtype") == "CAPTURE_RESTORED"
+    assert failure_call.kwargs.get("message") == "RECORDING RESUMED"
+    assert down_call.args[0] == "CAPTURE_DOWN"
+    assert down_call.kwargs.get("message") == "RECORDING RESUMED"
     assert vrb._consecutive_restart_count == 0

@@ -1,15 +1,34 @@
 ---
 phase: 15-undervoltage-and-monitoring
 reviewed: 2026-04-24
+resolved: 2026-04-25
 depth: standard
-status: issues_found
+status: resolved
 files_reviewed: 10
 findings:
   critical: 0
   warning: 7
   info: 5
   total: 12
+resolution:
+  fixed: [WR-01, WR-02, WR-03]
+  triaged: [WR-04, WR-05, WR-06]
+  deferred: [WR-07]
 ---
+
+## Resolution (2026-04-25)
+
+| Finding | Disposition | Notes |
+|---------|-------------|-------|
+| WR-01 | fixed | `alerts.py` module + `_rebind` docstrings now state the single-writer-per-subtype concurrency contract instead of overstating GIL safety. |
+| WR-02 | fixed | `ring_buffer._health_monitor` now calls `alerts.fire_recovery("CAPTURE_DOWN", ...)` alongside the existing `CAPTURE_FAILURE` recovery so a second escalation episode can re-fire CAPTURE_DOWN. Test `test_mon03_capture_restored_fires` updated to assert the second recovery call. |
+| WR-03 | fixed | `_check_stall` now measures age against `time.monotonic()` via a new `_last_segment_seen_monotonic` field, immune to GPS wall-clock steps. Test `test_stall_detected_after_timeout` patches `time.monotonic` accordingly. |
+| WR-04 | triaged — accept | Non-deterministic tie-break only matters when both CAPTURE subtypes are simultaneously `restored`; outcome is a 1–2 s `since_ms` skew on the Health page. Pre-existing test `test_system_conditions_payload_capture_down_rolls_up_same_role` covers the `active` rollup which is the case that matters for ops. Revisit if the ordering is observed to be confusing in the field. |
+| WR-05 | triaged — accept | 8-client cap × 256-slot queue × `put_nowait` is fast enough today. The fix is a 3-line snapshot-then-iterate; do it the next time `push_event` is touched. |
+| WR-06 | triaged — accept | `scStateText` "RECOVERING" branch is dead but harmless; keeping the JS arm in place documents the intent for a future `recovering` state without forcing a payload-shape change now. |
+| WR-07 | deferred | Pre-existing `thermal_monitor` warning oscillation. Not a Phase 15 regression. Migrate `THERMAL_*` to `alerts.fire_alert` / `fire_recovery` in a future polish phase. |
+
+
 
 # Phase 15: Code Review Report
 

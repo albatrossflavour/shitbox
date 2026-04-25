@@ -1,4 +1,4 @@
-"""Alert sustain + transition helper. Module-level, GIL-atomic rebind.
+"""Alert sustain + transition helper. Module-level, single-writer-per-subtype.
 
 Owned subtypes per Phase 15: UNDERVOLTAGE, UNDERVOLTAGE_CLEARED,
 CAPTURE_FAILURE, CAPTURE_RESTORED, CAPTURE_DOWN. Callers provide the
@@ -6,7 +6,12 @@ subtype, active boolean, overlay message, and an optional TTS callable;
 the helper owns sustain counting and once-on-transition + once-on-recovery
 emission semantics.
 
-Safe to call from any thread — the module-level rebind is GIL-atomic.
+Concurrency contract: each subtype must have a single writer thread. The
+read-modify-write sequence inside fire_alert / fire_recovery is NOT atomic
+under the GIL — only the final dict rebind is. Two threads writing the same
+subtype concurrently can lose updates. Today the wiring is single-writer:
+thermal_monitor owns UNDERVOLTAGE; ring_buffer owns CAPTURE_*. Add a lock if
+that ever changes.
 """
 from __future__ import annotations
 
@@ -50,12 +55,14 @@ _NEW = AlertStatus(
 )
 
 
-# Single source of truth. Rebinding is GIL-atomic.
+# Single source of truth. Final rebind is GIL-atomic; the read-modify-write
+# in fire_alert / fire_recovery is not — see module docstring.
 _state: Dict[str, AlertStatus] = {}
 
 
 def _rebind(subtype: str, new_status: AlertStatus) -> None:
-    """Rebind module-level dict in a GIL-atomic way."""
+    """Rebind module-level dict. Final assignment is GIL-atomic; callers
+    must hold the single-writer-per-subtype invariant (see module docstring)."""
     global _state
     new_map = dict(_state)
     new_map[subtype] = new_status

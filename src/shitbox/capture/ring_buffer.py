@@ -129,10 +129,14 @@ class VideoRingBuffer:
         self._last_timelapse_segment: Optional[Path] = None
         self._ffmpeg_started_at: float = 0.0
 
-        # Stall detection state (used by _check_stall / _reset_stall_state)
+        # Stall detection state (used by _check_stall / _reset_stall_state).
+        # Wall-clock fields (mtime, size) compare against filesystem state.
+        # The age timer uses time.monotonic() so a GPS clock-step does not
+        # trigger a false-positive stall (REVIEW WR-03).
         self._stall_check_armed: bool = False
         self._last_segment_mtime: float = 0.0
         self._last_segment_size: int = 0
+        self._last_segment_seen_monotonic: float = 0.0
 
         # Phase 15 MON-03: consecutive ffmpeg restart counter. Reset only on
         # recovery (a clean segment observed after a prior failure), not on
@@ -893,16 +897,19 @@ class VideoRingBuffer:
             self._stall_check_armed = True
             self._last_segment_mtime = mtime
             self._last_segment_size = size
+            self._last_segment_seen_monotonic = time.monotonic()
             return False
 
         if mtime != self._last_segment_mtime or size != self._last_segment_size:
             # Segment is growing or a new one appeared — reset baseline
             self._last_segment_mtime = mtime
             self._last_segment_size = size
+            self._last_segment_seen_monotonic = time.monotonic()
             return False
 
-        # Segment is frozen — check how long it has been unchanged
-        age = time.time() - self._last_segment_mtime
+        # Segment is frozen — measure age against monotonic clock so a GPS
+        # wall-clock step does not register as a stall.
+        age = time.monotonic() - self._last_segment_seen_monotonic
         return age > self.STALL_TIMEOUT_SECONDS
 
     def _reset_stall_state(self) -> None:
@@ -914,6 +921,7 @@ class VideoRingBuffer:
         self._stall_check_armed = False
         self._last_segment_mtime = 0.0
         self._last_segment_size = 0
+        self._last_segment_seen_monotonic = 0.0
 
     def _health_monitor(self) -> None:
         """Background thread that restarts ffmpeg on crash or stall.
@@ -956,6 +964,15 @@ class VideoRingBuffer:
                             tts_fn=speak_service_recovered,
                             sustain_required=1,
                             recovery_subtype="CAPTURE_RESTORED",
+                        )
+                        # Clear CAPTURE_DOWN too so a second escalation can
+                        # re-fire on a later episode (REVIEW WR-02). No TTS:
+                        # CAPTURE_RESTORED above already announced recovery.
+                        alerts.fire_recovery(
+                            "CAPTURE_DOWN",
+                            active=False,
+                            message="RECORDING RESUMED",
+                            sustain_required=1,
                         )
                         self._consecutive_restart_count = 0
 

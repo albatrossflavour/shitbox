@@ -196,4 +196,6 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 
 **Completed Phase:** 27 (Slate Visual Theming) — 2/2 plans — 2026-04-24 (on-Pi UAT confirmed)
 
-**Planned Phase:** 15 (undervoltage-and-monitoring) — 5 plans — 2026-04-24T06:17:59.780Z
+**Active phase:** none — v2.0 phases gated on physical integration (Pi case v2 print). TPMS Path A spike actionable in parallel.
+
+**Phase 15 closure (2026-04-25):** REVIEW.md findings resolved — WR-01/02/03 fixed, WR-04/05/06 triaged, WR-07 deferred. Tests green.
