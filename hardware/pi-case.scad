@@ -36,13 +36,23 @@
 //                         of which wall is present.
 //   3. GX12/SMA cutouts — rotation fixed so cylinders pierce the back
 //                         wall fully rather than leaving a 0.1 mm sliver.
-//   4. GX12 labelled    — it is the arcade BUTTON on GPIO 17.
-//   5. GX12/SMA Z       — raised to top third of back wall, clear of HAT.
+//   4. GX12 labelled    — left port is the arcade BUTTON on GPIO 17.
+//   5. Back-wall ports  — standardised on GX12 panel mounts: left port
+//                         BUTTON, right port 1-WIRE bus, flanking the
+//                         portcullis at upper-third Z. SMA (GPS) drops
+//                         to centre-X low (FLOOR+8) so the castle face
+//                         reads symmetric.
 //   6. Pi mounting      — brass standoffs into heat-set inserts at all
 //                         FOUR Pi mount positions. Clamshell bolts
 //                         relocated into corner towers so they no
 //                         longer collide with the display-side Pi
 //                         mount pair.
+//   7. Seam lip         — replaced free-standing 0.8×3 mm tab (snapped
+//                         off on first print) with a 50/50 shiplap:
+//                         tray walls extend LIP_DROP above SPLIT_Z as
+//                         an outer slice, upper walls carry a matching
+//                         inner-slice skirt. Full wall cross-section
+//                         through the overlap, nothing cantilevered.
 //
 // Castle features (print-safe set — see repo notes for what was
 // considered and dropped for PETG overhang margin):
@@ -148,13 +158,16 @@ INSERT_H_M3       = 6.0;
 SPLIT_Z    = 33;           // seam Z, above Pi PCB + active cooler
 INNER_H    = STACK_H + 5;  // 70 mm interior — 5 mm clearance above stack
 
-// Alignment tab on tray (seats into upper opening)
-// Moved from upper-half lip to tray-side tab so the tray's natural
-// floor-down print orientation puts the tab last, in free air, with
-// no overhang concerns. INSET bumped 0.6 → 0.8 for clean 2-perimeter
-// extrusion on a 0.4 mm nozzle (was right at the 1.5-perimeter limit).
-LIP_INSET = 0.8;           // per-side inset (≥2 perimeters at 0.4 mm nozzle)
-LIP_DROP  = 3.0;           // how far the tab rises above the seam (~2× lateral resistance vs 1.5)
+// Shiplap seam (replaces earlier thin-tab alignment lip).
+// Tray walls extend LIP_DROP above SPLIT_Z carrying only their OUTER
+// slice (LIP_SLICE thick); upper walls start at SPLIT_Z with an
+// INNER-slice skirt of matching width that nests alongside. Total
+// wall cross-section through the overlap is full OUTER_WALL — no
+// free-standing thin feature to shear at the layer line. 50/50 split
+// keeps both slices at ≥3 perimeters on a 0.4 mm nozzle.
+LIP_SLICE = OUTER_WALL / 2;  // 1.25 mm — outer slice on tray, inner slice on upper
+LIP_DROP  = 3.0;             // vertical overlap depth (inside seam at SPLIT_Z,
+                             // outside seam at SPLIT_Z + LIP_DROP)
 
 // ---- Cable exit slots ----
 HDMI_SLOT    = [15, 10];
@@ -304,7 +317,6 @@ module pi_case_tray() {
             pi_case_gate_posts(tray = true);
             pi_case_corner_towers(tray = true);
             pi_case_standoff_bosses();
-            pi_case_alignment_tab();
             castle_fan_arch_tray();          // fan partially in tray if any overhang
             castle_seam_course(upper = false);
         }
@@ -350,6 +362,7 @@ module pi_case_upper() {
         castle_portcullis_vents();
         castle_sword_relief_upper();
         castle_arrow_slit_vents();
+        pi_case_shiplap_slot_clearance();
     }
 }
 
@@ -372,72 +385,132 @@ module pi_case_base_plate() {
 }
 
 module pi_case_tray_walls() {
-    // Front + back + left walls, from Z=FLOOR up to SPLIT_Z.
-    // Right wall is omitted: the gatehouse is open.
+    // Front + back + left walls, from Z=FLOOR up to SPLIT_Z, plus a
+    // shiplap outer-slice projection continuing LIP_DROP above SPLIT_Z.
+    // Projection is trimmed to clear corner tower footprints so the
+    // upper's tower cylinders seat flush at Z=SPLIT_Z.
     wall_h = TRAY_TOP_Z - FLOOR;
 
-    // Front wall (Y = 0 .. OUTER_WALL)
+    // Full-thickness walls, FLOOR .. SPLIT_Z
     translate([FLANGE_W, 0, FLOOR])
         cube([OUTER_W, OUTER_WALL, wall_h]);
-
-    // Back wall (Y = OUTER_D - OUTER_WALL .. OUTER_D)
     translate([FLANGE_W, OUTER_D - OUTER_WALL, FLOOR])
         cube([OUTER_W, OUTER_WALL, wall_h]);
-
-    // Left wall (X = FLANGE_W .. FLANGE_W + OUTER_WALL)
     translate([FLANGE_W, 0, FLOOR])
         cube([OUTER_WALL, OUTER_D, wall_h]);
+
+    // Shiplap outer-slice projection, SPLIT_Z .. SPLIT_Z + LIP_DROP
+    difference() {
+        union() {
+            // Front wall outer slice (Y=0 .. LIP_SLICE)
+            translate([FLANGE_W, 0, TRAY_TOP_Z])
+                cube([OUTER_W, LIP_SLICE, LIP_DROP]);
+            // Back wall outer slice (Y=OUTER_D - LIP_SLICE .. OUTER_D)
+            translate([FLANGE_W, OUTER_D - LIP_SLICE, TRAY_TOP_Z])
+                cube([OUTER_W, LIP_SLICE, LIP_DROP]);
+            // Left wall outer slice (X=FLANGE_W .. FLANGE_W + LIP_SLICE)
+            translate([FLANGE_W, 0, TRAY_TOP_Z])
+                cube([LIP_SLICE, OUTER_D, LIP_DROP]);
+        }
+        // Clear corner tower footprints (upper half's towers land here)
+        for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B])
+            translate([cx, cy, TRAY_TOP_Z - 0.05])
+                cylinder(d = TOWER_OD + 0.4, h = LIP_DROP + 0.1);
+    }
 }
 
 module pi_case_upper_walls() {
-    // Front + back + left walls, from SPLIT_Z up to UPPER_TOP_Z.
-    wall_h = UPPER_TOP_Z - SPLIT_Z;
+    // Shiplap counterpart to the tray: full-thickness walls above
+    // SPLIT_Z + LIP_DROP, inner-slice skirt from SPLIT_Z down through
+    // the overlap zone. Skirt is trimmed to clear tower footprints.
+    wall_h_full = UPPER_TOP_Z - (SPLIT_Z + LIP_DROP);
+    skirt_off   = OUTER_WALL - LIP_SLICE;   // inner-slice offset from outer face
 
-    translate([FLANGE_W, 0, SPLIT_Z])
-        cube([OUTER_W, OUTER_WALL, wall_h]);
+    // Full-thickness walls above the shiplap overlap
+    translate([FLANGE_W, 0, SPLIT_Z + LIP_DROP])
+        cube([OUTER_W, OUTER_WALL, wall_h_full]);
+    translate([FLANGE_W, OUTER_D - OUTER_WALL, SPLIT_Z + LIP_DROP])
+        cube([OUTER_W, OUTER_WALL, wall_h_full]);
+    translate([FLANGE_W, 0, SPLIT_Z + LIP_DROP])
+        cube([OUTER_WALL, OUTER_D, wall_h_full]);
 
-    translate([FLANGE_W, OUTER_D - OUTER_WALL, SPLIT_Z])
-        cube([OUTER_W, OUTER_WALL, wall_h]);
+    // Shiplap inner-slice skirt, SPLIT_Z .. SPLIT_Z + LIP_DROP
+    difference() {
+        union() {
+            // Front inner slice (Y = skirt_off .. OUTER_WALL)
+            translate([FLANGE_W, skirt_off, SPLIT_Z])
+                cube([OUTER_W, LIP_SLICE, LIP_DROP]);
+            // Back inner slice (Y = OUTER_D - OUTER_WALL .. OUTER_D - OUTER_WALL + LIP_SLICE)
+            translate([FLANGE_W, OUTER_D - OUTER_WALL, SPLIT_Z])
+                cube([OUTER_W, LIP_SLICE, LIP_DROP]);
+            // Left inner slice (X = FLANGE_W + skirt_off .. FLANGE_W + OUTER_WALL)
+            translate([FLANGE_W + skirt_off, 0, SPLIT_Z])
+                cube([LIP_SLICE, OUTER_D, LIP_DROP]);
+        }
+        // Clear corner tower footprints
+        for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B])
+            translate([cx, cy, SPLIT_Z - 0.05])
+                cylinder(d = TOWER_OD + 0.4, h = LIP_DROP + 0.1);
+    }
+}
 
-    translate([FLANGE_W, 0, SPLIT_Z])
-        cube([OUTER_WALL, OUTER_D, wall_h]);
+module pi_case_shiplap_slot_clearance() {
+    // Hollow out the outer-slice slot across the upper's shiplap zone so
+    // the tray's outer slice has clean space to seat. Without this,
+    // three separate features collide with the tray's projecting slice
+    // and stop the lid closing:
+    //   - left-wall inner skirt extends Y in [0, OUTER_D] across the
+    //     front-left and back-left corner inner cubes, where the tray's
+    //     front/back outer slices already sit
+    //   - right gate posts run full thickness through the shiplap zone,
+    //     blocking the tray's outer slice at Y in [0, LIP_SLICE] /
+    //     Y in [OD-LIP_SLICE, OD]
+    //   - the seam course on the upper covers the full wall cross-
+    //     section plus a SEAM_STEP_PROJ outward bump, filling the slot
+    //     and (for the bump) leaving a free-standing tab in print
+    //
+    // Slot footprint = tray's outer-slice footprint (front/back/left
+    // strips), expanded outward by SEAM_STEP_PROJ to also strip the
+    // seam-course outward bump in this zone. Corner tower bodies are
+    // preserved so they stay solid through the seam.
+    eps = 0.05;
+    slot_h = LIP_DROP + 2 * eps;
+    difference() {
+        union() {
+            // Front strip — extends past +X to clip the front-right
+            // gate-post seam-course bump
+            translate([FLANGE_W - eps,
+                       -SEAM_STEP_PROJ,
+                       SPLIT_Z - eps])
+                cube([OUTER_W + SEAM_STEP_PROJ + 2 * eps,
+                      SEAM_STEP_PROJ + LIP_SLICE,
+                      slot_h]);
+            // Back strip — same trick at the back-right
+            translate([FLANGE_W - eps,
+                       OUTER_D - LIP_SLICE,
+                       SPLIT_Z - eps])
+                cube([OUTER_W + SEAM_STEP_PROJ + 2 * eps,
+                      SEAM_STEP_PROJ + LIP_SLICE,
+                      slot_h]);
+            // Left strip
+            translate([FLANGE_W - SEAM_STEP_PROJ,
+                       -eps,
+                       SPLIT_Z - eps])
+                cube([SEAM_STEP_PROJ + LIP_SLICE,
+                      OUTER_D + 2 * eps,
+                      slot_h]);
+        }
+        // Preserve corner towers — they stay solid through the seam.
+        for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B])
+            translate([cx, cy, SPLIT_Z - 0.1])
+                cylinder(d = TOWER_OD, h = LIP_DROP + 0.2);
+    }
 }
 
 module pi_case_upper_lid_plate() {
     // Lid top plate — spans the full case footprint.
     translate([FLANGE_W, 0, UPPER_TOP_Z])
         cube([OUTER_W, OUTER_D, LID_THICK]);
-}
-
-module pi_case_alignment_tab() {
-    // Short inward-stepped tab on the tray's wall tops that rises
-    // LIP_DROP above the seam and seats into the upper opening. Only
-    // on the three solid walls (front, back, left) — the open right
-    // side (gatehouse) has no upper wall to seat against.
-    //
-    // Lives on the tray (not the upper) so the natural floor-down
-    // print orientation puts the tab last, standing in open air with
-    // no overhang. On the upper it would have been a fragile
-    // first-layer feature when printed seam-down.
-    tab_z = TRAY_TOP_Z - 0.01;        // overlap into wall to weld cleanly
-
-    // Front wall tab
-    translate([FLANGE_W + OUTER_WALL,
-               OUTER_WALL,
-               tab_z])
-        cube([OUTER_W - 2 * OUTER_WALL, LIP_INSET, LIP_DROP + 0.01]);
-
-    // Back wall tab
-    translate([FLANGE_W + OUTER_WALL,
-               OUTER_D - OUTER_WALL - LIP_INSET,
-               tab_z])
-        cube([OUTER_W - 2 * OUTER_WALL, LIP_INSET, LIP_DROP + 0.01]);
-
-    // Left wall tab
-    translate([FLANGE_W + OUTER_WALL,
-               OUTER_WALL,
-               tab_z])
-        cube([LIP_INSET, OUTER_D - 2 * OUTER_WALL, LIP_DROP + 0.01]);
 }
 
 module pi_case_gate_posts(tray = true) {
@@ -522,6 +595,8 @@ module pi_case_cable_slots_tray() {
         cube([PWR_SLOT[0], OUTER_WALL + 0.2, PWR_SLOT[1]]);
 
     // Qwiic + 1-Wire: back wall, low (Z ≈ FLOOR + 2) — tray half.
+    // (1-Wire is being migrated to a back-wall GX12 in the upper half,
+    // but the legacy slot stays for cable pass-through during transition.)
     translate([FLANGE_W + OUTER_W / 2 - 15 - QWIIC_SLOT[0] / 2,
                OUTER_D - 0.1,
                FLOOR + 2])
@@ -532,6 +607,18 @@ module pi_case_cable_slots_tray() {
                FLOOR + 2])
         cube([ONEWIRE_SLOT[0], OUTER_WALL + 0.2, ONEWIRE_SLOT[1]]);
 
+    // SMA bulkhead (GPS antenna) — back wall, centre-X, Z clearing
+    // the NVMe HAT top. Dropped from upper-third to keep the pair of
+    // GX12 ports symmetric either side of the portcullis. Coax loops
+    // back up to the GPS HAT internally (~25 mm bend, fine for RG178).
+    translate([FLANGE_W + OUTER_W / 2,
+               OUTER_D + 0.1,
+               FLOOR + 8])
+        rotate([90, 0, 0])
+            cylinder(d = SMA_HOLE_D,
+                     h = OUTER_WALL + 0.2,
+                     $fn = 32);
+
     // microSD extraction slot — left wall, at Pi PCB level.
     sd_y = PI_Y0 + PI5_D / 2 - SD_SLOT[0] / 2;
     sd_z = PI_Z0 - SD_SLOT[1] / 2;
@@ -540,28 +627,22 @@ module pi_case_cable_slots_tray() {
 }
 
 module pi_case_cable_slots_upper() {
-    // GX12 (arcade button on GPIO 17) and SMA (GPS antenna) on the
-    // back wall, in the top third of case height. Cylinders pierce
-    // the wall by sitting at Y = OUTER_D - small-overlap and extruding
-    // through +Y — fixes v1 rotation bug (rotate([90,0,0]) + positive Y).
+    // Two GX12 panel connectors on the back wall, upper-third Z,
+    // flanking the portcullis vent symmetrically (reads as arrow
+    // slits either side of the arch). Left port is the arcade
+    // BUTTON (GPIO 17); right port is the 1-WIRE sensor bus.
+    // Rotation trick: sit at Y = OUTER_D + small-overlap, extrude
+    // back through the wall via rotate([90,0,0]).
     gx12_z = FLOOR + INNER_H * 0.75;
-    sma_z  = FLOOR + INNER_H * 0.75;
 
-    translate([FLANGE_W + OUTER_W / 2 - 15,
-               OUTER_D + 0.1,
-               gx12_z])
-        rotate([90, 0, 0])
-            cylinder(d = GX12_D,
-                     h = OUTER_WALL + 0.2,
-                     $fn = 48);
-
-    translate([FLANGE_W + OUTER_W / 2 + 15,
-               OUTER_D + 0.1,
-               sma_z])
-        rotate([90, 0, 0])
-            cylinder(d = SMA_HOLE_D,
-                     h = OUTER_WALL + 0.2,
-                     $fn = 32);
+    for (x_off = [-15, 15])
+        translate([FLANGE_W + OUTER_W / 2 + x_off,
+                   OUTER_D + 0.1,
+                   gx12_z])
+            rotate([90, 0, 0])
+                cylinder(d = GX12_D,
+                         h = OUTER_WALL + 0.2,
+                         $fn = 48);
 }
 
 module pi_case_flange_holes() {
