@@ -36,9 +36,9 @@ The following were not selected for discussion. Planner picks sensible defaults 
 
 - **Grafana panel design** — default to four time series (one per wheel) for `tpms_pressure_psi` and another four for `tpms_temperature_c` in the existing `shitbox-rally-command` dashboard. Connects naturally to the standing audit-Grafana-dashboard todo (2026-04-26) but doesn't depend on it.
 - **TPMS service module location and naming** — likely `src/shitbox/sync/tpms.py` (sibling to `batch_sync.py`, `capture_sync.py`) given it's a long-running background service that doesn't fit `BaseCollector`. Final naming up to the planner.
-- **Subprocess management mechanics** — drain stderr, monitor for stalls, restart on death. Lift the established `capture/video.py` ffmpeg-management pattern.
+- **Subprocess management mechanics** — drain stderr, monitor for stalls, restart on death. Lift the established `capture/ring_buffer.py:740-1050` ffmpeg-management pattern (not `capture/video.py` — the long-running daemon pattern with `_read_stderr` non-blocking drain at lines 827-846, `_health_monitor` restart-on-death loop at lines 926-1050, and `fuser -k` device release at line 752 lives in `ring_buffer.py`).
 - **In-memory deque vs SQLite query for leak-detection sliding window** — in-memory deque (per wheel, 60 samples) is the simpler and faster choice; planner picks unless evidence emerges otherwise.
-- **Schema migration mechanics** — bump `SCHEMA_VERSION` from 3 → 4, add `tpms_readings` table, follow the existing `storage/database.py` migration pattern.
+- **Schema migration mechanics** — current `SCHEMA_VERSION` is 10 in `src/shitbox/storage/database.py:16` (verified by researcher 2026-04-28). Bump to 11, add `tpms_readings` table via new `_migrate_to_v11` modelled on `_migrate_to_v6` at `database.py:298-330`. (Earlier CONTEXT.md note saying "v3 → v4" was written from stale memory.)
 - **Prometheus metric naming** — `shitbox_tpms_pressure_psi{wheel="..."}` and `shitbox_tpms_temperature_c{wheel="..."}` per the project's `shitbox_*` namespace convention.
 - **YAML config schema** — single `tpms:` block with `enabled`, `pressure_correction_factor` (default 2.45), `low_pressure_yellow_psi` (28), `low_pressure_red_psi` (25), `leak_window_seconds` (60), `leak_drop_psi` (5), `stale_timeout_seconds` (300), and `sensors:` mapping ID → wheel position.
 

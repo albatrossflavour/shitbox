@@ -502,9 +502,14 @@ Plans:
 
 ### Phase 28: TPMS Integration
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Receive 433 MHz TPMS frames from four installed wheel sensors via RTL-SDR + `rtl_433`, normalise pressure into actual PSI, persist to SQLite, and surface per-wheel state on Grafana and the dashboard Health page with low-pressure threshold alerts (28/25 PSI) and rapid-deflation leak alerts (≥5 PSI/60s) via the existing TTS engine.
+
+**Requirements**: 10 requirements locked in SPEC.md (ambiguity 0.13)
 **Depends on:** —
+**Canonical refs:**
+- `.planning/phases/28-tpms-integration/28-SPEC.md` — locked requirements
+- `.planning/phases/28-tpms-integration/28-CONTEXT.md` — locked implementation decisions
+
 **Plans:** 0 plans
 
 Plans:
