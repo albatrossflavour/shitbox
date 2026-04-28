@@ -968,6 +968,14 @@ class UnifiedEngine:
                 cbs[dev.role] = cast(
                     Callable[[], bool], lambda p=pin: probes.probe_gpio_pin(p)
                 )
+            elif bus == "usb_vid_pid":
+                if not dev.path:
+                    log.warning("reprobe_skip_missing_vid_pid", role=dev.role)
+                    continue
+                vid_pid: str = dev.path
+                cbs[dev.role] = cast(
+                    Callable[[], bool], lambda v=vid_pid: probes.probe_usb_vid_pid(v)
+                )
             else:
                 log.warning("unknown_bus_for_reprobe", role=dev.role, bus=bus)
         return cbs

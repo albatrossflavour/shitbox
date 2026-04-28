@@ -153,6 +153,11 @@ class TPMSService:
         self._leak_windows: Dict[str, Deque[Tuple[float, float]]] = {
             p: deque(maxlen=120) for p in WHEEL_POSITIONS
         }
+        # Single-shot guard for events.json: alerts.fire_alert dedupes TTS but
+        # save_event runs every frame the spike is in-window without this flag,
+        # producing ~60 TPMS_LEAK rows per real leak. Flag resets in
+        # _detect_leak when the spike rolls past the cutoff.
+        self._leak_event_fired: Dict[str, bool] = {p: False for p in WHEEL_POSITIONS}
 
         self._process: Optional[subprocess.Popen] = None
         self._reader_thread: Optional[threading.Thread] = None
@@ -483,8 +488,12 @@ class TPMSService:
         cutoff = now_mono - self.config.leak_window_seconds
         in_window = [psi for ts, psi in window if ts >= cutoff]
         if not in_window:
+            self._leak_event_fired[position] = False
             return False
-        return (max(in_window) - psi_now) >= self.config.leak_drop_psi
+        spiked = (max(in_window) - psi_now) >= self.config.leak_drop_psi
+        if not spiked:
+            self._leak_event_fired[position] = False
+        return spiked
 
     @staticmethod
     def _position_to_subtype(prefix: str, position: str) -> str:
@@ -563,6 +572,15 @@ class TPMSService:
             _say_leak,
             sustain_required=1,
         )
+
+        # Single-shot save_event: only the FIRST frame inside the spike
+        # window writes events.json. _detect_leak clears the flag when
+        # the spike rolls past the cutoff, allowing the next physical
+        # leak to be recorded.
+        if self._leak_event_fired.get(position, False):
+            return
+        self._leak_event_fired[position] = True
+
         # Write a TPMS_LEAK Event to events.json (no IMU samples, no
         # video buffer save — leak data alone tells the story per
         # SPEC REQ 8 / Plan 28-02 decision).
