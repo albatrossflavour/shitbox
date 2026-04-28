@@ -442,6 +442,18 @@ def speak_under_voltage() -> None:
     _enqueue("Michael, the electrical supply is unsteady.")
 
 
+def speak_power_restored() -> None:
+    """Announce that an under-voltage condition has cleared.
+
+    Suppressed during the boot grace period. Style-matched to
+    speak_thermal_recovered ("Much better, Michael. …") — terse,
+    second-person, observational.
+    """
+    if not _should_alert():
+        return
+    _enqueue("Power restored, Michael. We're back to steady.")
+
+
 def speak_service_crash() -> None:
     """Announce that a monitored service process has crashed.
 

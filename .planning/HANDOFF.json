@@ -1,51 +1,41 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-24T06:38:16.771Z",
+  "timestamp": "2026-04-24T08:42:35.950Z",
   "phase": "15",
   "phase_name": "undervoltage-and-monitoring",
   "phase_dir": ".planning/phases/15-undervoltage-and-monitoring",
-  "plan": null,
-  "task": null,
+  "branch": "gsd/phase-15-undervoltage-and-monitoring",
+  "plan": "15-05",
+  "task": 0,
   "total_tasks": 5,
-  "status": "planned",
-  "stage": "pre-execute",
+  "status": "in_progress",
+  "stage": "wave-1-complete",
   "completed_tasks": [
-    {"id": "discuss-phase", "name": "Capture 10 decisions + D-13 Health page expansion", "status": "done", "commit": "236c493"},
-    {"id": "research", "name": "Produce 15-RESEARCH.md (HIGH confidence, bug site verified at thermal_monitor.py:297)", "status": "done", "commit": "5a3caa7"},
-    {"id": "validation-strategy", "name": "Produce 15-VALIDATION.md Wave 0 test scaffold", "status": "done", "commit": "5a3caa7"},
-    {"id": "ui-spec", "name": "Produce 15-UI-SPEC.md (6/6 dimensions PASS)", "status": "done", "commit": "91a69b1"},
-    {"id": "pattern-map", "name": "Produce 15-PATTERNS.md (8/8 analog mappings with file:line anchors)", "status": "done", "commit": "2d3356a"},
-    {"id": "plan-phase", "name": "Produce 15-01..15-05 PLAN.md (5 plans / 3 waves) — checker passed iter 2", "status": "done", "commit": "449e381"}
+    {"id": "15-01", "name": "alerts.py helper + speak_power_restored + 10 tests", "status": "done", "wave": 0, "commits": "9dfc9d3..6033ffb"},
+    {"id": "15-02", "name": "PWR-01/02 thermal_monitor sticky-bit fix + 6 regression tests", "status": "done", "wave": 1, "commits": "05bcfdf..1656bb5"},
+    {"id": "15-03", "name": "MON-03 ring_buffer capture-failure wiring + 4 tests", "status": "done", "wave": 1, "commits": "7891304..91836ef"},
+    {"id": "15-04", "name": "MON-01/02 paperwork + home-ops shitbox-mqtt-exporter delete (PUSHED)", "status": "done", "wave": 1, "commits": "shitbox: 6439200, 9dcc34e | home-ops: 0b3dadd1"}
   ],
   "remaining_tasks": [
-    {"id": "15-01", "name": "alerts.py helper (sustain + transition + recovery) + speak_power_restored + tests", "wave": 0, "autonomous": true, "depends_on": [], "status": "not_started"},
-    {"id": "15-02", "name": "PWR-01/02 thermal_monitor fix — sticky-bit mask + sustain + recovery wiring", "wave": 1, "autonomous": true, "depends_on": ["15-01"], "status": "not_started"},
-    {"id": "15-03", "name": "MON-03 ring_buffer capture-failure wiring (FAILURE/RESTORED/DOWN)", "wave": 1, "autonomous": true, "depends_on": ["15-01"], "status": "not_started"},
-    {"id": "15-04", "name": "MON-01 HLTH-01 ticket close + MON-02 home-ops shitbox-mqtt-exporter delete", "wave": 1, "autonomous": false, "depends_on": [], "status": "not_started", "checkpoint": "home-ops is a separate working dir; executor must confirm before rm -rf and commit in home-ops"},
-    {"id": "15-05", "name": "D-13 Health page (sse.py _system_conditions_payload + index.html Alpine x-for + overlay routing)", "wave": 2, "autonomous": true, "depends_on": ["15-01", "15-02", "15-03"], "status": "not_started"}
+    {"id": "15-05", "name": "D-13 Health page (sse.py _system_conditions_payload + index.html Alpine x-for + green-overlay routing)", "wave": 2, "autonomous": false, "depends_on": ["15-01", "15-02", "15-03"], "status": "not_started", "checkpoint": "Non-autonomous — has UI work that warrants review before commit"}
   ],
   "blockers": [],
   "human_actions_pending": [
-    {"action": "On-Pi UAT after execution: force undervoltage condition (unplug PSU briefly), confirm overlay + TTS + Health page sticky state", "context": "PWR-02 manual verification per 15-VALIDATION.md", "blocking": false},
-    {"action": "Approve MON-02 home-ops checkpoint in 15-04 (executor must get confirmation before touching separate repo)", "context": "15-04 autonomous=false", "blocking": true},
-    {"action": "Separate /gsd-debug for Pi 5 firmware mailbox hang observed 2026-04-24 09:34:31 (cpufreq ondemand + brcmfmac WiFi race)", "context": "Unrelated to Phase 15 but logged in STATE.md", "blocking": false}
+    {"action": "On-Pi UAT: force undervoltage (briefly unplug PSU), confirm overlay + TTS + Health page sticky state", "context": "PWR-02 manual verification per 15-VALIDATION.md", "blocking": false},
+    {"action": "Phase verification + ROADMAP/STATE updates after 15-05 completes (run gsd-verifier)", "context": "execute-phase post-wave gates", "blocking": false}
   ],
-  "decisions": [
-    {"decision": "AlertStatus shape = two sustain counters (active_sustain_count + clear_sustain_count), not one", "rationale": "Pitfall 2 (sticky-bit recovery never fires) requires separate active/clear tracking; one-counter shape would reset on every poll and never accumulate the clear side", "phase": "15"},
-    {"decision": "recovery_subtype kwarg lives inside 15-01 fire_recovery signature, not a 15-02 amendment", "rationale": "Owner of the alerts.py helper is 15-01; adding the kwarg there prevents files_modified frontmatter drift in 15-02", "phase": "15"},
-    {"decision": "SSE payload for system_conditions is exactly 5 scalar fields: role, label, tier, state, since_ms", "rationale": "UI-SPEC locks the shape; no free-form message/last_seen/subtype fields leak into the channel", "phase": "15"},
-    {"decision": "Frontend Health rendering uses Alpine x-for template, not vanilla getElementById/innerHTML", "rationale": "Mirrors existing sortedHardware() pattern at index.html:396-404; keeps state model coherent across the dashboard", "phase": "15"},
-    {"decision": "D-01/D-02 Undervoltage: compare raw & 0xf with N-read sustain (~2-3 reads)", "rationale": "Sticky bits 16-19 were swallowing real transitions; bug at thermal_monitor.py:297 compares full raw value", "phase": "15"},
-    {"decision": "D-03 Recovery: zero-mask sustain fires POWER RESTORED TTS + 3s green overlay", "rationale": "Phase 21 D-09 recovery discipline — positive confirmation without nagging", "phase": "15"},
-    {"decision": "D-05/D-06 Reuse dashboard_push_event ALERT channel; add subtypes UNDERVOLTAGE[_CLEARED], CAPTURE_FAILURE, CAPTURE_RESTORED, CAPTURE_DOWN", "rationale": "Frontend already routes type=ALERT; no new SSE channel needed", "phase": "15"},
-    {"decision": "D-07/D-08 Capture-failure driven solely by ring_buffer._is_stalled(); N=3 consecutive restarts within ~90s escalates to CAPTURE_DOWN", "rationale": "Keeps scope tight; broader hardware presence belongs to Phase 21", "phase": "15"},
-    {"decision": "D-11 Extract src/shitbox/health/alerts.py mirroring hardware/state.py module-level GIL-atomic rebind pattern", "rationale": "Seam not cathedral — Phase 21 can refactor into a SystemCondition abstraction later", "phase": "15"},
-    {"decision": "D-12 Once on transition, once on recovery — no repeat TTS", "rationale": "Persistent visibility lives on the Health page, not nagging audio", "phase": "15"},
-    {"decision": "D-13 Expand hardware panel into Health page with sticky colour state for system conditions", "rationale": "User verbatim: 'alert colour will stay in place so we don't forget something is broken'", "phase": "15"}
+  "decisions_carried_forward": [
+    "AlertStatus shape: two sustain counters (active + clear), not one — required for sticky-bit recovery",
+    "SSE payload exactly 5 scalar fields: role, label, tier, state, since_ms",
+    "Frontend uses Alpine x-for, mirroring sortedHardware() at index.html:396-404",
+    "Hardware modal renamed Health; SYSTEM section above HARDWARE list",
+    "Green overlay branch: subtype endsWith('_CLEARED'|'_RESTORED') → green #238636 3000ms; else red #da3633 10000ms"
   ],
-  "uncommitted_files": [
-    ".planning/STATE.md"
-  ],
-  "next_action": "/clear then /gsd-execute-phase 15 — Wave 0 runs 15-01 alone; Wave 1 can parallelise 15-02/15-03/15-04 after 15-01 lands; Wave 2 runs 15-05 after Wave 1. 15-04 will checkpoint before touching home-ops repo.",
-  "context_notes": "Phase 15 planning completed cleanly in this session: pattern map + 5 plans + validation.md updates, checker passed iteration 2 after 6 blockers resolved. Plans and patterns committed in 2d3356a + 449e381. STATE.md has an uncommitted edit (session continuity timestamps from the planned-phase record call) — include it in the pause commit. Resume framing should stay in plain terms per feedback_replain_staged_phases memory — the next session will be cold on the gray-area details."
+  "test_state": {
+    "tests_added": "20 (10 alerts + 6 thermal + 4 ffmpeg)",
+    "post_merge_status": "39/39 pass on phase branch",
+    "pre_existing_ruff_issue": "tests/test_thermal_monitor.py:203 line >100 (Phase 17 commit f45a345d, not 15-02 work)"
+  },
+  "next_action": "/clear then /gsd-execute-phase 15 — only 15-05 remains. After 15-05 lands, run gsd-verifier for phase completion + on-Pi UAT.",
+  "context_notes": "Wave 1 had a quota mid-flight: agents 15-02/15-03 ran out of usage after committing Task 1 code, before tests + SUMMARY. Both finished inline in main context. home-ops cleanup pushed to main (5 file deletions, 1 line removed in kustomization.yaml). 15-05 should run as gsd-executor when usage resets, OR inline if quota is tight."
 }

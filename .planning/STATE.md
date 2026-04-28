@@ -2,53 +2,92 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: unknown
-stopped_at: context exhaustion at 95% (2026-04-24)
-last_updated: "2026-04-24T06:19:11.740Z"
+status: physical-integration upstream of v2.0; TPMS spike actionable
+stopped_at: context exhaustion at 90% (2026-04-24)
+last_updated: "2026-04-24T09:37:51.531Z"
 last_activity: 2026-04-24
 progress:
   total_phases: 13
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 51
-  completed_plans: 45
-  percent: 88
+  completed_plans: 50
+  percent: 98
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-09)
+See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Phase 15 — research + UI-SPEC locked, ready for `/gsd-plan-phase 15`; backlog after: 14/16/20/24/25
+**Current focus:** Physical integration — Pi case prints + in-car install (gates all remaining v2.0 work)
 
 ## Current Position
 
-Phase: 15 (undervoltage-and-monitoring) — READY TO PLAN
-  10 decisions + D-13 Health-page expansion locked. Research HIGH confidence (bug site at thermal_monitor.py:297 — compare-on-raw, fix needs `raw & 0xf` + sustain counter move). UI-SPEC APPROVED: 6/6 dimensions passed (Spacing FLAG on pre-existing 10px `hw-row-lg` padding, non-blocking). Artifacts: 15-CONTEXT.md + 15-DISCUSSION-LOG.md + 15-RESEARCH.md + 15-VALIDATION.md + 15-UI-SPEC.md all committed. Next: `/gsd-plan-phase 15` (research and UI-SPEC survive re-entry, go straight to planner).
+Phase: — (v2.0 phases gated; backlog work newly unblocked 2026-04-24)
+Status: physical-integration upstream of v2.0; TPMS spike actionable
 
-Phase: 27 (slate-visual-theming) — COMPLETE
-  2/2 plans; Cinzel Bold hero ALL CAPS with state suffix dropped, Cinzel Regular meta rows, coord row DejaVu Mono. Event-type badge colour fill dropped per on-Pi UAT feedback. On-Pi visual UAT confirmed 2026-04-24 ("videos look good, loving the layout").
+  v2.0 critical path:
+    GX12 connectors arrived → case redesign (GX12 cutouts in v2 clamshell)
+    → print → mount in car → Phase 24 (OpenSCAD review + boot verify)
+    → unblocks Phases 14 (sensor cal) and 16 (ELP 4K) → Phase 25 closes v2.0
 
-Phase: 26 (event-video-title-cards) — COMPLETE
-  6/6 plans; gap closure G-01..G-08 shipped. 26-VERIFICATION.md 6/6 criteria VERIFIED on 2026-04-23 with on-Pi UAT confirming render.
+  Newly actionable (parts arrived 2026-04-24):
 
-Phase: 23 (verification-closure-and-traceability-sweep) — COMPLETE
-  3/3 plans; 23-VERIFICATION.md 5/5 success criteria VERIFIED.
+    - TPMS Path A spike: CC1101 + ESP32-S3 in hand. RF sniff/decode of the
+      aftermarket TPMS transmissions. Independent of v2.0 critical path —
+      can run in parallel with the case redesign. Likely a /gsd-spike or
+      new phase depending on scope.
 
-Phase: 22 (imu-signal-quality-and-rollover-detection-exploit-lsm6dsox-c) — COMPLETE
-  7/7 plans; verified 2026-04-22 with deferred Pi UAT on IMU-02 sustained poll rate.
+    - GX12 case redesign: drives the clamshell rework that unblocks the
+      print queue. Brain `project_pi_case_v2.md` needs updating before
+      next print run.
 
-Phase: 21 (hardware-inventory-and-graceful-degradation) — COMPLETE
-  5/5 plans; verified 2026-04-21. 4 REVIEW warnings (WR-01..WR-04) carried forward as hardening follow-ups, non-blocking.
+### Recently completed (v2.0)
 
-Next: `/gsd-plan-phase 15` using the just-committed 15-CONTEXT.md. Phase 24 (Physical Integration Completion) still waits on 3D prints; Phase 25 (Nyquist validation sweep) queued after 24. Phases 14/16 open in backlog. Separate `/gsd-debug` needed for Pi 5 firmware mailbox hang observed 2026-04-24 09:34:31 (cpufreq ondemand governor + brcmfmac WiFi race).
+| Phase | Name | Plans | Verified | Notes |
+|-------|------|-------|----------|-------|
+| 12 | Schema Foundation and Logbook API | 4/4 | 2026-04-09 | |
+| 13 | Driver Tracking | 4/4 | 2026-04-09 | |
+| 15 | Undervoltage and Monitoring | 5/5 | 2026-04-24 | executor worktree merged a1851fb |
+| 17 | Driver Display | 2/2 | 2026-04-24 | human UAT passed (timelapse thumbnail) ef2634f |
+| 18 | Website Revamp | 5/5 | 2026-04-11 | |
+| 19 | Website Narrative Rebuild | 12/12 | 2026-04-17 | |
+| 20 | Physical Integration | 3/3 | on disk | ROADMAP checkbox not yet ticked; Phase 24 finishes deferred 20-03 Task 3 |
+| 21 | Hardware Inventory and Graceful Degradation | 5/5 | 2026-04-21 | ROADMAP checkbox not yet ticked; WR-01..WR-04 carried forward |
+| 22 | IMU Signal Quality and Rollover Detection | 7/7 | 2026-04-22 | ROADMAP checkbox not yet ticked |
+| 23 | Verification Closure and Traceability Sweep | 3/3 | 2026-04-22 | |
+| 26 | Event Video Title Cards | 6/6 | 2026-04-23 | gap closure G-01..G-08 shipped |
+| 27 | Slate Visual Theming | 2/2 | 2026-04-24 | branch `gsd/phase-27-slate-visual-theming` unmerged to main |
+
+### Pending — all blocked on physical integration
+
+| Phase | Name | Blocked by |
+|-------|------|------------|
+| 24 | Phase 20 Physical Integration Completion | 3D prints (case, screen mount, camera cradle) |
+| 14 | Sensor Calibration | car install (in-motion calibration + threshold revalidation) |
+| 16 | Video Capture Tuning | ELP 4K mounted in car at final position |
+| 25 | Milestone v2.0 Nyquist Validation Sweep | Phase 24 complete |
+
+Next: Pi case v2 design conversation — GX12 connectors arrived, case needs reworking before next print run.
+
+  Topics to walk through next session:
+    - Read `~/Brain/projects/project_pi_case_v2.md` first — has v1 bugs to fix
+    - GX12 cutouts: how many connectors total (one-wire bus, GPIO buttons), panel-mount geometry, body diameter, internal clearance for connector backs
+    - Pi 5 port layout sanity check — USB-C is at the DISPLAY end of the long edge, not the USB-A end (memory: feedback_pi5_port_layout)
+    - Existing v1 bug list from the v2 doc
+    - Print orientation, wall thickness, support strategy
+    - Whether to also accommodate the dust sensor adapter / future ADS1015 in this revision or leave it for v3
+
+  Once the design is settled, the print → mount → Phase 24 → 14/16/25 chain unblocks.
+
+  TPMS spike (CC1101 RF sniff/decode) is a parallel track — does not block the case work.
 
 Last activity: 2026-04-24
 
-Progress: 10/13 phases complete (v2.0 milestone); v1.0 [██████████] 100%
+Progress: 12/16 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
 v1.0 shipped: 9 phases, 27 plans, 2026-04-09
 
@@ -118,10 +157,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-24T06:38:16.771Z
-Stopped at: context exhaustion after plan-phase (2026-04-24)
-Resume file: `.planning/phases/15-undervoltage-and-monitoring/.continue-here.md`
-Next action: `/gsd-execute-phase 15` — 5 plans committed (`449e381`), checker passed iter 2. Wave 0: 15-01; Wave 1: 15-02/15-03/15-04 parallel (15-04 checkpoints for home-ops); Wave 2: 15-05. Phase 27 branch `gsd/phase-27-slate-visual-theming` still unmerged to main (separate concern).
+Last session: 2026-04-24T09:37:51.524Z
+Stopped at: context exhaustion at 90% (2026-04-24)
+Resume file: None
+Next action: physical world — print Pi case (see Brain `project_pi_case_v2.md`), assemble, mount in car. Then return for Phase 24 OpenSCAD review + boot verify, after which Phases 14, 16, 25 unblock in sequence.
 
 ## Out-of-Band Hardware Work (2026-04-10)
 
@@ -157,4 +196,6 @@ Post-phase-13 session — hardware issues discovered and partially resolved duri
 
 **Completed Phase:** 27 (Slate Visual Theming) — 2/2 plans — 2026-04-24 (on-Pi UAT confirmed)
 
-**Planned Phase:** 15 (undervoltage-and-monitoring) — 5 plans — 2026-04-24T06:17:59.780Z
+**Active phase:** none — v2.0 phases gated on physical integration (Pi case v2 print). TPMS Path A spike actionable in parallel.
+
+**Phase 15 closure (2026-04-25):** REVIEW.md findings resolved — WR-01/02/03 fixed, WR-04/05/06 triaged, WR-07 deferred. Tests green.

@@ -13,6 +13,7 @@
     "verifier": true,
     "auto_advance": true,
     "nyquist_validation": true,
+    "security_enforcement": false,
     "_auto_chain_active": false
   },
   "git": {

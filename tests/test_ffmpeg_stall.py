@@ -18,7 +18,6 @@ import pytest
 
 from shitbox.capture.ring_buffer import VideoRingBuffer
 
-
 # ---------------------------------------------------------------------------
 # Factory helper
 # ---------------------------------------------------------------------------
@@ -60,6 +59,9 @@ def _make_vrb(tmp_path: Path) -> VideoRingBuffer:
     vrb._last_segment_mtime = 0.0
     vrb._last_segment_size = 0
     vrb._stall_check_armed = False
+
+    # MON-03 consecutive restart counter (plan 15-03)
+    vrb._consecutive_restart_count = 0
 
     # Hardware state role (Plan 21-03)
     vrb.role = "camera_front"
@@ -116,12 +118,13 @@ def test_stall_detected_after_timeout(tmp_path: Path, monkeypatch: pytest.Monkey
     # Second call with unchanged file and recent mtime — still False
     assert vrb._check_stall() is False
 
-    # Advance time past the stall timeout
-    segment_mtime = vrb._last_segment_mtime
+    # Advance monotonic clock past the stall timeout. Stall age is measured
+    # against time.monotonic() (REVIEW WR-03) so a GPS wall-clock step does
+    # not register as a stall.
+    seen_at = vrb._last_segment_seen_monotonic
     monkeypatch.setattr(
-        time,
-        "time",
-        lambda: segment_mtime + VideoRingBuffer.STALL_TIMEOUT_SECONDS + 1,
+        "shitbox.capture.ring_buffer.time.monotonic",
+        lambda: seen_at + VideoRingBuffer.STALL_TIMEOUT_SECONDS + 1,
     )
 
     # Third call — timeout elapsed with no activity
@@ -343,3 +346,152 @@ def test_successful_ffmpeg_start_reports_present(tmp_path: Path) -> None:
 
     snap = hw_state.snapshot()
     assert snap["camera_front"].state == DeviceState.PRESENT
+
+
+# ---------------------------------------------------------------------------
+# MON-03: capture-failure alerts (Phase 15-03)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clear_alerts_state():
+    """Reset alerts module state before and after each test in this module."""
+    from shitbox.health import alerts
+    alerts.clear_state()
+    yield
+    alerts.clear_state()
+
+
+def test_mon03_capture_failure_fires(tmp_path: Path) -> None:
+    """Stall detection fires alerts.fire_alert with CAPTURE_FAILURE subtype."""
+    vrb = _make_vrb(tmp_path)
+
+    mock_process = MagicMock()
+    mock_process.poll.return_value = None
+    vrb._process = mock_process
+    vrb._running = True
+    vrb._consecutive_restart_count = 0
+
+    sleep_calls = [None, SystemExit("stop")]
+
+    def _sleep_side_effect(_duration: float) -> None:
+        effect = sleep_calls.pop(0)
+        if isinstance(effect, BaseException):
+            raise effect
+
+    with (
+        patch.object(vrb, "_check_stall", return_value=True),
+        patch.object(vrb, "_read_stderr", return_value=""),
+        patch.object(vrb, "_kill_current"),
+        patch.object(vrb, "_start_ffmpeg"),
+        patch("shitbox.capture.buzzer.beep_ffmpeg_stall") as mock_beep,
+        patch("shitbox.capture.ring_buffer.alerts.fire_alert") as mock_fire,
+        patch("shitbox.capture.ring_buffer.hw_state.report_degraded") as mock_degraded,
+        patch("time.sleep", side_effect=_sleep_side_effect),
+    ):
+        try:
+            vrb._health_monitor()
+        except SystemExit:
+            pass
+
+    mock_beep.assert_called_once()
+    mock_degraded.assert_called_once_with("camera_front")
+    # First call must be CAPTURE_FAILURE; CAPTURE_DOWN only fires at >= 3 restarts
+    capture_failure_calls = [
+        c for c in mock_fire.call_args_list if c.args[0] == "CAPTURE_FAILURE"
+    ]
+    assert len(capture_failure_calls) == 1
+    call = capture_failure_calls[0]
+    assert call.kwargs.get("active") is True or call.args[1] is True
+    assert (
+        call.kwargs.get("message") == "CAPTURE STALLED"
+        or call.args[2] == "CAPTURE STALLED"
+    )
+    assert call.kwargs.get("sustain_required") == 1
+
+
+def test_mon03_capture_down_after_threshold(tmp_path: Path) -> None:
+    """Three consecutive stall iterations escalate to CAPTURE_DOWN."""
+    vrb = _make_vrb(tmp_path)
+
+    mock_process = MagicMock()
+    mock_process.poll.return_value = None
+    vrb._process = mock_process
+    vrb._running = True
+    vrb._consecutive_restart_count = 0
+
+    # Four sleep ticks: 3 stall iterations then stop
+    sleep_calls = [None, None, None, SystemExit("stop")]
+
+    def _sleep_side_effect(_duration: float) -> None:
+        effect = sleep_calls.pop(0)
+        if isinstance(effect, BaseException):
+            raise effect
+
+    with (
+        patch.object(vrb, "_check_stall", return_value=True),
+        patch.object(vrb, "_read_stderr", return_value=""),
+        patch.object(vrb, "_kill_current"),
+        patch.object(vrb, "_start_ffmpeg"),
+        patch("shitbox.capture.buzzer.beep_ffmpeg_stall"),
+        patch("shitbox.capture.ring_buffer.alerts.fire_alert") as mock_fire,
+        patch("shitbox.capture.ring_buffer.hw_state.report_degraded"),
+        patch("time.sleep", side_effect=_sleep_side_effect),
+    ):
+        try:
+            vrb._health_monitor()
+        except SystemExit:
+            pass
+
+    subtypes = [c.args[0] for c in mock_fire.call_args_list]
+    assert subtypes.count("CAPTURE_FAILURE") == 3, subtypes
+    assert subtypes.count("CAPTURE_DOWN") == 1, subtypes
+    # CAPTURE_DOWN must appear after the third CAPTURE_FAILURE, not before
+    first_down = subtypes.index("CAPTURE_DOWN")
+    failures_before_down = subtypes[:first_down].count("CAPTURE_FAILURE")
+    assert failures_before_down == 3
+
+
+def test_mon03_capture_restored_fires(tmp_path: Path) -> None:
+    """Clean segment after prior failure fires CAPTURE_RESTORED recovery."""
+    vrb = _make_vrb(tmp_path)
+
+    mock_process = MagicMock()
+    mock_process.poll.return_value = None
+    vrb._process = mock_process
+    vrb._running = True
+    vrb._consecutive_restart_count = 2  # prior failures
+    vrb._stall_check_armed = True        # detector has seen a segment
+
+    sleep_calls = [None, SystemExit("stop")]
+
+    def _sleep_side_effect(_duration: float) -> None:
+        effect = sleep_calls.pop(0)
+        if isinstance(effect, BaseException):
+            raise effect
+
+    with (
+        patch.object(vrb, "_check_stall", return_value=False),
+        patch.object(vrb, "_read_stderr", return_value=""),
+        patch.object(vrb, "_kill_current"),
+        patch.object(vrb, "_start_ffmpeg"),
+        patch("shitbox.capture.ring_buffer.alerts.fire_recovery") as mock_recovery,
+        patch("shitbox.capture.ring_buffer.alerts.fire_alert"),
+        patch("time.sleep", side_effect=_sleep_side_effect),
+    ):
+        try:
+            vrb._health_monitor()
+        except SystemExit:
+            pass
+
+    # Recovery branch fires CAPTURE_FAILURE → CAPTURE_RESTORED for UI/TTS,
+    # plus CAPTURE_DOWN to clear the escalation latch (REVIEW WR-02) so a
+    # second escalation episode can re-fire CAPTURE_DOWN.
+    assert mock_recovery.call_count == 2
+    failure_call, down_call = mock_recovery.call_args_list
+    assert failure_call.args[0] == "CAPTURE_FAILURE"
+    assert failure_call.kwargs.get("recovery_subtype") == "CAPTURE_RESTORED"
+    assert failure_call.kwargs.get("message") == "RECORDING RESUMED"
+    assert down_call.args[0] == "CAPTURE_DOWN"
+    assert down_call.kwargs.get("message") == "RECORDING RESUMED"
+    assert vrb._consecutive_restart_count == 0

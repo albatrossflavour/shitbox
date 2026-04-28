@@ -58,3 +58,4 @@ graphify-out/
 
 # Generated 3D print artefacts (SCAD is source of truth)
 hardware/*.stl
+hardware/*.png
