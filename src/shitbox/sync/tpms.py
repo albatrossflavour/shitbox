@@ -255,17 +255,24 @@ class TPMSService:
         - ``-R 156``  — Abarth-124 / VDO-TG1C decoder only
         - ``-F json`` — newline-delimited JSON on stdout
         - ``-M time:utc`` — ISO timestamps in each frame
-        - ``-g``      — explicit R820T2 gain in dB
+        - ``-g``      — R820T2 gain in dB; OMITTED when rf_gain_db <= 0
+                        so rtl_433 falls back to its built-in AGC. With
+                        the loaner Realtek RTL2838 a fixed -g 30 produced
+                        zero decodes over 20 s while AGC decoded
+                        3 frames in the same window — verified bench
+                        2026-04-28 against sensor 550d14ed.
         - ``-f``      — centre frequency in Hz
         """
-        return [
+        cmd = [
             "rtl_433",
             "-R", str(self.config.rtl433_protocol_id),
             "-F", "json",
             "-M", "time:utc",
-            "-g", str(self.config.rf_gain_db),
             "-f", str(self.config.rf_frequency_hz),
         ]
+        if self.config.rf_gain_db > 0:
+            cmd[-2:-2] = ["-g", str(self.config.rf_gain_db)]
+        return cmd
 
     def _start_subprocess(self) -> None:
         cmd = self._build_cmd()
