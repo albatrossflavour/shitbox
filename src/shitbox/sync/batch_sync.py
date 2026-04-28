@@ -127,6 +127,14 @@ class BatchSyncService:
                 log.error("batch_sync_error", error=str(e))
 
             try:
+                self._sync_tpms_batch()
+            except Exception as e:
+                # TPMS sync failures should not stall the main batch sync —
+                # tpms_readings live on their own cursor (prometheus_tpms)
+                # and a transient failure here just means we retry next loop.
+                log.warning("tpms_batch_sync_error", error=str(e))
+
+            try:
                 self._sync_summary()
             except Exception as e:
                 log.warning("summary_sync_error", error=str(e))
@@ -380,6 +388,90 @@ class BatchSyncService:
                 )
         except requests.RequestException as e:
             log.warning("summary_sync_request_error", error=str(e))
+
+    def _send_metric_tuples(
+        self, metrics: List[Tuple[str, dict, float, int]]
+    ) -> None:
+        """POST a list of (name, labels, value, timestamp_ms) to Prometheus.
+
+        Generic tuple-based send path used by TPMS sync. The main batch
+        sync's _send_to_prometheus is built around the Reading dataclass;
+        this helper covers the tuple-shape case (TPMS rows + summary
+        gauges) without duplicating the snappy/protobuf encode + POST.
+        Mirrors the network shape of _sync_summary.
+        """
+        if not metrics:
+            return
+        data = encode_remote_write(metrics)
+        response = requests.post(
+            self.config.remote_write_url,
+            data=data,
+            headers={
+                "Content-Type": "application/x-protobuf",
+                "Content-Encoding": "snappy",
+                "X-Prometheus-Remote-Write-Version": "0.1.0",
+            },
+            timeout=30,
+        )
+        if response.status_code not in (200, 204):
+            response_text = response.text[:500] if response.text else ""
+            raise RuntimeError(
+                f"Prometheus write failed: {response.status_code} {response_text}"
+            )
+
+    def _sync_tpms_batch(self) -> None:
+        """Phase 28 (SPEC-5): sync tpms_readings on the prometheus_tpms cursor.
+
+        Independent of the main `_sync_batch` cursor — TPMS rows live in
+        their own table (`tpms_readings`) and use `prometheus_tpms` as
+        the cursor name in `sync_cursors`. High-cardinality wheel labels
+        stay off the hot 25 Hz IMU cursor (28-RESEARCH.md Pattern 5).
+
+        Each row produces two metric tuples — pressure_psi and
+        temperature_c — both labelled with `wheel=<position>` so Grafana
+        can group/filter by wheel.
+        """
+        rows = self.db.get_unsynced_tpms_readings(batch_size=self.config.batch_size)
+        if not rows:
+            log.debug("tpms_batch_sync_no_data")
+            return
+
+        last_id = rows[-1]["id"]
+        metrics: List[Tuple[str, dict, float, int]] = []
+        for row in rows:
+            ts_iso = row["timestamp_utc"]
+            try:
+                ts_dt = datetime.fromisoformat(ts_iso.replace("Z", "+00:00"))
+                if ts_dt.tzinfo is None:
+                    ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+                ts_ms = int(ts_dt.timestamp() * 1000)
+            except (ValueError, TypeError, AttributeError):
+                ts_ms = int(time.time() * 1000)
+            labels = {
+                "car": "shitbox",
+                "job": "shitbox-mqtt-exporter",
+                "wheel": row["wheel"],
+            }
+            metrics.append(
+                ("shitbox_tpms_pressure_psi", labels, float(row["pressure_psi"]), ts_ms)
+            )
+            metrics.append(
+                ("shitbox_tpms_temperature_c", labels, float(row["temperature_c"]), ts_ms)
+            )
+
+        try:
+            self._send_metric_tuples(metrics)
+        except Exception as e:
+            log.warning("tpms_batch_sync_send_failed", error=str(e), row_count=len(rows))
+            return
+
+        self.db.update_sync_cursor("prometheus_tpms", last_id)
+        log.info(
+            "tpms_batch_sync_ok",
+            row_count=len(rows),
+            metrics=len(metrics),
+            last_id=last_id,
+        )
 
     def _readings_to_metrics(
         self, readings: List[Reading]
