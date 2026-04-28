@@ -322,7 +322,12 @@ tpms:
   enabled: true
   rtl433_protocol_id: 156
   rf_frequency_hz: 433920000
-  rf_gain_db: 30
+  # 0 (or any value <= 0) tells rtl_433 to use its built-in AGC. Bench
+  # 2026-04-28 with the loaner RTL2838: -g 30 → 0 frames in 20s, AGC →
+  # 3 frames in 20s. AGC also tolerates the R820T PLL-not-locked startup
+  # warning. Set to a positive dB only if you have a known-good RF
+  # environment where a fixed step beats AGC.
+  rf_gain_db: 0
   pressure_correction_factor: 2.45
   low_pressure_yellow_psi: 28
   low_pressure_red_psi: 25
