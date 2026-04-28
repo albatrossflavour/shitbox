@@ -89,30 +89,47 @@ PCB_TOL    = 1.0;    // total clearance (0.5 mm per side — first-print margin)
 // ---- Pi 5 board (RPi mechanical drawing) ----
 PI5_W              = 85.0;
 PI5_D              = 56.0;
+PI5_PCB_T          = 1.4;       // PCB thickness (port body sits on top of PCB)
 PI5_INSET          = 3.5;
 PI5_HOLE_W         = 58.0;
 PI5_HOLE_D_SPACING = 49.0;
 
-// ---- Stack heights (measured 2026-04-17) ----
-STACK_H = 65;        // full stack, NVMe HAT bottom to perma-proto top
-HAT_H   = 20;        // NVMe HAT: floor to Pi 5 PCB bottom
+// ---- NVMe HAT (Freenove V2, measured 2026-04-28) ----
+// HAT is 88 mm long × 55.6 mm wide — extends 3 mm past Pi 5 in +X.
+// Has 3.5 mm socket on underside; ribbon cable to Pi connects there
+// and needs ~3 mm clearance. Both handled by lifting HAT on standoffs
+// (HAT_BASE_OFFSET) above the case floor.
+HAT_W            = 88.0;
+HAT_D            = 55.6;
+HAT_OVERHANG_X   = HAT_W - PI5_W;  // 3 mm — HAT extends past Pi's +X edge
+HAT_BASE_OFFSET  = 6;              // standoff height (clears 3.5 mm socket + 3 mm ribbon)
+
+// ---- Stack heights (measured 2026-04-28, actual built stack) ----
+STACK_H = 47;       // HAT bottom to top of GPS — measured, not estimated
+HAT_H   = 18;       // floor to Pi 5 PCB bottom: HAT_BASE_OFFSET (6) + HAT body (~2)
+                    //   + HAT-to-Pi standoff (~10)
 
 // ---- Pi 5 connector offsets (from RPi mech drawing) ----
-// All X offsets measure inward from the USB/Ethernet short edge plane.
-// In v2 that wall is absent, but the offset reference plane is the
-// same virtual line. HDMI0 is the cable we actually use (screen).
+// All X offsets measure inward from the SD card / display short edge
+// (Pi's −X corner, opposite end from USB-A/Ethernet). USB-C sits at
+// 11.5 mm from this edge. Earlier version of this file had the
+// reference edge wrong (claimed USB/Ethernet edge); cutouts came out
+// on the wrong end of the front wall as a result.
 HDMI1_OFFSET = 26.0;
 HDMI2_OFFSET = 39.5;
 HDMI_PORT_H  = 3.5;
 USB_OFFSET   = 29.0;
 PWR_OFFSET   = 11.5;
 PWR_PORT_H   = 3.5;
+PORT_TOL     = 1.0;       // tolerance below port body bottom for cutout
 
 // ---- Fan (Noctua NF-A4x10 5V) ----
-FAN_W         = 40;
-FAN_MOUNT_SPG = 32;
-FAN_SCREW_D   = 3.4;   // M3 clearance
-FAN_APERTURE  = 37;
+FAN_W            = 40;
+FAN_MOUNT_SPG    = 32;
+FAN_SCREW_D      = 3.4;   // M3 clearance
+FAN_APERTURE     = 37;
+FAN_BODY_DEPTH   = 10;    // NF-A4x10 body thickness (Z-axis on the wall it sits on)
+FAN_PI_GAP       = 5;     // clearance between fan body and Pi PCB inside the case
 
 // ---- Back-wall connector cutouts ----
 GX12_D     = 12.5;     // arcade button (GPIO 17) — 12 mm panel mount + 0.5 mm
@@ -155,8 +172,9 @@ INSERT_D_M3       = 4.6;   // RUTHEX M3 pocket D
 INSERT_H_M3       = 6.0;
 
 // ---- Clamshell geometry ----
-SPLIT_Z    = 33;           // seam Z, above Pi PCB + active cooler
-INNER_H    = STACK_H + 5;  // 70 mm interior — 5 mm clearance above stack
+SPLIT_Z    = 30;           // seam Z, above Pi PCB + active cooler;
+                           // GPS sits in upper half above SPLIT_Z
+INNER_H    = 60;           // HAT_BASE_OFFSET (6) + STACK_H (47) + breathing (~7)
 
 // Shiplap seam (replaces earlier thin-tab alignment lip).
 // Tray walls extend LIP_DROP above SPLIT_Z carrying only their OUTER
@@ -170,9 +188,9 @@ LIP_DROP  = 3.0;             // vertical overlap depth (inside seam at SPLIT_Z,
                              // outside seam at SPLIT_Z + LIP_DROP)
 
 // ---- Cable exit slots ----
-HDMI_SLOT    = [15, 10];
+HDMI_SLOT    = [15, 6];     // port body 3.5 mm + 1 mm tolerance each side + 0.5 slack
 USB_SLOT     = [15, 18];    // (unused — right wall absent)
-PWR_SLOT     = [12, 8];
+PWR_SLOT     = [12, 6];     // USB-C body 3.5 mm + tolerance, matching HDMI height
 QWIIC_SLOT   = [7, 5];
 ONEWIRE_SLOT = [6, 4];
 SD_SLOT      = [16, 4];     // microSD extraction clearance on left wall
@@ -249,23 +267,33 @@ FAN_FRAME_T  = 0.8;
 // =====================================================
 //   Derived dimensions
 // =====================================================
-INNER_W = PI5_W + PCB_TOL;
-INNER_D = PI5_D + PCB_TOL;
+// INNER_W: fan body (10) + fan-to-Pi gap (5) + PCB_TOL (1, half each side) +
+//          PI5_W (85) + HAT_OVERHANG_X (3) + right-side clearance (~6).
+//          = ~110 mm. Hardcoded to allow generous fit on the +X side.
+INNER_W = 110;
+INNER_D = max(PI5_D, HAT_D) + PCB_TOL + 3;   // 56 + 1 + 3 = 60 — extra space for cable routing
 OUTER_W = INNER_W + 2 * OUTER_WALL;
 OUTER_D = INNER_D + 2 * OUTER_WALL;
 TOTAL_W = OUTER_W + 2 * FLANGE_W;
 
-// Pi PCB origin relative to outer shell
-PI_X0 = FLANGE_W + OUTER_WALL + PCB_TOL / 2;
+// Pi PCB origin relative to outer shell.
+// Anchored on the −X side, but inset by FAN_BODY_DEPTH + FAN_PI_GAP so
+// the fan body fits inside the case on the −X (left) wall with airflow
+// clearance to the Pi.
+PI_X0 = FLANGE_W + OUTER_WALL + FAN_BODY_DEPTH + FAN_PI_GAP + PCB_TOL / 2;
 PI_Y0 = OUTER_WALL + PCB_TOL / 2;
-PI_Z0 = FLOOR + HAT_H;   // Pi PCB bottom
+PI_Z0 = FLOOR + HAT_H;   // Pi PCB bottom (FLOOR + HAT_BASE_OFFSET + HAT body + HAT-Pi standoff)
 
-// Virtual USB/Ethernet reference plane (right short edge of Pi)
+// Virtual USB-A/Ethernet reference plane (right short edge of Pi).
+// Kept as a named landmark for the gatehouse stub geometry; cutouts
+// no longer derive from it (offsets are now from PI_X0, the SD-card
+// short edge, per the Pi 5 mech drawing).
 RIGHT_EDGE_X = PI_X0 + PI5_W;
 
-// Fan centre on left wall — positioned so the aperture bottom sits
-// exactly on the clamshell seam (FAN_CZ - FAN_APERTURE/2 = SPLIT_Z).
-FAN_CZ = SPLIT_Z + FAN_APERTURE / 2;
+// Fan centre on left wall — positioned mid-stack so airflow crosses the
+// Pi rather than the empty cavity above. Stack centre ≈ FLOOR +
+// HAT_BASE_OFFSET + STACK_H/2 = 2.5 + 6 + 23.5 = 32. Round to 30.
+FAN_CZ = 30;
 FAN_CY = OUTER_D / 2;
 
 // Split geometry
@@ -322,6 +350,9 @@ module pi_case_tray() {
         }
         pi_case_standoff_insert_holes();
         pi_case_cable_slots_tray();
+        pi_case_fan_cutout();   // fan straddles the seam (FAN_CZ=30, aperture 37);
+                                // both halves need to subtract it or you get a
+                                // semi-circle opening on the assembled left wall
         pi_case_flange_holes();
         pi_case_clamshell_holes(tray = true);
         castle_tower_arrow_slits();
@@ -566,58 +597,53 @@ module pi_case_standoff_insert_holes() {
 }
 
 module pi_case_fan_cutout() {
-    // Fan entirely in the upper half (FAN_CZ = 51, aperture 37 ⇒
-    // Z 32.5 .. 69.5, within [SPLIT_Z, UPPER_TOP_Z]).
-    translate([FLANGE_W - 0.1, FAN_CY, FAN_CZ])
+    // Fan straddles the clamshell seam (FAN_CZ = 30, aperture 37 ⇒
+    // Z 11.5 .. 48.5). Subtracted from BOTH tray and upper.
+    //
+    // Cutout extends from SEAM_STEP_PROJ outside the wall to OUTER_WALL
+    // inside, so it carves through the seam-course outward projection
+    // too — otherwise a 1.25 mm tall × 0.4 mm thick sliver of seam
+    // course material stays put across the fan opening on each half.
+    cut_x_start = FLANGE_W - SEAM_STEP_PROJ - 0.1;
+    cut_x_depth = OUTER_WALL + SEAM_STEP_PROJ + 0.2;
+    translate([cut_x_start, FAN_CY, FAN_CZ])
         rotate([0, 90, 0]) {
-            cylinder(d = FAN_APERTURE, h = OUTER_WALL + 0.2);
+            cylinder(d = FAN_APERTURE, h = cut_x_depth);
             for (sx = [-1, 1], sy = [-1, 1])
                 translate([sx * FAN_MOUNT_SPG / 2,
                            sy * FAN_MOUNT_SPG / 2, 0])
-                    cylinder(d = FAN_SCREW_D, h = OUTER_WALL + 0.2);
+                    cylinder(d = FAN_SCREW_D, h = cut_x_depth);
         }
 }
 
 module pi_case_cable_slots_tray() {
-    // HDMI0, HDMI1, USB-C are on the Pi HDMI long edge (case front,
-    // Y=0). All three sit at Pi PCB + 3.5 mm ⇒ below SPLIT_Z, so
-    // they live in the tray half of the front wall.
-    hdmi_z = PI_Z0 + HDMI_PORT_H;
+    // HDMI0, HDMI1, USB-C live on the Pi HDMI long edge (case front,
+    // Y=0). All three sit at Pi PCB top + port body — below SPLIT_Z,
+    // so they live in the tray half of the front wall.
+    //
+    // Cutout X math: offsets are measured from the SD card / display
+    // short edge of the Pi (the −X corner per RPi mech drawing), so
+    // we anchor at PI_X0 and add the offset. Older revs of this file
+    // had it reversed (RIGHT_EDGE_X − offset), which placed cutouts
+    // at the wrong end of the front wall.
+    //
+    // Cutout Z math: anchor at PI PCB top (PI_Z0 + PI5_PCB_T) minus
+    // PORT_TOL so the slot has 1 mm slack below the port body bottom.
+    cutout_z = PI_Z0 + PI5_PCB_T - PORT_TOL;
     for (offset = [HDMI1_OFFSET, HDMI2_OFFSET]) {
-        x = RIGHT_EDGE_X - offset - HDMI_SLOT[0] / 2;
-        translate([x, -0.1, hdmi_z])
+        x = PI_X0 + offset - HDMI_SLOT[0] / 2;
+        translate([x, -0.1, cutout_z])
             cube([HDMI_SLOT[0], OUTER_WALL + 0.2, HDMI_SLOT[1]]);
     }
 
-    pwr_x = RIGHT_EDGE_X - PWR_OFFSET - PWR_SLOT[0] / 2;
-    pwr_z = PI_Z0 + PWR_PORT_H;
-    translate([pwr_x, -0.1, pwr_z])
+    pwr_x = PI_X0 + PWR_OFFSET - PWR_SLOT[0] / 2;
+    translate([pwr_x, -0.1, cutout_z])
         cube([PWR_SLOT[0], OUTER_WALL + 0.2, PWR_SLOT[1]]);
 
-    // Qwiic + 1-Wire: back wall, low (Z ≈ FLOOR + 2) — tray half.
-    // (1-Wire is being migrated to a back-wall GX12 in the upper half,
-    // but the legacy slot stays for cable pass-through during transition.)
-    translate([FLANGE_W + OUTER_W / 2 - 15 - QWIIC_SLOT[0] / 2,
-               OUTER_D - 0.1,
-               FLOOR + 2])
-        cube([QWIIC_SLOT[0], OUTER_WALL + 0.2, QWIIC_SLOT[1]]);
-
-    translate([FLANGE_W + OUTER_W / 2 - 25 - ONEWIRE_SLOT[0] / 2,
-               OUTER_D - 0.1,
-               FLOOR + 2])
-        cube([ONEWIRE_SLOT[0], OUTER_WALL + 0.2, ONEWIRE_SLOT[1]]);
-
-    // SMA bulkhead (GPS antenna) — back wall, centre-X, Z clearing
-    // the NVMe HAT top. Dropped from upper-third to keep the pair of
-    // GX12 ports symmetric either side of the portcullis. Coax loops
-    // back up to the GPS HAT internally (~25 mm bend, fine for RG178).
-    translate([FLANGE_W + OUTER_W / 2,
-               OUTER_D + 0.1,
-               FLOOR + 8])
-        rotate([90, 0, 0])
-            cylinder(d = SMA_HOLE_D,
-                     h = OUTER_WALL + 0.2,
-                     $fn = 32);
+    // Back-wall low-Z cable pass-throughs: removed in v3 — all external
+    // connectors (button GX12, 1-Wire GX12, GPS SMA) are now on the
+    // front wall upper half (see pi_case_cable_slots_upper). The back
+    // wall is purely decorative (portcullis + sword relief).
 
     // microSD extraction slot — left wall, at Pi PCB level.
     sd_y = PI_Y0 + PI5_D / 2 - SD_SLOT[0] / 2;
@@ -627,19 +653,32 @@ module pi_case_cable_slots_tray() {
 }
 
 module pi_case_cable_slots_upper() {
-    // Two GX12 panel connectors on the back wall, upper-third Z,
-    // flanking the portcullis vent symmetrically (reads as arrow
-    // slits either side of the arch). Left port is the arcade
-    // BUTTON (GPIO 17); right port is the 1-WIRE sensor bus.
-    // Rotation trick: sit at Y = OUTER_D + small-overlap, extrude
-    // back through the wall via rotate([90,0,0]).
-    gx12_z = FLOOR + INNER_H * 0.75;
+    // FRONT WALL upper half — three external connectors:
+    //   left   : button GX12 (GPIO 17 arcade button)
+    //   centre : SMA bulkhead (GPS antenna)
+    //   right  : 1-Wire GX12 (DS18B20 bus → engine bay + exterior)
+    // Rotation trick: sit at Y = -small-overlap, extrude through the
+    // front wall via rotate([-90, 0, 0]).
+    //
+    // Z: 75% of INNER_H above FLOOR — keeps the connectors clear of
+    // the Pi stack and roughly horizontally aligned with the back-wall
+    // portcullis arch springline.
+    conn_z   = FLOOR + INNER_H * 0.75;
+    centre_x = FLANGE_W + INNER_W / 2;
 
+    // Centre SMA (GPS)
+    translate([centre_x, -0.1, conn_z])
+        rotate([-90, 0, 0])
+            cylinder(d = SMA_HOLE_D,
+                     h = OUTER_WALL + 0.2,
+                     $fn = 32);
+
+    // Flanking GX12 ports
     for (x_off = [-15, 15])
-        translate([FLANGE_W + OUTER_W / 2 + x_off,
-                   OUTER_D + 0.1,
-                   gx12_z])
-            rotate([90, 0, 0])
+        translate([centre_x + x_off,
+                   -0.1,
+                   conn_z])
+            rotate([-90, 0, 0])
                 cylinder(d = GX12_D,
                          h = OUTER_WALL + 0.2,
                          $fn = 48);
