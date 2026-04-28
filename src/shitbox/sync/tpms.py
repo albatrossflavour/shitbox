@@ -20,9 +20,12 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, Deque, Dict, Optional, Tuple
 
+from shitbox.capture.speaker import speak_tpms_leak, speak_tpms_low, speak_tpms_restored
+from shitbox.events.detector import Event, EventType
 from shitbox.events.storage import EventStorage
 from shitbox.hardware import probes as hw_probes
 from shitbox.hardware import state as hw_state
+from shitbox.health import alerts
 from shitbox.storage.database import Database
 from shitbox.utils.config import TpmsConfig
 from shitbox.utils.logging import get_logger
@@ -280,26 +283,41 @@ class TPMSService:
         log.info("tpms_rtl433_started", pid=self._process.pid, cmd=" ".join(cmd))
 
     def _read_stderr_nonblocking(self) -> str:
-        """Drain stderr without blocking. Lifted from
+        """Drain stderr without blocking. Adapted from
         capture/ring_buffer.py:827-846 — same root cause as the March
-        2026 ffmpeg pipe-buffer stall (28-RESEARCH.md Pitfall 1)."""
+        2026 ffmpeg pipe-buffer stall (28-RESEARCH.md Pitfall 1).
+
+        On a non-blocking pipe, ``os.read`` raises ``BlockingIOError``
+        once the buffer is empty rather than returning ``b""``. The
+        ring_buffer.py original silently lost the accumulated bytes
+        when this happened (the bare ``except Exception: pass`` swallowed
+        it after dropping the partial data); the variant here catches
+        the BlockingIOError as the loop-exit signal and returns whatever
+        was already drained.
+        """
         if self._process and self._process.stderr:
+            data = b""
             try:
                 fd = self._process.stderr.fileno()
                 flags = os.get_blocking(fd)
                 os.set_blocking(fd, False)
                 try:
-                    data = b""
                     while True:
-                        chunk = os.read(fd, 4096)
+                        try:
+                            chunk = os.read(fd, 4096)
+                        except BlockingIOError:
+                            # Pipe is empty for now — that's the signal to stop.
+                            break
                         if not chunk:
+                            # EOF (writer closed).
                             break
                         data += chunk
                 finally:
                     os.set_blocking(fd, flags)
                 return data.decode(errors="replace")[-500:]
             except Exception:
-                pass
+                # Last-ditch: keep whatever we already drained.
+                return data.decode(errors="replace")[-500:] if data else ""
         return ""
 
     def _reader_loop(self) -> None:
@@ -365,8 +383,208 @@ class TPMSService:
             except Exception as e:
                 log.error("tpms_monitor_error", error=str(e))
 
-    # ── Frame handling (PLACEHOLDER — Task 2 fills this in) ───────
+    # ── Frame handling ────────────────────────────────────────────
 
     def _handle_frame(self, line: str) -> None:
-        """Parse, correct, persist, dispatch alerts. Implemented in Task 2."""
-        raise NotImplementedError("Task 2 fills in _handle_frame")
+        """Parse one rtl_433 -F json line and dispatch state + alerts.
+
+        Pipeline (per 28-RESEARCH.md Pattern 2 + Pattern 7):
+            parse → lookup → correct → persist → state → alerts → leak.
+
+        Frame rate is ~4 Hz across all four wheels combined (~1 Hz each)
+        so a structlog INFO line per parsed frame is well below the
+        noise threshold for the existing log channels.
+        """
+        parsed = parse_frame(line)
+        if parsed is None:
+            return  # malformed JSON or empty — drop silently
+        if parsed.get("type") != "TPMS":
+            return  # rtl_433 may emit non-TPMS frames if other decoders match
+        sensor_id_raw = parsed.get("id", "")
+        if not isinstance(sensor_id_raw, str) or not sensor_id_raw:
+            return
+        sensor_id = sensor_id_raw.lower()
+        position = lookup_wheel(sensor_id, self.config.sensor_map)
+        if position is None:
+            log.info("tpms_unknown_sensor", sensor_id=sensor_id)
+            return
+
+        try:
+            raw_kpa = float(parsed.get("pressure_kPa", 0.0))
+            temperature_c = float(parsed.get("temperature_C", 0.0))
+        except (TypeError, ValueError) as e:
+            log.warning(
+                "tpms_frame_field_error", error=str(e), wheel=position
+            )
+            return
+        corrected_kpa = correct_pressure_kpa(
+            raw_kpa, factor=self.config.pressure_correction_factor
+        )
+        psi = kpa_to_psi(corrected_kpa)
+        status_raw = parsed.get("status")
+        status: Optional[int] = status_raw if isinstance(status_raw, int) else None
+        timestamp_utc_raw = parsed.get("time", "")
+        timestamp_utc = timestamp_utc_raw if isinstance(timestamp_utc_raw, str) else ""
+
+        log.info(
+            "tpms_frame_received",
+            wheel=position,
+            sensor_id=sensor_id,
+            pressure_psi=round(psi, 2),
+            raw_kpa=round(raw_kpa, 2),
+            corrected_kpa=round(corrected_kpa, 2),
+            temperature_c=temperature_c,
+        )
+
+        # Persist (one row per parsed frame — SPEC-4).
+        try:
+            self.db.insert_tpms_reading(
+                timestamp_utc=timestamp_utc,
+                sensor_id=sensor_id,
+                wheel=position,
+                pressure_psi=psi,
+                temperature_c=temperature_c,
+                status=status,
+                raw_pressure_kpa=raw_kpa,
+            )
+        except Exception as e:
+            log.warning("tpms_db_insert_failed", error=str(e), wheel=position)
+
+        # Update per-wheel state (single-writer: only this thread mutates _wheels).
+        now_mono = time.monotonic()
+        with self._state_lock:
+            st = self._wheels[position]
+            st.last_seen_monotonic = now_mono
+            st.last_seen_wall = time.time()
+            st.last_psi = psi
+            st.last_temperature_c = temperature_c
+
+        # Leak detection (deque per wheel — SPEC-8).
+        leak_now = self._detect_leak(position, psi, now_mono)
+
+        # Sustained-low alerts (SPEC-7) — only the red threshold fires TTS.
+        self._wire_low_pressure_alert(position, psi)
+
+        # Leak alert + event recording (SPEC-8).
+        if leak_now:
+            self._wire_leak_alert(position, psi)
+
+    def _detect_leak(self, position: str, psi_now: float, now_mono: float) -> bool:
+        """Append (now, psi) to the wheel's deque; return True if max-min in
+        the window ≥ leak_drop_psi.
+
+        Window is `leak_window_seconds` (default 60s). Returns True every
+        frame the threshold is crossed — `alerts.fire_alert` collapses
+        repeated active=True calls to a single fire (Phase 15 sustain
+        semantics with `sustain_required=1`).
+        """
+        window = self._leak_windows[position]
+        window.append((now_mono, psi_now))
+        cutoff = now_mono - self.config.leak_window_seconds
+        in_window = [psi for ts, psi in window if ts >= cutoff]
+        if not in_window:
+            return False
+        return (max(in_window) - psi_now) >= self.config.leak_drop_psi
+
+    @staticmethod
+    def _position_to_subtype(prefix: str, position: str) -> str:
+        """``'LOW' + 'front-driver'`` → ``'TPMS_LOW_FRONT_DRIVER'``."""
+        return f"TPMS_{prefix}_{position.upper().replace('-', '_')}"
+
+    def _wire_low_pressure_alert(self, position: str, psi: float) -> None:
+        """Fire/recover the sustained-low subtype for this wheel.
+
+        Yellow band (25 < psi ≤ 28) is a Health-page row colour only —
+        no fire_alert call. Red band (psi ≤ 25) fires after
+        ``sustain_required`` consecutive frames; recovery requires
+        psi > 28 for the same number of frames (recovery_subtype mirrors
+        the Phase 15 ``_RESTORED`` suffix convention).
+        """
+        subtype = self._position_to_subtype("LOW", position)
+        red_active = psi <= self.config.low_pressure_red_psi
+        position_label = position.upper().replace("-", " ")
+
+        # Inner functions close over `position` cleanly without the
+        # `p=position` default-arg-lambda dance (which trips mypy's
+        # type inference). Each call's `position` is the local scope's
+        # value, so no late-binding hazard.
+        def _say_low() -> None:
+            speak_tpms_low(position)
+
+        def _say_restored() -> None:
+            speak_tpms_restored(position)
+
+        # Mirrors thermal_monitor.py:326-340 — fire_alert and fire_recovery
+        # are both passed the same `active` boolean; the helpers own the
+        # edge logic. fire_recovery only emits once `active=False` has
+        # sustained for `sustain_required` frames.
+        alerts.fire_alert(
+            subtype,
+            red_active,
+            f"{position_label} TYRE LOW PRESSURE",
+            _say_low if red_active else None,
+            sustain_required=self.config.sustain_required,
+        )
+        alerts.fire_recovery(
+            subtype,
+            red_active,
+            f"{position_label} TYRE PRESSURE RESTORED",
+            _say_restored,
+            sustain_required=self.config.sustain_required,
+            recovery_subtype=f"{subtype}_RESTORED",
+        )
+
+    def _wire_leak_alert(self, position: str, psi: float) -> None:
+        """Fire the leak subtype + write a TPMS_LEAK Event to events.json.
+
+        Leak is single-shot: ``sustain_required=1`` (the deque has
+        already confirmed the drop). The Phase 15 ``fire_alert`` helper
+        collapses repeated active=True calls to a single emit, so
+        firing every frame the deque is over-threshold is safe.
+
+        Recovery for leak subtypes is not wired here — by design.
+        Once the deque rolls past the spike, ``_detect_leak`` returns
+        False, so we simply stop calling fire_alert. The Phase 15
+        helper holds ``fired=True`` until a fire_recovery sustains; for
+        leaks we accept the alert stays "live" in the dashboard until
+        the next reboot or an explicit clear. Acceptable per SPEC: a
+        leak event is forensic, not a trip-state flag.
+        """
+        subtype = self._position_to_subtype("LEAK", position)
+        position_label = position.upper().replace("-", " ")
+
+        def _say_leak() -> None:
+            speak_tpms_leak(position)
+
+        alerts.fire_alert(
+            subtype,
+            True,
+            f"TYRE LEAKING, {position_label}",
+            _say_leak,
+            sustain_required=1,
+        )
+        # Write a TPMS_LEAK Event to events.json (no IMU samples, no
+        # video buffer save — leak data alone tells the story per
+        # SPEC REQ 8 / Plan 28-02 decision).
+        try:
+            now_wall = time.time()
+            event = Event(
+                event_type=EventType.TPMS_LEAK,
+                start_time=now_wall,
+                end_time=now_wall,
+                peak_value=psi,
+                peak_ax=0.0,
+                peak_ay=0.0,
+                peak_az=0.0,
+                samples=[],
+            )
+            self.event_storage.save_event(event, video_path=None)
+            log.info(
+                "tpms_leak_event_recorded",
+                wheel=position,
+                pressure_psi=round(psi, 2),
+            )
+        except Exception as e:
+            log.warning(
+                "tpms_leak_event_save_failed", error=str(e), wheel=position
+            )
