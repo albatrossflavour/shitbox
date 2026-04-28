@@ -478,9 +478,38 @@ class HighRateSampler:
         return self._lsm6dsox is not None
 
     def _force_reboot(self) -> None:
-        """Force a system reboot after unrecoverable I2C failure."""
+        """Force a system reboot after unrecoverable I2C failure.
+
+        Diagnostic instrumentation added 2026-04-29 after observing 9 fired
+        forcing_reboot calls in a row that never produced a logind reboot
+        signal. Uses /usr/sbin/reboot directly (the binary the user's manual
+        recovery used and which is known to work) instead of `systemctl
+        reboot` which adds an extra DBus → systemd hop. `-n` makes sudo
+        fail fast rather than block on a TTY-less password prompt.
+        capture_output + log lets us see the next failure mode if there is
+        one — current `check=False` swallows everything.
+        """
         log.critical("i2c_recovery_failed_forcing_reboot")
-        subprocess.run(["sudo", "systemctl", "reboot"], check=False)
+        try:
+            result = subprocess.run(
+                ["sudo", "-n", "/usr/sbin/reboot"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            log.critical(
+                "force_reboot_subprocess_result",
+                returncode=result.returncode,
+                stdout=result.stdout[:500],
+                stderr=result.stderr[:500],
+            )
+        except Exception as e:
+            log.critical(
+                "force_reboot_subprocess_exception",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     def _read_sample(self) -> IMUSample:
         """Read accelerometer and gyroscope data from LSM6DSOX."""
