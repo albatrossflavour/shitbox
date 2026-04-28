@@ -41,7 +41,10 @@
     .hw-degraded .hw-state { color: #f85149; }
     .hw-present .hw-glyph { color: #238636; }
     /* System condition row states — mirror .hw-* pattern (Phase 15 D-13) */
-    .sc-clear .hw-glyph { color: #8b949e; }
+    /* clear = green filled dot to match .hw-present + .tpms-ok — without it
+       the red 'critical' severity badge dominates the row visually and reads
+       as a fault even when state is clear. */
+    .sc-clear .hw-glyph { color: #3fb950; }
     .sc-clear .hw-state { color: #8b949e; }
     .sc-active .hw-glyph { color: #da3633; }
     .sc-active .hw-state { color: #f85149; }
@@ -920,7 +923,7 @@
             || (state || 'CLEAR').toUpperCase();
         },
         scGlyph(state) {
-          return { clear: '○', active: '●', recovering: '◐', restored: '●' }[state] || '?';
+          return { clear: '●', active: '●', recovering: '◐', restored: '●' }[state] || '?';
         },
         tpmsGlyph(state) {
           // Phase 28 (D-01) — TPMS row glyphs. Tuned for tyre context.
