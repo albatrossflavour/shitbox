@@ -510,10 +510,15 @@ Plans:
 - `.planning/phases/28-tpms-integration/28-SPEC.md` — locked requirements
 - `.planning/phases/28-tpms-integration/28-CONTEXT.md` — locked implementation decisions
 
-**Plans:** 0 plans
+**Plans:** 6 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 28 to break down)
+- [ ] 28-01-PLAN.md — Wave 0 test scaffolding (conftest fixtures + 5 new test files + test_dashboard.py extension; 24 stubbed tests)
+- [ ] 28-02-PLAN.md — Schema v11 migration + tpms_readings table + Database TPMS methods + EventType.TPMS_LEAK
+- [ ] 28-03-PLAN.md — TpmsConfig + speaker TPMS helpers + probe_usb_vid_pid + supervisor branch + config.yaml + install.sh
+- [ ] 28-04-PLAN.md — TPMSService: rtl_433 subprocess wrapper + parser + per-wheel state + leak deque + alerts wiring
+- [ ] 28-05-PLAN.md — Dashboard SSE _tpms_payload + index.html section + batch_sync TPMS branch + engine wiring
+- [ ] 28-06-PLAN.md — Manual UATs (bring-up + bench deflation + replug recovery + driving loop) + Grafana panel checklist
 
 ---
 
