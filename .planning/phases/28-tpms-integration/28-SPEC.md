@@ -21,7 +21,7 @@ The `rtl_433` Abarth-124 decoder applies `kPa = byte_5 × 1.38` (max 350 kPa). C
 
 Existing patterns this phase plugs into:
 
-- `BaseCollector` in `src/shitbox/collectors/base.py` is built for synchronous polled sensors and is **not** a good fit — TPMS frames arrive asynchronously when the radio receives them. The closer analog is `src/shitbox/capture/video.py`, which manages a long-running ffmpeg subprocess with stderr drain and restart-on-death.
+- `BaseCollector` in `src/shitbox/collectors/base.py` is built for synchronous polled sensors and is **not** a good fit — TPMS frames arrive asynchronously when the radio receives them. The closer analog is `src/shitbox/capture/ring_buffer.py:740-1050`, which manages a long-running ffmpeg subprocess with stderr drain and restart-on-death.
 - Hardware manifest in `config.yaml hardware: devices` (Phase 21) governs presence/criticality.
 - `src/shitbox/health/alerts.py` (shipped Phase 15) handles sustain + transition + recovery semantics.
 - Dashboard Health page (`dashboard/sse.py` + `dashboard/static/index.html`) renders alert state via SSE + Alpine.js `x-for`.
@@ -86,7 +86,7 @@ Hardware in flight: Nooelec NESDR Smart v5 (RTL2832U + R820T2 + 0.5 PPM TCXO + m
 **In scope:**
 
 - All ten requirements above.
-- New TPMS service module under `src/shitbox/` managing the `rtl_433` subprocess lifecycle (start, monitor, stderr drain, restart on death) — pattern follows `capture/video.py`.
+- New TPMS service module under `src/shitbox/` managing the `rtl_433` subprocess lifecycle (start, monitor, stderr drain, restart on death) — pattern follows `capture/ring_buffer.py:740-1050`.
 - YAML config additions: TPMS section with sensor-id → wheel mapping, correction factor, low-pressure thresholds, leak-detection window/delta, stale-sensor timeout.
 - New SQLite table + schema migration via the existing `storage/database.py` migration pattern.
 - Grafana dashboard panel additions for the four wheel pressures + temperatures.

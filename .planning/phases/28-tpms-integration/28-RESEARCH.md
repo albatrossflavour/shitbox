@@ -1186,22 +1186,22 @@ All tests below are NEW. The existing test infrastructure (`pytest`, `conftest.p
 
 **A4 and A5 should be verified by the planner during the Thursday hardware bring-up — both are configurable so the fix is one YAML edit if they shift.**
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should the TPMS_LEAK event open a CSV alongside the JSON?**
    - What we know: existing event types (HARD_BRAKE, BIG_CORNER, etc.) save IMU samples to CSV.
    - What's unclear: TPMS leak events have no IMU samples — passing an empty list works but produces an empty CSV file.
-   - Recommendation: pass `samples=[]` and let `_write_csv` create an empty CSV. Saves the planner from adding a "skip CSV for non-IMU events" branch in `events/storage.py`. The empty file is harmless to rsync + website.
+   - RESOLVED: pass `samples=[]` and let `_write_csv` create an empty CSV. Saves the planner from adding a "skip CSV for non-IMU events" branch in `events/storage.py`. The empty file is harmless to rsync + website.
 
 2. **Should the yellow-low (28 PSI) state surface as a Phase-15-style banner, or only as a Health-card colour?**
    - What we know: SPEC.md REQ 7 says "Yellow fires Health-page banner only".
    - What's unclear: "banner" could mean the existing alert overlay (`alertOverlay` Alpine state) OR just the row colour in the TPMS section.
-   - Recommendation: just the row colour. The alert overlay is for transient bursts; persistent yellow PSI is a state, not a notification. Frontend already supports per-row state colour via `:class="'tpms-' + row.state"`.
+   - RESOLVED: just the row colour. The alert overlay is for transient bursts; persistent yellow PSI is a state, not a notification. Frontend already supports per-row state colour via `:class="'tpms-' + row.state"`.
 
 3. **Should `tpms.enabled: false` skip the rtl_433 binary check entirely or still warn if missing?**
    - What we know: the daemon must boot even if SDR is unplugged (Phase 21 D-04).
    - What's unclear: with `enabled: false`, should the boot probe still log the SDR's PRESENT/MISSING state for monitoring?
-   - Recommendation: yes — manifest probes run regardless of feature toggles (existing pattern). HardwareSupervisor reports `tpms_radio` state independent of `tpms.enabled`. If enabled=false but SDR is plugged in, log INFO "tpms_disabled_but_sdr_present".
+   - RESOLVED: yes — manifest probes run regardless of feature toggles (existing pattern). HardwareSupervisor reports `tpms_radio` state independent of `tpms.enabled`. If enabled=false but SDR is plugged in, log INFO "tpms_disabled_but_sdr_present".
 
 ## Sources
 

@@ -58,7 +58,7 @@ The following were not selected for discussion. Planner picks sensible defaults 
 
 ### Existing patterns to reuse
 - `src/shitbox/health/alerts.py` — Sustain + transition + recovery helpers from Phase 15. Module-level GIL-atomic rebind pattern for thread-safe state.
-- `src/shitbox/capture/video.py` — Subprocess lifecycle: drain stderr, monitor for stalls, restart on death + `fuser -k` + 0.5s sleep before respawn.
+- `src/shitbox/capture/ring_buffer.py:740-1050` — Subprocess lifecycle: drain stderr, monitor for stalls, restart on death + `fuser -k` + 0.5s sleep before respawn. (`capture/video.py` is for one-shot encodes, not the long-running daemon pattern.)
 - `src/shitbox/capture/speaker.py` — TTS engine wrapper with Piper / espeak-ng / silent fall-through. Existing `speak_*` helpers (e.g. `speak_power_restored` from Phase 15).
 - `src/shitbox/dashboard/sse.py` — SSE payload assembly for the Health page; `_system_conditions_payload` and `_hardware_payload` are the precedents for `_tpms_payload`.
 - `src/shitbox/dashboard/static/index.html` — Alpine.js `x-for` rendering for the SYSTEM section; new TPMS section follows same shape.
@@ -80,7 +80,7 @@ The following were not selected for discussion. Planner picks sensible defaults 
 
 ### Reusable Assets
 - **`alerts.py`** (Phase 15): sustain-and-transition pattern for low-pressure alert. Module-level state for current alert status, recovery helper for `_RESTORED` semantics.
-- **`capture/video.py`** ffmpeg subprocess pattern: drain stderr, monitor `_is_stalled()`, kill-then-respawn with 0.5s sleep. Direct lift for rtl_433 lifecycle.
+- **`capture/ring_buffer.py:740-1050`** ffmpeg subprocess pattern: drain stderr (`_read_stderr` lines 827-846), monitor `_is_stalled()`, kill-then-respawn with 0.5s sleep, `_health_monitor` restart-on-death (lines 926-1050). Direct lift for rtl_433 lifecycle.
 - **`capture/speaker.py`** TTS helpers: add `speak_tpms_low(position)` and `speak_tpms_leak(position)` matching the established `speak_*` shape.
 - **`dashboard/sse.py`** payload assembly: `_tpms_payload` slots in alongside `_system_conditions_payload`.
 - **`dashboard/static/index.html`** Alpine `x-for`: TPMS section renders four-row list using same patterns as SYSTEM.
