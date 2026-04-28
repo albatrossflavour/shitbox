@@ -333,7 +333,7 @@ tpms:
   low_pressure_red_psi: 25
   leak_window_seconds: 60
   leak_drop_psi: 5
-  stale_timeout_seconds: 300
+  stale_timeout_seconds: 600
   sustain_required: 2
   usb_vid_pid: "0bda:2838"
   sensors:
