@@ -47,6 +47,7 @@ field logging, public engagement features, and confirmed hardware reliability be
 - [ ] **Phase 25: Milestone v2.0 Nyquist Validation Sweep** - `/gsd-validate-phase` across phases 12/13/17/18/19/20/21 (gap closure)
 - [x] **Phase 26: Event Video Title Cards** - Cinematic title frame between intro clip and event footage (location, date, event badge) via Pillow PNG → ffmpeg loop → concat demuxer (completed 2026-04-23)
 - [x] **Phase 27: Slate Visual Theming** - Redesign title slate from utilitarian text layout to a themed composition (typography, palette, motif, badge styling) fitting the Shit of Theseus identity (completed 2026-04-23)
+- [ ] **Phase 28: TPMS Integration** - Receive 433 MHz aftermarket TPMS sensor frames via RTL-SDR + rtl_433, normalise pressure (× 2.45 correction), persist to SQLite, surface on Grafana + Health page with low-pressure alerts
 
 ## Phase Details
 
@@ -499,6 +500,16 @@ Plans:
 
 **UI hint**: yes (user-facing visual; benefits from a design spike)
 
+### Phase 28: TPMS Integration
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** —
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 28 to break down)
+
 ---
 
 ## Progress
@@ -532,6 +543,7 @@ Plans:
 | 25. Milestone v2.0 Nyquist Validation Sweep | v2.0 | TBD | Not started | — |
 | 26. Event Video Title Cards | v2.0 | 6/6 | Complete | 2026-04-23 |
 | 27. Slate Visual Theming | v2.0 | 2/2 | Complete    | 2026-04-23 |
+| 28. TPMS Integration | v2.0 | TBD | Not started | — |
 
 ## Backlog — Captured, Not Yet Actionable
 

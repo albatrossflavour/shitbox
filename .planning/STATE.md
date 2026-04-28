@@ -154,6 +154,7 @@ None.
 - Phase 21 added: hardware inventory and graceful degradation
 - Phase 22 added: IMU signal quality and rollover detection — gyro-based rollover/yaw event, on-chip LPF2 + 208 Hz ODR with decimation, stationary auto-zero with tolerance-based rejection
 - Phase 26 added (2026-04-23): event video title cards — cinematic title frame between intro clip and event footage (location, date, event badge) via Pillow PNG → ffmpeg loop → concat demuxer. SDK phase-add bug: returned phase_number 25 despite existing 25-milestone-v2-0-nyquist-validation-sweep; manually renamed dir and patched ROADMAP.md.
+- Phase 28 added (2026-04-28): TPMS integration — receive 433 MHz TPMS frames via RTL-SDR + rtl_433, apply × 2.45 pressure correction, persist + Grafana + Health page alerts. Same SDK phase-add bug recurred (returned phase_number 25 again — collision with existing dir; manually renamed to 28-tpms-integration and patched ROADMAP.md phase list, detail entry, and progress table).
 
 ## Session Continuity
 
