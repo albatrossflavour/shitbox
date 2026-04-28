@@ -13,7 +13,7 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 # Database schema version for migrations
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -212,6 +212,9 @@ class Database:
         if current_version < 10:
             self._migrate_to_v10(conn)
 
+        if current_version < 11:
+            self._migrate_to_v11(conn)
+
         if current_version < SCHEMA_VERSION:
             conn.execute(
                 "INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
@@ -379,6 +382,39 @@ class Database:
         conn.commit()
         log.info("migrated_to_v10", columns=["pm25_ug_m3"])
 
+    def _migrate_to_v11(self, conn: sqlite3.Connection) -> None:
+        """Add tpms_readings table for Phase 28 TPMS integration.
+
+        A dedicated table parallel to notes / fuel_stops / driver_stints —
+        the readings table is already 30+ columns wide and TPMS frames have
+        six TPMS-specific fields nobody else queries. See Phase 28
+        RESEARCH.md Pattern 4 for the rationale.
+        """
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tpms_readings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp_utc TEXT NOT NULL,
+                sensor_id TEXT NOT NULL,
+                wheel TEXT NOT NULL,
+                pressure_psi REAL NOT NULL,
+                temperature_c REAL NOT NULL,
+                status INTEGER,
+                raw_pressure_kpa REAL NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tpms_timestamp "
+            "ON tpms_readings(timestamp_utc)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tpms_wheel ON tpms_readings(wheel)"
+        )
+        conn.commit()
+        log.info("migrated_to_v11", tables=["tpms_readings"])
+
     def close(self) -> None:
         """Close database connection for current thread."""
         if hasattr(self._local, "conn") and self._local.conn:
@@ -474,6 +510,65 @@ class Database:
             )
             conn.commit()
             return cursor.lastrowid
+
+    def insert_tpms_reading(
+        self,
+        *,
+        timestamp_utc: str,
+        sensor_id: str,
+        wheel: str,
+        pressure_psi: float,
+        temperature_c: float,
+        status: Optional[int],
+        raw_pressure_kpa: float,
+    ) -> int:
+        """Insert a single TPMS frame into tpms_readings; return lastrowid.
+
+        Keyword-only args mirror the rtl_433 frame shape (id -> sensor_id,
+        pressure_kPa -> raw_pressure_kpa). Wheel is the canonical position
+        string (e.g. 'front-driver') resolved by TPMSService before insert.
+        """
+        conn = self._get_connection()
+        with self._write_lock:
+            cursor = conn.execute(
+                """
+                INSERT INTO tpms_readings (
+                    timestamp_utc, sensor_id, wheel,
+                    pressure_psi, temperature_c, status, raw_pressure_kpa
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    timestamp_utc,
+                    sensor_id,
+                    wheel,
+                    pressure_psi,
+                    temperature_c,
+                    status,
+                    raw_pressure_kpa,
+                ),
+            )
+            conn.commit()
+            return cursor.lastrowid or 0
+
+    def get_unsynced_tpms_readings(self, batch_size: int = 1000) -> list[dict]:
+        """Return tpms_readings rows past the 'prometheus_tpms' cursor.
+
+        Mirrors get_unsynced_readings but selects from tpms_readings and
+        returns raw dicts (no Reading model — TPMS rows have a different
+        shape and live alongside notes/fuel_stops as plain dicts).
+        """
+        conn = self._get_connection()
+        cursor = conn.execute(
+            "SELECT last_synced_id FROM sync_cursors WHERE cursor_name = ?",
+            ("prometheus_tpms",),
+        )
+        row = cursor.fetchone()
+        last_id = row["last_synced_id"] if row else 0
+        rows = conn.execute(
+            "SELECT * FROM tpms_readings WHERE id > ? ORDER BY id LIMIT ?",
+            (last_id, batch_size),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def insert_readings_batch(self, readings: list[Reading]) -> int:
         """Insert multiple readings in a single transaction.

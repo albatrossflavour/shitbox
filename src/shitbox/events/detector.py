@@ -22,6 +22,7 @@ class EventType(Enum):
     MANUAL_CAPTURE = "manual_capture"
     BOOT = "boot"
     ROLLOVER = "rollover"  # Phase 22 (IMU-03)
+    TPMS_LEAK = "tpms_leak"  # Phase 28 (SPEC-8) — fired by TPMSService, no video buffer save
 
 
 @dataclass
