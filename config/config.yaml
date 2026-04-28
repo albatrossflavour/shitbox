@@ -313,6 +313,34 @@ drivers:
   - Tony
   - Steve
 
+# ── TPMS (Phase 28) ─────────────────────────────────────────────
+# Aftermarket 433 MHz TPMS via rtl_433 -R 156 (Abarth-124Spider /
+# VDO-TG1C). Pressure correction × 2.45 empirically calibrated against
+# four fitted tyres at 31-32 PSI on 2026-04-28; refine if a future
+# bench session shows individual sensor drift.
+tpms:
+  enabled: true
+  rtl433_protocol_id: 156
+  rf_frequency_hz: 433920000
+  rf_gain_db: 30
+  pressure_correction_factor: 2.45
+  low_pressure_yellow_psi: 28
+  low_pressure_red_psi: 25
+  leak_window_seconds: 60
+  leak_drop_psi: 5
+  stale_timeout_seconds: 300
+  sustain_required: 2
+  usb_vid_pid: "0bda:2838"
+  sensors:
+    - id: "550b57d9"
+      position: front-driver
+    - id: "54d96e8f"
+      position: front-passenger
+    - id: "550d14ed"
+      position: rear-driver
+    - id: "550b5d8a"
+      position: rear-passenger
+
 hardware:
   # Each entry declares expected hardware. Boot probe verifies and records
   # PRESENT/MISSING into HardwareState. Existing sensor blocks (sensors.imu,
@@ -394,3 +422,8 @@ hardware:
       connector: HDMI-A-2
       criticality: best_effort
       description: "7in kiosk display"
+    - role: tpms_radio
+      bus: usb_vid_pid
+      path: "0bda:2838"
+      criticality: best_effort
+      description: "Nooelec NESDR Smart v5 (RTL2832U + R820T2) — 433 MHz tyre pressure receiver"
