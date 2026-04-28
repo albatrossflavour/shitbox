@@ -26,6 +26,7 @@ EXPECTED_LABELS = [
     (EventType.MANUAL_CAPTURE, "Manual Capture"),
     (EventType.BOOT, "System Start"),
     (EventType.ROLLOVER, "Rollover"),
+    (EventType.TPMS_LEAK, "TPMS Leak"),
 ]
 
 EXPECTED_COLOURS = [
@@ -36,6 +37,7 @@ EXPECTED_COLOURS = [
     (EventType.MANUAL_CAPTURE, "#238636"),
     (EventType.BOOT, "#1f6feb"),
     (EventType.ROLLOVER, "#e74c3c"),
+    (EventType.TPMS_LEAK, "#f0883e"),
 ]
 
 
