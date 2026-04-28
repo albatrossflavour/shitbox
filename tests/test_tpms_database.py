@@ -46,12 +46,52 @@ def test_insert_retrieve(db):
     assert row["pressure_psi"] == pytest.approx(31.1, abs=0.01)
 
 
-def test_prometheus_metric_shape():
+def test_prometheus_metric_shape(db):
     """SPEC-5: Prometheus metric tuple uses shitbox_tpms_pressure_psi + wheel label."""
     if not hasattr(Database, "insert_tpms_reading"):
         pytest.skip("Plan 28-02 — TPMS persistence not yet implemented")
-    # Real assertion lands when Plan 28-05 wires the batch_sync TPMS branch.
-    pytest.skip("Plan 28-05 — batch_sync TPMS metric encoder not yet implemented")
+
+    from unittest.mock import MagicMock
+
+    from shitbox.sync.batch_sync import BatchSyncService
+    from shitbox.utils.config import PrometheusConfig
+
+    db.insert_tpms_reading(
+        timestamp_utc="2026-04-28T12:34:56Z",
+        sensor_id="550b57d9",
+        wheel="front-driver",
+        pressure_psi=31.1,
+        temperature_c=22.5,
+        status=19,
+        raw_pressure_kpa=87.6,
+    )
+
+    prom_config = PrometheusConfig(
+        enabled=True,
+        remote_write_url="http://example.invalid/write",
+        batch_size=10,
+    )
+    connection = MagicMock()
+    connection.is_connected = True
+    svc = BatchSyncService(prom_config, db, connection)
+
+    captured = []
+
+    def fake_send(metrics):
+        captured.extend(metrics)
+
+    svc._send_metric_tuples = fake_send  # type: ignore[assignment]
+    svc._sync_tpms_batch()
+
+    metric_names = {m[0] for m in captured}
+    assert "shitbox_tpms_pressure_psi" in metric_names
+    assert "shitbox_tpms_temperature_c" in metric_names
+    pressure = next(m for m in captured if m[0] == "shitbox_tpms_pressure_psi")
+    labels = pressure[1]
+    assert labels["wheel"] == "front-driver"
+    assert labels["car"] == "shitbox"
+    # Cursor should have advanced after a successful send.
+    assert db.get_unsynced_tpms_readings(batch_size=10) == []
 
 
 def test_cursor_advance(db):

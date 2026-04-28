@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional, cast
+from typing import Any, Callable, Dict, Optional, cast
 
 from shitbox.capture import buzzer, overlay, speaker
 from shitbox.capture.button import ButtonHandler
@@ -221,6 +221,22 @@ class EngineConfig:
     capture_sync_rsync_path: str = "/opt/bin/rsync"
     capture_sync_interval_seconds: int = 300
 
+    # TPMS service (Phase 28 — rtl_433 wrapper). Defaults match TpmsConfig
+    # so a missing tpms: block in YAML doesn't break engine load.
+    tpms_enabled: bool = False
+    tpms_rtl433_protocol_id: int = 156
+    tpms_rf_frequency_hz: int = 433920000
+    tpms_rf_gain_db: int = 30
+    tpms_pressure_correction_factor: float = 2.45
+    tpms_low_pressure_yellow_psi: float = 28.0
+    tpms_low_pressure_red_psi: float = 25.0
+    tpms_leak_window_seconds: float = 60.0
+    tpms_leak_drop_psi: float = 5.0
+    tpms_stale_timeout_seconds: float = 300.0
+    tpms_sustain_required: int = 2
+    tpms_usb_vid_pid: str = "0bda:2838"
+    tpms_sensor_map: Dict[str, str] = field(default_factory=dict)
+
     # Location resolution
     location_resolution_interval_seconds: int = 300
 
@@ -370,6 +386,20 @@ class EngineConfig:
             capture_sync_remote_dest=config.sync.capture_sync.remote_dest,
             capture_sync_rsync_path=config.sync.capture_sync.rsync_path,
             capture_sync_interval_seconds=config.sync.capture_sync.interval_seconds,
+            # TPMS (Phase 28) — flatten config.tpms.* onto EngineConfig
+            tpms_enabled=config.tpms.enabled,
+            tpms_rtl433_protocol_id=config.tpms.rtl433_protocol_id,
+            tpms_rf_frequency_hz=config.tpms.rf_frequency_hz,
+            tpms_rf_gain_db=config.tpms.rf_gain_db,
+            tpms_pressure_correction_factor=config.tpms.pressure_correction_factor,
+            tpms_low_pressure_yellow_psi=config.tpms.low_pressure_yellow_psi,
+            tpms_low_pressure_red_psi=config.tpms.low_pressure_red_psi,
+            tpms_leak_window_seconds=config.tpms.leak_window_seconds,
+            tpms_leak_drop_psi=config.tpms.leak_drop_psi,
+            tpms_stale_timeout_seconds=config.tpms.stale_timeout_seconds,
+            tpms_sustain_required=config.tpms.sustain_required,
+            tpms_usb_vid_pid=config.tpms.usb_vid_pid,
+            tpms_sensor_map=dict(config.tpms.sensor_map),
             # Location resolution
             location_resolution_interval_seconds=config.sensors.gps.location_resolution_interval_seconds,
             # Rally coordinates
@@ -620,6 +650,49 @@ class UnifiedEngine:
                 self.event_storage,
                 self.timelapse_compiler,
             )
+
+        # TPMS service (Phase 28) — graceful degradation if rtl_433 binary
+        # is missing. Pattern matches BatchSyncService / ButtonHandler:
+        # service is None unless config flag is on AND the underlying
+        # tooling is available on the host.
+        self.tpms: Optional[Any] = None
+        if config.tpms_enabled:
+            if shutil.which("rtl_433") is None:
+                log.warning(
+                    "tpms_disabled_no_rtl433_binary",
+                    hint="apt install rtl-433 librtlsdr-dev",
+                )
+            else:
+                from shitbox.sync.tpms import TPMSService
+                from shitbox.utils.config import (
+                    TpmsConfig as _TpmsConfig,
+                )
+                from shitbox.utils.config import (
+                    TpmsSensorMapEntry as _TpmsEntry,
+                )
+                tpms_config = _TpmsConfig(
+                    enabled=True,
+                    rtl433_protocol_id=config.tpms_rtl433_protocol_id,
+                    rf_frequency_hz=config.tpms_rf_frequency_hz,
+                    rf_gain_db=config.tpms_rf_gain_db,
+                    pressure_correction_factor=config.tpms_pressure_correction_factor,
+                    low_pressure_yellow_psi=config.tpms_low_pressure_yellow_psi,
+                    low_pressure_red_psi=config.tpms_low_pressure_red_psi,
+                    leak_window_seconds=config.tpms_leak_window_seconds,
+                    leak_drop_psi=config.tpms_leak_drop_psi,
+                    stale_timeout_seconds=config.tpms_stale_timeout_seconds,
+                    sustain_required=config.tpms_sustain_required,
+                    usb_vid_pid=config.tpms_usb_vid_pid,
+                    sensors=[
+                        _TpmsEntry(id=sid, position=pos)
+                        for sid, pos in config.tpms_sensor_map.items()
+                    ],
+                )
+                self.tpms = TPMSService(
+                    tpms_config,
+                    self.database,
+                    self.event_storage,
+                )
 
         # Logbook storage (notes + fuel stops) — REST-only, no thread
         self.logbook_storage = LogbookStorage(self.database)
@@ -2473,6 +2546,18 @@ class UnifiedEngine:
         if self.capture_sync:
             self.capture_sync.start()
 
+        # Start TPMS service (Phase 28) and register the snapshot
+        # provider so /sse/slow's _tpms_payload can render four wheel
+        # rows. The dashboard import is local to keep engine import
+        # cheap when the dashboard module isn't loaded.
+        if self.tpms:
+            self.tpms.start()
+            try:
+                from shitbox.dashboard import sse as dashboard_sse
+                dashboard_sse.set_tpms_service(self.tpms)
+            except Exception as e:
+                log.warning("tpms_dashboard_register_failed", error=str(e))
+
         # Start timelapse compiler (non-blocking background compilation)
         if self.timelapse_compiler:
             self.timelapse_compiler.start()
@@ -2671,6 +2756,14 @@ class UnifiedEngine:
 
         if self.capture_sync:
             self.capture_sync.stop()
+
+        if self.tpms:
+            self.tpms.stop()
+            try:
+                from shitbox.dashboard import sse as dashboard_sse
+                dashboard_sse.set_tpms_service(None)
+            except Exception:
+                pass
 
         if self.timelapse_compiler:
             self.timelapse_compiler.stop()
