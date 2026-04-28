@@ -9,6 +9,7 @@ within the call (no held handles).
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -56,6 +57,38 @@ def probe_audio_label(label: str) -> bool:
         return label in Path("/proc/asound/cards").read_text()
     except OSError:
         return False
+
+
+def probe_usb_vid_pid(vid_pid: str) -> bool:
+    """Return True if a USB device with the given VID:PID is enumerated.
+
+    `vid_pid` is the lowercase "VVVV:PPPP" hex form (e.g. "0bda:2838"
+    for the RTL2832U + R820T2 chipset family). Multiple matches return
+    True — we don't care which physical port. Used by the TPMS hardware
+    manifest entry (`bus: usb_vid_pid`, Phase 28 SPEC-10).
+
+    Returns False on any failure (lsusb missing, timeout, non-zero exit)
+    so the supervisor reports MISSING and continues. The daemon never
+    refuses to boot.
+    """
+    try:
+        result = subprocess.run(
+            ["lsusb"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except FileNotFoundError:
+        log.warning("lsusb_not_found", hint="apt install usbutils")
+        return False
+    except subprocess.TimeoutExpired:
+        log.warning("lsusb_timeout", vid_pid=vid_pid)
+        return False
+    if result.returncode != 0:
+        log.warning("lsusb_failed", returncode=result.returncode)
+        return False
+    # lsusb format: "Bus 001 Device 005: ID 0bda:2838 Realtek Semiconductor Corp."
+    return f"ID {vid_pid.lower()}" in result.stdout
 
 
 def probe_hdmi(connector: str) -> bool:
