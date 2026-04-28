@@ -546,3 +546,34 @@ def test_system_conditions_payload_no_forbidden_fields(monkeypatch):
         assert "subtype" not in row
         assert "message" not in row
         assert "last_seen" not in row
+
+
+# ─── Phase 28: TPMS payload tests (SPEC-6) ─────────────────────────────
+
+def test_tpms_payload_four_wheels(monkeypatch):
+    """SPEC-6: _tpms_payload always emits four rows in deterministic FD/FP/RD/RP order."""
+    try:
+        from shitbox.dashboard.sse import _tpms_payload
+    except ImportError:
+        pytest.skip("Plan 28-05 — _tpms_payload not yet wired into sse.py")
+    monkeypatch.setattr("shitbox.dashboard.sse.tpms_service", None)
+    rows = _tpms_payload()
+    assert len(rows) == 4
+    assert [r["position"] for r in rows] == [
+        "front-driver",
+        "front-passenger",
+        "rear-driver",
+        "rear-passenger",
+    ]
+
+
+def test_tpms_payload_no_data(monkeypatch):
+    """SPEC-6: pre-first-frame state is 'no_data' for every wheel."""
+    try:
+        from shitbox.dashboard.sse import _tpms_payload
+    except ImportError:
+        pytest.skip("Plan 28-05 — _tpms_payload not yet wired into sse.py")
+    monkeypatch.setattr("shitbox.dashboard.sse.tpms_service", None)
+    rows = _tpms_payload()
+    assert all(r["state"] == "no_data" for r in rows)
+    assert all(r["psi"] is None for r in rows)
