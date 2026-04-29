@@ -99,6 +99,16 @@ sensors:
           lon: 145.4673
           leg: return
 
+  tca4307: # I2C bus buffer — software recovery via EN pin pulse
+    # GPIO wired to the TCA4307 EN pin. Driven HIGH at sampler setup; pulsed
+    # LOW briefly during _i2c_bus_reset to clear protective-isolation latches
+    # without a reboot. The TCA latches on stuck-low / undervoltage /
+    # contention and only releases on EN low→high or a real VCC drop —
+    # systemctl reboot doesn't cycle the rail on Pi 5 (PMIC keeps it alive),
+    # so EN is the only software path back from a wedged bus.
+    en_gpio: 12
+    pulse_low_ms: 10
+
   lsm6dsox: # LSM6DSOX accel+gyro at 0x6A (replaces MPU6050)
     enabled: true
     i2c_bus: 1
