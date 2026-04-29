@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional, cast
+from typing import Any, Callable, Dict, Optional, cast
 
 from shitbox.capture import buzzer, overlay, speaker
 from shitbox.capture.button import ButtonHandler
@@ -96,6 +96,11 @@ class EngineConfig:
     accel_offset_y: float = 0.0
     accel_offset_z: float = 0.0
 
+    # TCA4307 EN pin for software bus-recovery (None = pin not wired).
+    # See sensors.tca4307 in config.yaml and the open thread in the project doc.
+    tca_en_gpio: Optional[int] = None
+    tca_en_pulse_low_ms: int = 10
+
     # Auto-zero (thermal drift compensation) — IMU-05, IMU-06.
     # Field names are authoritative per REQUIREMENTS.md IMU-05.
     auto_zero_enabled: bool = True
@@ -128,6 +133,12 @@ class EngineConfig:
     events_dir: str = "/var/lib/shitbox/events"
     max_event_age_days: int = 14
     max_event_storage_mb: int = 500
+
+    # Periodic data-deletion cleanup (events + capture videos). Disabled by
+    # default — the 14-day age-out would silently nuke saved events and
+    # videos we want to keep on the live site indefinitely. Re-enable once
+    # a retention strategy that protects the keepers is in place.
+    cleanup_old_data_enabled: bool = False
 
     # SQLite storage
     database_path: str = "/var/lib/shitbox/telemetry.db"
@@ -221,6 +232,22 @@ class EngineConfig:
     capture_sync_rsync_path: str = "/opt/bin/rsync"
     capture_sync_interval_seconds: int = 300
 
+    # TPMS service (Phase 28 — rtl_433 wrapper). Defaults match TpmsConfig
+    # so a missing tpms: block in YAML doesn't break engine load.
+    tpms_enabled: bool = False
+    tpms_rtl433_protocol_id: int = 156
+    tpms_rf_frequency_hz: int = 433920000
+    tpms_rf_gain_db: int = 30
+    tpms_pressure_correction_factor: float = 2.45
+    tpms_low_pressure_yellow_psi: float = 28.0
+    tpms_low_pressure_red_psi: float = 25.0
+    tpms_leak_window_seconds: float = 60.0
+    tpms_leak_drop_psi: float = 5.0
+    tpms_stale_timeout_seconds: float = 300.0
+    tpms_sustain_required: int = 2
+    tpms_usb_vid_pid: str = "0bda:2838"
+    tpms_sensor_map: Dict[str, str] = field(default_factory=dict)
+
     # Location resolution
     location_resolution_interval_seconds: int = 300
 
@@ -272,6 +299,9 @@ class EngineConfig:
             accel_offset_y=config.sensors.lsm6dsox.accel_offset_y,
             accel_offset_z=config.sensors.lsm6dsox.accel_offset_z,
             imu_sample_rate_hz=config.sensors.lsm6dsox.sample_rate_hz,
+            # TCA4307 EN-pin recovery (None until wired)
+            tca_en_gpio=config.sensors.tca4307.en_gpio,
+            tca_en_pulse_low_ms=config.sensors.tca4307.pulse_low_ms,
             # Auto-zero (IMU-05, IMU-06) — 1:1 pass-through from LSM6DSOXConfig
             auto_zero_enabled=config.sensors.lsm6dsox.auto_zero_enabled,
             auto_zero_stationary_kmh=config.sensors.lsm6dsox.auto_zero_stationary_kmh,
@@ -370,6 +400,20 @@ class EngineConfig:
             capture_sync_remote_dest=config.sync.capture_sync.remote_dest,
             capture_sync_rsync_path=config.sync.capture_sync.rsync_path,
             capture_sync_interval_seconds=config.sync.capture_sync.interval_seconds,
+            # TPMS (Phase 28) — flatten config.tpms.* onto EngineConfig
+            tpms_enabled=config.tpms.enabled,
+            tpms_rtl433_protocol_id=config.tpms.rtl433_protocol_id,
+            tpms_rf_frequency_hz=config.tpms.rf_frequency_hz,
+            tpms_rf_gain_db=config.tpms.rf_gain_db,
+            tpms_pressure_correction_factor=config.tpms.pressure_correction_factor,
+            tpms_low_pressure_yellow_psi=config.tpms.low_pressure_yellow_psi,
+            tpms_low_pressure_red_psi=config.tpms.low_pressure_red_psi,
+            tpms_leak_window_seconds=config.tpms.leak_window_seconds,
+            tpms_leak_drop_psi=config.tpms.leak_drop_psi,
+            tpms_stale_timeout_seconds=config.tpms.stale_timeout_seconds,
+            tpms_sustain_required=config.tpms.sustain_required,
+            tpms_usb_vid_pid=config.tpms.usb_vid_pid,
+            tpms_sensor_map=dict(config.tpms.sensor_map),
             # Location resolution
             location_resolution_interval_seconds=config.sensors.gps.location_resolution_interval_seconds,
             # Rally coordinates
@@ -442,6 +486,8 @@ class UnifiedEngine:
             accel_offset_y=config.accel_offset_y,
             accel_offset_z=config.accel_offset_z,
             on_sample=self._on_imu_sample,
+            tca_en_gpio=config.tca_en_gpio,
+            tca_en_pulse_low_ms=config.tca_en_pulse_low_ms,
         )
 
         # 22-07: detector's rolling-window sizes (e.g. _az_window_size for ROUGH_ROAD)
@@ -620,6 +666,49 @@ class UnifiedEngine:
                 self.event_storage,
                 self.timelapse_compiler,
             )
+
+        # TPMS service (Phase 28) — graceful degradation if rtl_433 binary
+        # is missing. Pattern matches BatchSyncService / ButtonHandler:
+        # service is None unless config flag is on AND the underlying
+        # tooling is available on the host.
+        self.tpms: Optional[Any] = None
+        if config.tpms_enabled:
+            if shutil.which("rtl_433") is None:
+                log.warning(
+                    "tpms_disabled_no_rtl433_binary",
+                    hint="apt install rtl-433 librtlsdr-dev",
+                )
+            else:
+                from shitbox.sync.tpms import TPMSService
+                from shitbox.utils.config import (
+                    TpmsConfig as _TpmsConfig,
+                )
+                from shitbox.utils.config import (
+                    TpmsSensorMapEntry as _TpmsEntry,
+                )
+                tpms_config = _TpmsConfig(
+                    enabled=True,
+                    rtl433_protocol_id=config.tpms_rtl433_protocol_id,
+                    rf_frequency_hz=config.tpms_rf_frequency_hz,
+                    rf_gain_db=config.tpms_rf_gain_db,
+                    pressure_correction_factor=config.tpms_pressure_correction_factor,
+                    low_pressure_yellow_psi=config.tpms_low_pressure_yellow_psi,
+                    low_pressure_red_psi=config.tpms_low_pressure_red_psi,
+                    leak_window_seconds=config.tpms_leak_window_seconds,
+                    leak_drop_psi=config.tpms_leak_drop_psi,
+                    stale_timeout_seconds=config.tpms_stale_timeout_seconds,
+                    sustain_required=config.tpms_sustain_required,
+                    usb_vid_pid=config.tpms_usb_vid_pid,
+                    sensors=[
+                        _TpmsEntry(id=sid, position=pos)
+                        for sid, pos in config.tpms_sensor_map.items()
+                    ],
+                )
+                self.tpms = TPMSService(
+                    tpms_config,
+                    self.database,
+                    self.event_storage,
+                )
 
         # Logbook storage (notes + fuel stops) — REST-only, no thread
         self.logbook_storage = LogbookStorage(self.database)
@@ -895,6 +984,14 @@ class UnifiedEngine:
                 cbs[dev.role] = cast(
                     Callable[[], bool], lambda p=pin: probes.probe_gpio_pin(p)
                 )
+            elif bus == "usb_vid_pid":
+                if not dev.path:
+                    log.warning("reprobe_skip_missing_vid_pid", role=dev.role)
+                    continue
+                vid_pid: str = dev.path
+                cbs[dev.role] = cast(
+                    Callable[[], bool], lambda v=vid_pid: probes.probe_usb_vid_pid(v)
+                )
             else:
                 log.warning("unknown_bus_for_reprobe", role=dev.role, bus=bus)
         return cbs
@@ -956,6 +1053,10 @@ class UnifiedEngine:
         for i in range(max_wait):
             if not self._running:
                 return False
+            # Keep systemd watchdog fed during cold-start GPS acquisition.
+            # WatchdogSec is shorter than max_wait, so without this a slow
+            # cold fix burns the entire budget and the service gets killed.
+            self._notify_systemd("WATCHDOG=1")
             try:
                 reading = self._read_gps()
                 if reading and reading.latitude is not None:
@@ -1077,8 +1178,19 @@ class UnifiedEngine:
         # (e.g. hard brake → high G → hard brake) produce one video, not many.
         # Manual captures also extend rather than starting overlapping saves.
         # Boot events always go through (only fires once).
+        # Two suppression conditions: a pending post-capture window is open,
+        # OR the previous video worker is still running. The window is
+        # time-based and can release before the concat worker finishes; without
+        # the second gate, a fresh event can spawn a second concurrent ffmpeg
+        # concat and spike CPU.
+        save_in_progress = bool(
+            self.video_ring_buffer is not None and self.video_ring_buffer.is_saving
+        )
         with self._pending_lock:
-            if self._pending_post_capture and event.event_type != EventType.BOOT:
+            if (
+                (self._pending_post_capture or save_in_progress)
+                and event.event_type != EventType.BOOT
+            ):
                 # Extend the post-capture window of the most recent pending event
                 extension = self.config.detector.post_event_seconds
                 for pending in self._pending_post_capture.values():
@@ -1088,6 +1200,7 @@ class UnifiedEngine:
                 pending_count = len(self._pending_post_capture)
                 is_suppressed = True
             else:
+                pending_count = 0
                 is_suppressed = False
         if is_suppressed:
             if event.event_type == EventType.MANUAL_CAPTURE:
@@ -1097,6 +1210,7 @@ class UnifiedEngine:
                 suppressed_type=event.event_type.value,
                 peak_g=round(event.peak_value, 2),
                 pending_count=pending_count,
+                save_in_progress=save_in_progress,
             )
             return
 
@@ -2325,14 +2439,27 @@ class UnifiedEngine:
 
     def _do_cleanup(self) -> None:
         """Run periodic cleanup tasks."""
+        # fake-hwclock sync is not destructive — always runs so reboots start
+        # with a recent time even when data cleanup is disabled.
+        self._sync_fake_hwclock()
+
+        # Data-deletion cleanups are disabled by default — the 14-day age-out
+        # would silently nuke saved events and capture videos that we want to
+        # keep on the live site indefinitely. Re-enable via
+        # cleanup_old_data_enabled=true once a retention strategy that keeps
+        # the things we care about is in place. Methods kept intact.
+        if not self.config.cleanup_old_data_enabled:
+            log.debug(
+                "data_cleanup_skipped",
+                reason="cleanup_old_data_enabled=false",
+            )
+            return
+
         try:
             self.event_storage.cleanup_old_events()
             self.event_storage.cleanup_by_size()
         except Exception as e:
             log.error("cleanup_error", error=str(e))
-
-        # Update fake-hwclock so reboots start with a recent time
-        self._sync_fake_hwclock()
 
         # Clean up old video captures
         if self.video_ring_buffer:
@@ -2472,6 +2599,18 @@ class UnifiedEngine:
         # Start capture sync
         if self.capture_sync:
             self.capture_sync.start()
+
+        # Start TPMS service (Phase 28) and register the snapshot
+        # provider so /sse/slow's _tpms_payload can render four wheel
+        # rows. The dashboard import is local to keep engine import
+        # cheap when the dashboard module isn't loaded.
+        if self.tpms:
+            self.tpms.start()
+            try:
+                from shitbox.dashboard import sse as dashboard_sse
+                dashboard_sse.set_tpms_service(self.tpms)
+            except Exception as e:
+                log.warning("tpms_dashboard_register_failed", error=str(e))
 
         # Start timelapse compiler (non-blocking background compilation)
         if self.timelapse_compiler:
@@ -2671,6 +2810,14 @@ class UnifiedEngine:
 
         if self.capture_sync:
             self.capture_sync.stop()
+
+        if self.tpms:
+            self.tpms.stop()
+            try:
+                from shitbox.dashboard import sse as dashboard_sse
+                dashboard_sse.set_tpms_service(None)
+            except Exception:
+                pass
 
         if self.timelapse_compiler:
             self.timelapse_compiler.stop()

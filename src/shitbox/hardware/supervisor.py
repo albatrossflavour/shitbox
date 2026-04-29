@@ -95,6 +95,8 @@ class HardwareSupervisor:
             return hw_probes.probe_onewire(d.sensor_id or "")
         if d.bus == "usb":
             return hw_probes.probe_usb_path(d.path or "")
+        if d.bus == "usb_vid_pid":
+            return hw_probes.probe_usb_vid_pid(d.path or "")
         if d.bus == "audio":
             return hw_probes.probe_audio_label(d.label or "")
         if d.bus == "hdmi":

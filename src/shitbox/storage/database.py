@@ -1,7 +1,10 @@
 """SQLite database management with WAL mode for crash resistance."""
 
+import os
+import socket
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,8 +15,53 @@ from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
 
+
+def _send_systemd_notify(state: str) -> None:
+    """Best-effort sd_notify message. No-op outside systemd or on error.
+
+    Lives here (rather than imported from engine) so the database module
+    can pet the watchdog during long migrations without taking a
+    dependency on the engine package.
+    """
+    notify_socket = os.environ.get("NOTIFY_SOCKET")
+    if not notify_socket:
+        return
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        try:
+            s.connect(notify_socket)
+            s.sendall(state.encode())
+        finally:
+            s.close()
+    except Exception:
+        # Notification failures are non-fatal — the migration must continue.
+        pass
+
+
+def _notify_systemd_long_operation(extend_seconds: int) -> None:
+    """Tell systemd to extend the watchdog/startup timeout by extend_seconds.
+
+    EXTEND_TIMEOUT_USEC is the protocol-supported way to ask for extra
+    runway during a long step (per sd_notify(3)). Combined with a parallel
+    keepalive pinger, this stops a slow CREATE INDEX from tripping the
+    runtime watchdog.
+    """
+    _send_systemd_notify(f"EXTEND_TIMEOUT_USEC={extend_seconds * 1_000_000}")
+    log.info("systemd_extend_timeout_requested", seconds=extend_seconds)
+
+
+def _systemd_watchdog_keepalive(stop: threading.Event, interval_seconds: float) -> None:
+    """Background pinger that sends WATCHDOG=1 until stop is set.
+
+    Runs alongside any blocking operation (e.g. a multi-minute index build)
+    so the runtime watchdog stays satisfied. The interval should be well
+    below WatchdogSec to leave margin.
+    """
+    while not stop.wait(interval_seconds):
+        _send_systemd_notify("WATCHDOG=1")
+
 # Database schema version for migrations
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 12
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -128,6 +176,12 @@ CREATE TABLE IF NOT EXISTS fuel_stops (
 CREATE INDEX IF NOT EXISTS idx_readings_timestamp ON readings(timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_readings_sensor_type ON readings(sensor_type);
 CREATE INDEX IF NOT EXISTS idx_readings_id_sensor ON readings(id, sensor_type);
+-- Covering index for "latest per sensor" queries (sensor freshness, dashboards).
+-- (sensor_type, id) order lets SQLite seek by sensor_type then walk the index
+-- in id-desc order to find the most recent row for a sensor in O(log n).
+-- The pre-existing (id, sensor_type) index can't seek by sensor_type so it
+-- degenerates into a full scan when a sensor stops emitting.
+CREATE INDEX IF NOT EXISTS idx_readings_sensor_type_id ON readings(sensor_type, id);
 """
 
 
@@ -211,6 +265,12 @@ class Database:
 
         if current_version < 10:
             self._migrate_to_v10(conn)
+
+        if current_version < 11:
+            self._migrate_to_v11(conn)
+
+        if current_version < 12:
+            self._migrate_to_v12(conn)
 
         if current_version < SCHEMA_VERSION:
             conn.execute(
@@ -379,6 +439,85 @@ class Database:
         conn.commit()
         log.info("migrated_to_v10", columns=["pm25_ug_m3"])
 
+    def _migrate_to_v11(self, conn: sqlite3.Connection) -> None:
+        """Add tpms_readings table for Phase 28 TPMS integration.
+
+        A dedicated table parallel to notes / fuel_stops / driver_stints —
+        the readings table is already 30+ columns wide and TPMS frames have
+        six TPMS-specific fields nobody else queries. See Phase 28
+        RESEARCH.md Pattern 4 for the rationale.
+        """
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tpms_readings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp_utc TEXT NOT NULL,
+                sensor_id TEXT NOT NULL,
+                wheel TEXT NOT NULL,
+                pressure_psi REAL NOT NULL,
+                temperature_c REAL NOT NULL,
+                status INTEGER,
+                raw_pressure_kpa REAL NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tpms_timestamp "
+            "ON tpms_readings(timestamp_utc)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tpms_wheel ON tpms_readings(wheel)"
+        )
+        conn.commit()
+        log.info("migrated_to_v11", tables=["tpms_readings"])
+
+    def _migrate_to_v12(self, conn: sqlite3.Connection) -> None:
+        """Add (sensor_type, id) covering index for 'latest per sensor' queries.
+
+        The pre-existing (id, sensor_type) index sorts by id first, so SQLite
+        cannot seek to a given sensor_type — it degenerates into a full scan
+        when a sensor stops emitting (the query has to walk back through
+        millions of rows hunting for the dead sensor's most recent entry).
+        The new index makes that lookup O(log n) regardless of sensor liveness.
+
+        First-time build on a 20M-row table is slow (multiple minutes on a Pi
+        with SD-card storage) but happens once at daemon startup after the
+        upgrade. Sends EXTEND_TIMEOUT_USEC=300s to systemd up-front so the
+        watchdog doesn't kill us mid-build (and a parallel pinger thread
+        keeps WATCHDOG=1 flowing in case the long-startup window converts to
+        a runtime watchdog after sd_notify(READY=1) fires).
+        """
+        log.info(
+            "migrate_v12_starting",
+            note="building covering index, may take several minutes on large DBs",
+        )
+        _notify_systemd_long_operation(extend_seconds=300)
+        stop_pinger = threading.Event()
+        pinger = threading.Thread(
+            target=_systemd_watchdog_keepalive,
+            args=(stop_pinger, 5.0),
+            daemon=True,
+            name="migrate-v12-watchdog",
+        )
+        pinger.start()
+        try:
+            t0 = time.monotonic()
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_readings_sensor_type_id "
+                "ON readings(sensor_type, id)"
+            )
+            conn.commit()
+            elapsed = time.monotonic() - t0
+        finally:
+            stop_pinger.set()
+            pinger.join(timeout=2.0)
+        log.info(
+            "migrated_to_v12",
+            index="idx_readings_sensor_type_id",
+            elapsed_seconds=round(elapsed, 1),
+        )
+
     def close(self) -> None:
         """Close database connection for current thread."""
         if hasattr(self._local, "conn") and self._local.conn:
@@ -474,6 +613,65 @@ class Database:
             )
             conn.commit()
             return cursor.lastrowid
+
+    def insert_tpms_reading(
+        self,
+        *,
+        timestamp_utc: str,
+        sensor_id: str,
+        wheel: str,
+        pressure_psi: float,
+        temperature_c: float,
+        status: Optional[int],
+        raw_pressure_kpa: float,
+    ) -> int:
+        """Insert a single TPMS frame into tpms_readings; return lastrowid.
+
+        Keyword-only args mirror the rtl_433 frame shape (id -> sensor_id,
+        pressure_kPa -> raw_pressure_kpa). Wheel is the canonical position
+        string (e.g. 'front-driver') resolved by TPMSService before insert.
+        """
+        conn = self._get_connection()
+        with self._write_lock:
+            cursor = conn.execute(
+                """
+                INSERT INTO tpms_readings (
+                    timestamp_utc, sensor_id, wheel,
+                    pressure_psi, temperature_c, status, raw_pressure_kpa
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    timestamp_utc,
+                    sensor_id,
+                    wheel,
+                    pressure_psi,
+                    temperature_c,
+                    status,
+                    raw_pressure_kpa,
+                ),
+            )
+            conn.commit()
+            return cursor.lastrowid or 0
+
+    def get_unsynced_tpms_readings(self, batch_size: int = 1000) -> list[dict]:
+        """Return tpms_readings rows past the 'prometheus_tpms' cursor.
+
+        Mirrors get_unsynced_readings but selects from tpms_readings and
+        returns raw dicts (no Reading model — TPMS rows have a different
+        shape and live alongside notes/fuel_stops as plain dicts).
+        """
+        conn = self._get_connection()
+        cursor = conn.execute(
+            "SELECT last_synced_id FROM sync_cursors WHERE cursor_name = ?",
+            ("prometheus_tpms",),
+        )
+        row = cursor.fetchone()
+        last_id = row["last_synced_id"] if row else 0
+        rows = conn.execute(
+            "SELECT * FROM tpms_readings WHERE id > ? ORDER BY id LIMIT ?",
+            (last_id, batch_size),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def insert_readings_batch(self, readings: list[Reading]) -> int:
         """Insert multiple readings in a single transaction.

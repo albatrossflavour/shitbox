@@ -13,9 +13,12 @@ def test_load_config_drivers_list(tmp_path):
 
 
 def test_full_config_roundtrip_includes_hardware():
-    """Production config/config.yaml loads 14 hardware devices correctly (HW-01)."""
+    """Production config/config.yaml loads 15 hardware devices correctly (HW-01).
+
+    Phase 28 added a 15th device: tpms_radio (Nooelec NESDR Smart v5).
+    """
     cfg = load_config("config/config.yaml")
-    assert len(cfg.hardware.devices) == 14
+    assert len(cfg.hardware.devices) == 15
 
     # Spot-check: IMU must be critical with the correct I2C address
     imu_devices = [d for d in cfg.hardware.devices if d.role == "imu"]

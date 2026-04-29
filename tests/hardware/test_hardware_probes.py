@@ -148,6 +148,68 @@ def test_probe_hdmi_disconnected(tmp_path):
     assert result is False
 
 
+def test_probe_hdmi_port_agnostic_one_connected(tmp_path):
+    """Wildcard connector returns True when ANY HDMI-A-N port is connected."""
+    a1 = tmp_path / "card0-HDMI-A-1"
+    a1.mkdir()
+    (a1 / "status").write_text("disconnected\n")
+    a2 = tmp_path / "card0-HDMI-A-2"
+    a2.mkdir()
+    (a2 / "status").write_text("connected\n")
+
+    with patch("shitbox.hardware.probes.Path") as mock_path_cls:
+        mock_drm = MagicMock()
+        mock_path_cls.return_value = mock_drm
+        mock_drm.glob.return_value = [a1, a2]
+
+        result = probes_mod.probe_hdmi("HDMI-A-*")
+
+    assert result is True
+    # Confirm the wildcard pattern was passed through to glob unchanged.
+    mock_drm.glob.assert_called_once_with("*HDMI-A-*")
+
+
+def test_probe_hdmi_port_agnostic_all_disconnected(tmp_path):
+    """Wildcard connector returns False when no HDMI-A-N port is connected."""
+    a1 = tmp_path / "card0-HDMI-A-1"
+    a1.mkdir()
+    (a1 / "status").write_text("disconnected\n")
+    a2 = tmp_path / "card0-HDMI-A-2"
+    a2.mkdir()
+    (a2 / "status").write_text("disconnected\n")
+
+    with patch("shitbox.hardware.probes.Path") as mock_path_cls:
+        mock_drm = MagicMock()
+        mock_path_cls.return_value = mock_drm
+        mock_drm.glob.return_value = [a1, a2]
+
+        result = probes_mod.probe_hdmi("HDMI-A-*")
+
+    assert result is False
+
+
+def test_probe_hdmi_empty_connector_treated_as_port_agnostic(tmp_path):
+    """Empty connector string is treated as port-agnostic and anchored to HDMI-A.
+
+    Guards against the trap where an empty spec would glob '/sys/class/drm/*'
+    and pick up unrelated nodes (DP, eDP, card0). The probe must explicitly
+    match HDMI-A-* to stay HDMI-only.
+    """
+    a1 = tmp_path / "card0-HDMI-A-1"
+    a1.mkdir()
+    (a1 / "status").write_text("connected\n")
+
+    with patch("shitbox.hardware.probes.Path") as mock_path_cls:
+        mock_drm = MagicMock()
+        mock_path_cls.return_value = mock_drm
+        mock_drm.glob.return_value = [a1]
+
+        result = probes_mod.probe_hdmi("")
+
+    assert result is True
+    mock_drm.glob.assert_called_once_with("*HDMI-A-*")
+
+
 # ── GPIO pin probe ────────────────────────────────────────────────────────────
 
 def test_probe_gpio_pin_module_missing():

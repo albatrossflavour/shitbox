@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
-status: physical-integration upstream of v2.0; TPMS spike actionable
+status: executing
 stopped_at: context exhaustion at 90% (2026-04-24)
-last_updated: "2026-04-24T09:37:51.531Z"
-last_activity: 2026-04-24
+last_updated: "2026-04-28T08:32:43.402Z"
+last_activity: 2026-04-28
 progress:
   total_phases: 13
   completed_phases: 9
@@ -22,12 +22,13 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Core value:** Never lose telemetry data or video — the system must survive thousands of kilometres
 of rough roads, power cycles, heat, and vibration without human intervention.
-**Current focus:** Physical integration — Pi case prints + in-car install (gates all remaining v2.0 work)
+**Current focus:** Phase --phase — 28
 
 ## Current Position
 
-Phase: — (v2.0 phases gated; backlog work newly unblocked 2026-04-24)
-Status: physical-integration upstream of v2.0; TPMS spike actionable
+Phase: --phase (28) — EXECUTING
+Plan: 1 of --name
+Status: Executing Phase --phase
 
   v2.0 critical path:
     GX12 connectors arrived → case redesign (GX12 cutouts in v2 clamshell)
@@ -74,6 +75,7 @@ Status: physical-integration upstream of v2.0; TPMS spike actionable
 Next: Pi case v2 design conversation — GX12 connectors arrived, case needs reworking before next print run.
 
   Topics to walk through next session:
+
     - Read `~/Brain/projects/project_pi_case_v2.md` first — has v1 bugs to fix
     - GX12 cutouts: how many connectors total (one-wire bus, GPIO buttons), panel-mount geometry, body diameter, internal clearance for connector backs
     - Pi 5 port layout sanity check — USB-C is at the DISPLAY end of the long edge, not the USB-A end (memory: feedback_pi5_port_layout)
@@ -85,7 +87,7 @@ Next: Pi case v2 design conversation — GX12 connectors arrived, case needs rew
 
   TPMS spike (CC1101 RF sniff/decode) is a parallel track — does not block the case work.
 
-Last activity: 2026-04-24
+Last activity: 2026-04-28
 
 Progress: 12/16 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 

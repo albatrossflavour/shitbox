@@ -9,6 +9,7 @@ within the call (no held handles).
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -58,10 +59,47 @@ def probe_audio_label(label: str) -> bool:
         return False
 
 
-def probe_hdmi(connector: str) -> bool:
-    """Return True if the named HDMI connector is attached and driving output.
+def probe_usb_vid_pid(vid_pid: str) -> bool:
+    """Return True if a USB device with the given VID:PID is enumerated.
 
-    connector: e.g. 'HDMI-A-1' (matches /sys/class/drm/*HDMI-A-1/status).
+    `vid_pid` is the lowercase "VVVV:PPPP" hex form (e.g. "0bda:2838"
+    for the RTL2832U + R820T2 chipset family). Multiple matches return
+    True — we don't care which physical port. Used by the TPMS hardware
+    manifest entry (`bus: usb_vid_pid`, Phase 28 SPEC-10).
+
+    Returns False on any failure (lsusb missing, timeout, non-zero exit)
+    so the supervisor reports MISSING and continues. The daemon never
+    refuses to boot.
+    """
+    try:
+        result = subprocess.run(
+            ["lsusb"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except FileNotFoundError:
+        log.warning("lsusb_not_found", hint="apt install usbutils")
+        return False
+    except subprocess.TimeoutExpired:
+        log.warning("lsusb_timeout", vid_pid=vid_pid)
+        return False
+    if result.returncode != 0:
+        log.warning("lsusb_failed", returncode=result.returncode)
+        return False
+    # lsusb format: "Bus 001 Device 005: ID 0bda:2838 Realtek Semiconductor Corp."
+    return f"ID {vid_pid.lower()}" in result.stdout
+
+
+def probe_hdmi(connector: str) -> bool:
+    """Return True if a matching HDMI connector is attached and driving output.
+
+    connector:
+      - Explicit name, e.g. 'HDMI-A-1' — matches /sys/class/drm/*HDMI-A-1.
+      - Wildcard pattern, e.g. 'HDMI-A-*' — port-agnostic, matches any HDMI-A-N.
+      - Empty string / None / sentinel ('*', 'any', 'auto') — treated as
+        port-agnostic (equivalent to 'HDMI-A-*'). Survives cable swaps between
+        HDMI-A-1 and HDMI-A-2 without a config edit.
 
     Status file values come from the kernel DRM driver. 'connected' is the
     explicit hot-plug-detected case. 'unknown' is common on Pi 5 once the
@@ -70,8 +108,16 @@ def probe_hdmi(connector: str) -> bool:
     hence the check is inverted: anything *other than* 'disconnected' counts
     as present, provided the connector node exists at all.
     """
+    spec = (connector or "").strip()
+    # Port-agnostic sentinels — match ANY HDMI-A-N. Anchored to HDMI-A
+    # explicitly so an empty connector spec doesn't accidentally glob DP/eDP.
+    if spec.lower() in ("", "*", "any", "auto"):
+        pattern = "*HDMI-A-*"
+    else:
+        pattern = f"*{spec}"
+
     try:
-        matches = list(Path("/sys/class/drm").glob(f"*{connector}"))
+        matches = list(Path("/sys/class/drm").glob(pattern))
     except OSError:
         return False
     if not matches:

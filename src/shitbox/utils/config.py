@@ -165,6 +165,51 @@ class ParticulateConfig:
 
 
 @dataclass
+class TpmsSensorMapEntry:
+    """Single sensor-id → wheel-position mapping for TPMS.
+
+    `id` is the lowercase hex string emitted by rtl_433 (e.g. "550b57d9").
+    `position` is the canonical wheel label: "front-driver",
+    "front-passenger", "rear-driver", or "rear-passenger".
+    """
+
+    id: str = ""
+    position: str = ""
+
+
+@dataclass
+class TpmsConfig:
+    """TPMS service configuration (Phase 28).
+
+    Receives 433 MHz tyre pressure frames via rtl_433 -R 156, applies
+    the × 2.45 empirical correction (28-SPEC.md Background), persists to
+    SQLite, and drives Health-page + Grafana exposition.
+    """
+
+    enabled: bool = False
+    rtl433_protocol_id: int = 156           # Abarth-124Spider / VDO-TG1C
+    rf_frequency_hz: int = 433920000
+    rf_gain_db: int = 30                    # R820T2 sensible default for own-car short-range
+    pressure_correction_factor: float = 2.45  # empirical, see Brain note 2026-04-28
+    low_pressure_yellow_psi: float = 28.0
+    low_pressure_red_psi: float = 25.0
+    leak_window_seconds: float = 60.0
+    leak_drop_psi: float = 5.0
+    stale_timeout_seconds: float = 300.0
+    sustain_required: int = 2               # frames below threshold before red fires
+    usb_vid_pid: str = "0bda:2838"          # Nooelec NESDR Smart v5 chipset
+    sensors: List[TpmsSensorMapEntry] = field(default_factory=list)
+
+    @property
+    def sensor_map(self) -> dict:
+        """Return {hex_id_lower: position} dict for fast lookup.
+
+        IDs are lowercased on read so YAML can be written either case.
+        """
+        return {s.id.lower(): s.position for s in self.sensors if s.id and s.position}
+
+
+@dataclass
 class EnvironmentConfig:
     """BME280 environment sensor configuration."""
 
@@ -172,6 +217,21 @@ class EnvironmentConfig:
     i2c_bus: int = 1
     address: int = 0x77
     sample_rate_hz: float = 1.0
+
+
+@dataclass
+class Tca4307Config:
+    """TCA4307 I2C bus buffer recovery configuration.
+
+    The TCA4307 latches into protective isolation on stuck-low / undervoltage /
+    contention. The latch only clears on an EN low→high transition or a real
+    VCC drop. When the EN pin is wired to a GPIO, the daemon can pulse it low
+    during bus-recovery to clear the latch without rebooting. Default None
+    means the pin is not wired and the daemon will skip the EN-pulse path.
+    """
+
+    en_gpio: Optional[int] = None
+    pulse_low_ms: int = 10  # datasheet specifies > 1us; 10ms is comfortably above noise
 
 
 @dataclass
@@ -187,6 +247,7 @@ class SensorsConfig:
     power: PowerConfig = field(default_factory=PowerConfig)
     particulate: ParticulateConfig = field(default_factory=ParticulateConfig)
     environment: EnvironmentConfig = field(default_factory=EnvironmentConfig)
+    tca4307: Tca4307Config = field(default_factory=Tca4307Config)
 
 
 @dataclass
@@ -429,6 +490,7 @@ class Config:
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     drivers: List[str] = field(default_factory=list)
     hardware: HardwareManifestConfig = field(default_factory=HardwareManifestConfig)
+    tpms: TpmsConfig = field(default_factory=TpmsConfig)  # Phase 28
 
 
 def _dict_to_dataclass(cls: type, data: dict[str, Any]) -> Any:
@@ -533,6 +595,16 @@ def load_config(config_path: str | Path | None = None) -> Config:
         HardwareDeviceConfig(**d) for d in (devices_data if isinstance(devices_data, list) else [])
     ]
 
+    # Phase 28: explicitly convert TPMS sensors list — same idiom as
+    # DS18B20 probes and hardware manifest devices above.
+    tpms_dict = data.get("tpms", {})
+    tpms_config = _dict_to_dataclass(TpmsConfig, tpms_dict)
+    sensors_data = tpms_dict.get("sensors", []) if isinstance(tpms_dict, dict) else []
+    tpms_config.sensors = [
+        TpmsSensorMapEntry(**s)
+        for s in (sensors_data if isinstance(sensors_data, list) else [])
+    ]
+
     return Config(
         app=_dict_to_dataclass(AppConfig, data.get("app", {})),
         sensors=SensorsConfig(
@@ -558,6 +630,9 @@ def load_config(config_path: str | Path | None = None) -> Config:
             ),
             environment=_dict_to_dataclass(
                 EnvironmentConfig, data.get("sensors", {}).get("environment", {})
+            ),
+            tca4307=_dict_to_dataclass(
+                Tca4307Config, data.get("sensors", {}).get("tca4307", {})
             ),
         ),
         storage=_dict_to_dataclass(StorageConfig, data.get("storage", {})),
@@ -587,4 +662,5 @@ def load_config(config_path: str | Path | None = None) -> Config:
         dashboard=_dict_to_dataclass(DashboardConfig, data.get("dashboard", {})),
         drivers=data.get("drivers", []),
         hardware=hw_config,
+        tpms=tpms_config,
     )

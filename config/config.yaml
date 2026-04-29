@@ -99,6 +99,21 @@ sensors:
           lon: 145.4673
           leg: return
 
+  tca4307: # I2C bus buffer — software recovery via EN pin pulse
+    # GPIO wired to the TCA4307 EN pin. Driven HIGH at sampler setup; pulsed
+    # LOW briefly during _i2c_bus_reset to clear protective-isolation latches
+    # without a reboot. The TCA latches on stuck-low / undervoltage /
+    # contention and only releases on EN low→high or a real VCC drop —
+    # systemctl reboot doesn't cycle the rail on Pi 5 (PMIC keeps it alive),
+    # so EN is the only software path back from a wedged bus.
+    en_gpio: 12
+    # Bumped 10 → 100 ms after the 2026-04-29 stress test reproduced a wedge
+    # that the 10 ms pulse couldn't clear. Datasheet says > 1 µs is enough,
+    # but margin is cheap; if 100 ms still doesn't recover we have stronger
+    # evidence the fault isn't actually a TCA latch (slave-state-hang
+    # theory) and the right fix is elsewhere.
+    pulse_low_ms: 100
+
   lsm6dsox: # LSM6DSOX accel+gyro at 0x6A (replaces MPU6050)
     enabled: true
     i2c_bus: 1
@@ -313,6 +328,39 @@ drivers:
   - Tony
   - Steve
 
+# ── TPMS (Phase 28) ─────────────────────────────────────────────
+# Aftermarket 433 MHz TPMS via rtl_433 -R 156 (Abarth-124Spider /
+# VDO-TG1C). Pressure correction × 2.45 empirically calibrated against
+# four fitted tyres at 31-32 PSI on 2026-04-28; refine if a future
+# bench session shows individual sensor drift.
+tpms:
+  enabled: true
+  rtl433_protocol_id: 156
+  rf_frequency_hz: 433920000
+  # 0 (or any value <= 0) tells rtl_433 to use its built-in AGC. Bench
+  # 2026-04-28 with the loaner RTL2838: -g 30 → 0 frames in 20s, AGC →
+  # 3 frames in 20s. AGC also tolerates the R820T PLL-not-locked startup
+  # warning. Set to a positive dB only if you have a known-good RF
+  # environment where a fixed step beats AGC.
+  rf_gain_db: 0
+  pressure_correction_factor: 2.45
+  low_pressure_yellow_psi: 28
+  low_pressure_red_psi: 25
+  leak_window_seconds: 60
+  leak_drop_psi: 5
+  stale_timeout_seconds: 600
+  sustain_required: 2
+  usb_vid_pid: "0bda:2838"
+  sensors:
+    - id: "550b57d9"
+      position: front-driver
+    - id: "54d96e8f"
+      position: front-passenger
+    - id: "550d14ed"
+      position: rear-driver
+    - id: "550b5d8a"
+      position: rear-passenger
+
 hardware:
   # Each entry declares expected hardware. Boot probe verifies and records
   # PRESENT/MISSING into HardwareState. Existing sensor blocks (sensors.imu,
@@ -391,6 +439,13 @@ hardware:
       description: "Manual capture button"
     - role: display_hdmi
       bus: hdmi
-      connector: HDMI-A-2
+      # Port-agnostic: match any HDMI-A-N so the probe survives cable swaps
+      # between HDMI-A-1 and HDMI-A-2 without a config edit.
+      connector: HDMI-A-*
       criticality: best_effort
       description: "7in kiosk display"
+    - role: tpms_radio
+      bus: usb_vid_pid
+      path: "0bda:2838"
+      criticality: best_effort
+      description: "Nooelec NESDR Smart v5 (RTL2832U + R820T2) — 433 MHz tyre pressure receiver"

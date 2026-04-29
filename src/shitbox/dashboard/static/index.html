@@ -41,7 +41,10 @@
     .hw-degraded .hw-state { color: #f85149; }
     .hw-present .hw-glyph { color: #238636; }
     /* System condition row states — mirror .hw-* pattern (Phase 15 D-13) */
-    .sc-clear .hw-glyph { color: #8b949e; }
+    /* clear = green filled dot to match .hw-present + .tpms-ok — without it
+       the red 'critical' severity badge dominates the row visually and reads
+       as a fault even when state is clear. */
+    .sc-clear .hw-glyph { color: #3fb950; }
     .sc-clear .hw-state { color: #8b949e; }
     .sc-active .hw-glyph { color: #da3633; }
     .sc-active .hw-state { color: #f85149; }
@@ -49,6 +52,17 @@
     .sc-recovering .hw-state { color: #d29922; }
     .sc-restored .hw-glyph { color: #238636; }
     .sc-restored .hw-state { color: #238636; }
+    /* TPMS row states — mirror .sc-* pattern (Phase 28 D-01) */
+    .tpms-no_data .hw-glyph { color: #6e7681; }
+    .tpms-no_data .hw-state, .tpms-no_data .hw-label { color: #8b949e; }
+    .tpms-ok .hw-glyph { color: #3fb950; }
+    .tpms-ok .hw-state { color: #c9d1d9; }
+    .tpms-low .hw-glyph { color: #d29922; }
+    .tpms-low .hw-state { color: #d29922; }
+    .tpms-critical .hw-glyph { color: #da3633; }
+    .tpms-critical .hw-state { color: #f85149; }
+    .tpms-stale .hw-glyph { color: #d29922; }
+    .tpms-stale .hw-state { color: #b08800; }
     .hw-section-eyebrow {
       color: #8b949e;
       font-size: 13px;
@@ -421,6 +435,19 @@
         </div>
       </template>
 
+      <!-- TPMS section — Phase 28 (D-01: 4 rows, FD/FP/RD/RP) -->
+      <div class="hw-section-eyebrow" style="margin-top: 12px;">TPMS</div>
+      <template x-for="row in tpms" :key="row.position">
+        <div class="hw-row hw-row-lg" :class="'tpms-' + row.state">
+          <span class="hw-glyph" x-text="tpmsGlyph(row.state)"></span>
+          <span class="hw-label" x-text="row.label"></span>
+          <span class="hw-state"
+                x-text="row.psi !== null && row.psi !== undefined ? row.psi.toFixed(1) + ' PSI' : '—'"></span>
+          <span class="hw-since"
+                x-text="row.state.toUpperCase() + (row.since_ms ? ' · ' + sinceText(row.since_ms) : '')"></span>
+        </div>
+      </template>
+
       <div class="hw-section-eyebrow" style="margin-top: 12px;">HARDWARE</div>
       <template x-for="row in sortedHardware()" :key="row.role">
         <div class="hw-row hw-row-lg" :class="'hw-' + row.state + ' hw-tier-' + row.tier">
@@ -468,6 +495,7 @@
         speed: 0, imuTemp: '—', socTemp: '—',
         hardware: [],
         systemConditions: [],
+        tpms: [],
         gpsBadge: 'NO FIX', gpsBadgeClass: 'bg-red-700',
         syncBadge: 'SYNC OFFLINE', syncBadgeClass: 'bg-red-700',
         netBadge: 'NET OFFLINE', netBadgeClass: 'bg-red-700',
@@ -621,6 +649,7 @@
             this.activeDriver = d.active_driver;
             this.hardware = d.hardware || [];
             this.systemConditions = d.system_conditions || [];
+            this.tpms = d.tpms || [];
             if (d.lat != null && d.lng != null) {
               const ll = [d.lat, d.lng];
               if (!this.marker) {
@@ -894,7 +923,17 @@
             || (state || 'CLEAR').toUpperCase();
         },
         scGlyph(state) {
-          return { clear: '○', active: '●', recovering: '◐', restored: '●' }[state] || '?';
+          return { clear: '●', active: '●', recovering: '◐', restored: '●' }[state] || '?';
+        },
+        tpmsGlyph(state) {
+          // Phase 28 (D-01) — TPMS row glyphs. Tuned for tyre context.
+          return ({
+            ok: '●',
+            low: '▲',
+            critical: '✖',
+            stale: '◌',
+            no_data: '·',
+          })[state] || '·';
         },
         sinceText(ms) {
           if (ms == null) return '—';

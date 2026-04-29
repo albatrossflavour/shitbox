@@ -53,8 +53,15 @@ I2C_CONSECUTIVE_FAILURE_THRESHOLD = 5  # Triggers recovery after 5 failures (~50
 I2C_RECOVERY_DELAY_SECONDS = 0.1       # 100ms delay after GPIO cleanup before reinit
 SCL_PIN = 3                            # GPIO3 = physical pin 5
 SDA_PIN = 2                            # GPIO2 = physical pin 3
-I2C_MAX_RESETS = 3                     # Maximum recovery attempts before forced reboot
-I2C_RESET_BACKOFF_SECONDS = [0, 2, 5]  # Seconds to wait before each attempt (index = attempt)
+I2C_MAX_RESETS = 3                     # Short-retry attempts before switching to give-up backoff
+I2C_RESET_BACKOFF_SECONDS = [0, 2, 5]  # Backoff per short-retry attempt (index = attempt)
+# Once short retries are exhausted we keep the daemon alive and continue
+# trying recovery on a long backoff. _force_reboot is no longer in the
+# escalation chain — soft reboot doesn't drop the TCA4307 VCC on Pi 5
+# (PMIC keeps the rail alive across systemctl reboot), so rebooting just
+# churns systemd while leaving the bus dead. Manual hard power-cycle is
+# required when the EN-pulse path can't recover — see the open thread.
+I2C_GIVE_UP_BACKOFF_SECONDS = 60       # Backoff between retries after I2C_MAX_RESETS
 
 # LSM6DSOX control register addresses (ref: STMicroelectronics lsm6dsox_reg.h;
 # Adafruit _LSM6DS_CTRL1_XL / CTRL2_G / CTRL8_XL constants — see 22-RESEARCH.md)
@@ -124,6 +131,8 @@ class HighRateSampler:
         accel_offset_y: float = 0.0,
         accel_offset_z: float = 0.0,
         on_sample: Optional[Callable[[IMUSample], None]] = None,
+        tca_en_gpio: Optional[int] = None,
+        tca_en_pulse_low_ms: int = 10,
     ):
         """Initialise high-rate sampler.
 
@@ -135,6 +144,11 @@ class HighRateSampler:
             accel_offset_y: Bias correction for ay (g), subtracted after unit conversion.
             accel_offset_z: Bias correction for az (g), subtracted after unit conversion.
             on_sample: Optional callback for each sample.
+            tca_en_gpio: GPIO pin number (BCM) wired to the TCA4307 EN pin.
+                When set, recovery first tries pulsing EN low to clear a
+                protective-isolation latch — the only known software path
+                back from a wedged bus. None = pin not wired (default).
+            tca_en_pulse_low_ms: Width of the EN low pulse in ms.
         """
         self.ring_buffer = ring_buffer
         self.sample_rate_hz = sample_rate_hz
@@ -160,6 +174,14 @@ class HighRateSampler:
         # I2C lockup recovery
         self._consecutive_failures: int = 0
         self._reset_count: int = 0
+        # TTS flap suppression: only beep + speak on the FIRST cycle of a
+        # lockup, not every retry. Reset on successful recovery.
+        self._lockup_announced: bool = False
+
+        # TCA4307 EN-pin recovery (None when not wired)
+        self._tca_en_gpio: Optional[int] = tca_en_gpio
+        self._tca_en_pulse_low_ms: int = tca_en_pulse_low_ms
+        self._tca_en_initialised: bool = False
 
     def setup(self) -> None:
         """Initialise LSM6DSOX for high-rate sampling.
@@ -167,6 +189,10 @@ class HighRateSampler:
         On failure (hardware absent, I2C error), logs sensor_init_failed and
         sets _lsm6dsox = None. Does NOT raise -- graceful degradation (D-24).
         """
+        # Drive the TCA4307 EN pin high before any I2C activity. No-op when
+        # the pin isn't configured. Idempotent; called again on every recovery
+        # pass through setup().
+        self._setup_tca_en()
         try:
             if not _HAS_LSM6DS:
                 raise ImportError("adafruit-circuitpython-lsm6ds not installed")
@@ -267,8 +293,16 @@ class HighRateSampler:
                     if recovered:
                         break
                 else:
-                    log.critical("sampler_setup_unrecoverable")
-                    self._force_reboot()
+                    # No more _force_reboot escalation. Soft reboot doesn't
+                    # recover a wedged I2C bus (Pi 5 PMIC keeps 3.3V alive
+                    # through systemctl reboot, TCA latch survives) — see
+                    # the open thread. Daemon stays alive with IMU missing;
+                    # supervisor's health check will surface it. Manual
+                    # hard power-cycle is the recovery.
+                    log.critical(
+                        "sampler_setup_unrecoverable",
+                        note="manual hard power-cycle required if TCA latched",
+                    )
                     return
 
         self._running = True
@@ -362,24 +396,59 @@ class HighRateSampler:
                         samples_total=self.samples_total,
                     )
 
-            except OSError as e:
-                log.error("sample_read_error", error=str(e))
+            except Exception as e:
+                # Collapsed handler — every exception goes through the same
+                # threshold-based recovery path. Was previously split: OSError
+                # ran recovery, broad Exception silently incremented the
+                # counter, which produced an AttributeError-flood-forever bug
+                # after recovery deinit'd self._i2c (subsequent reads raised
+                # AttributeError, which the broad handler caught without ever
+                # crossing the threshold to retry recovery).
+                log.error(
+                    "sample_read_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 self._consecutive_failures += 1
 
                 if self._consecutive_failures >= I2C_CONSECUTIVE_FAILURE_THRESHOLD:
-                    log.warning(
-                        "i2c_bus_lockup_detected",
-                        consecutive_failures=self._consecutive_failures,
-                        reset_attempt=self._reset_count + 1,
-                        max_resets=I2C_MAX_RESETS,
-                    )
-                    hw_state.report_degraded(self.role)
-                    buzzer.beep_i2c_lockup()
-                    speaker.speak_i2c_lockup()
+                    in_give_up = self._reset_count >= I2C_MAX_RESETS
 
-                    backoff = I2C_RESET_BACKOFF_SECONDS[
-                        min(self._reset_count, len(I2C_RESET_BACKOFF_SECONDS) - 1)
-                    ]
+                    if in_give_up:
+                        # Long-backoff retry mode — short retries are exhausted
+                        # but we keep trying. Log critical so the journal flags
+                        # the persistent wedge; skip the audible alert (TTS
+                        # flap suppression — Knight Rider voice from earlier
+                        # repros). _lockup_announced is still set from the
+                        # first cycle so the operator already heard it once.
+                        log.critical(
+                            "i2c_bus_still_wedged",
+                            consecutive_failures=self._consecutive_failures,
+                            reset_attempt=self._reset_count + 1,
+                            note="manual hard power-cycle required if TCA latched",
+                        )
+                        hw_state.report_missing(self.role)
+                    else:
+                        log.warning(
+                            "i2c_bus_lockup_detected",
+                            consecutive_failures=self._consecutive_failures,
+                            reset_attempt=self._reset_count + 1,
+                            max_resets=I2C_MAX_RESETS,
+                        )
+                        hw_state.report_degraded(self.role)
+                        # Audible alert — only on the FIRST cycle of a lockup,
+                        # not every retry. Resets on recovery.
+                        if not self._lockup_announced:
+                            buzzer.beep_i2c_lockup()
+                            speaker.speak_i2c_lockup()
+                            self._lockup_announced = True
+
+                    if in_give_up:
+                        backoff = I2C_GIVE_UP_BACKOFF_SECONDS
+                    else:
+                        backoff = I2C_RESET_BACKOFF_SECONDS[
+                            min(self._reset_count, len(I2C_RESET_BACKOFF_SECONDS) - 1)
+                        ]
                     if backoff > 0:
                         time.sleep(backoff)
 
@@ -392,14 +461,14 @@ class HighRateSampler:
                         speaker.speak_service_recovered()
                         self._consecutive_failures = 0
                         self._reset_count = 0
-                    elif self._reset_count >= I2C_MAX_RESETS:
-                        log.critical("i2c_max_resets_exceeded", reset_count=self._reset_count)
-                        hw_state.report_missing(self.role)
-                        self._force_reboot()
-
-            except Exception as e:
-                log.error("sample_read_error", error=str(e))
-                self._consecutive_failures += 1
+                        self._lockup_announced = False
+                    # else: _force_reboot is no longer in the escalation
+                    # chain. Soft reboot doesn't recover a TCA-latched bus
+                    # (Pi 5 PMIC keeps 3.3V alive across systemctl reboot,
+                    # confirmed empirically). Loop continues; next iteration
+                    # hits the give-up backoff above. Manual hard power-cycle
+                    # remains the recovery when the EN-pulse path can't
+                    # clear it (see open thread).
 
             # Plan 22-05: periodic rate log at fixed 10 s cadence. Uses `now`
             # captured at loop top — no extra perf_counter call. Window is
@@ -422,6 +491,62 @@ class HighRateSampler:
 
             next_sample_time += self.sample_interval
 
+    def _setup_tca_en(self) -> None:
+        """Initialise the TCA4307 EN pin to HIGH (enable). No-op when not wired.
+
+        Called at the top of setup() before any I2C activity. Idempotent —
+        RPi.GPIO.setup() can be called repeatedly. On failure, disables the
+        pin path so future recovery attempts fall through to legacy logic.
+        """
+        if self._tca_en_gpio is None:
+            return
+        try:
+            import RPi.GPIO as GPIO  # type: ignore[import]
+        except ImportError:
+            log.warning("rpi_gpio_unavailable_tca_en_disabled")
+            self._tca_en_gpio = None
+            return
+        try:
+            GPIO.setwarnings(False)
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self._tca_en_gpio, GPIO.OUT, initial=GPIO.HIGH)
+            if not self._tca_en_initialised:
+                log.info("tca_en_pin_initialised", pin=self._tca_en_gpio)
+                self._tca_en_initialised = True
+        except Exception as e:
+            log.error("tca_en_setup_failed", pin=self._tca_en_gpio, error=str(e))
+            self._tca_en_gpio = None
+
+    def _pulse_tca_en(self) -> bool:
+        """Pulse the TCA4307 EN pin low to clear a protective-isolation latch.
+
+        The TCA4307 only releases its latched-isolation state on EN low→high
+        or a real VCC drop. This is the correct recovery for the dominant
+        bus-lockup mode we see in the field; see the open thread.
+
+        Returns True on a successful pulse, False if the pin isn't wired or
+        the GPIO call fails.
+        """
+        if self._tca_en_gpio is None:
+            return False
+        try:
+            import RPi.GPIO as GPIO  # type: ignore[import]
+        except ImportError:
+            return False
+        try:
+            GPIO.output(self._tca_en_gpio, GPIO.LOW)
+            time.sleep(self._tca_en_pulse_low_ms / 1000.0)
+            GPIO.output(self._tca_en_gpio, GPIO.HIGH)
+            log.info(
+                "tca_en_pulsed_low",
+                pin=self._tca_en_gpio,
+                duration_ms=self._tca_en_pulse_low_ms,
+            )
+            return True
+        except Exception as e:
+            log.error("tca_en_pulse_error", pin=self._tca_en_gpio, error=str(e))
+            return False
+
     def _i2c_bus_reset(self) -> bool:
         """Attempt 9-clock bit-bang recovery to release a stuck I2C slave.
 
@@ -434,11 +559,77 @@ class HighRateSampler:
             True if the bus was successfully recovered and the sensor
             reinitialised; False on any failure.
         """
+        # Single entry log for the whole recovery attempt — captures the
+        # context that triggered it (consecutive_failures, reset_count) and
+        # which path will be tried first. Pairs with i2c_recovery_successful
+        # / i2c_recovery_failed at the end.
+        log.info(
+            "i2c_recovery_attempt",
+            consecutive_failures=self._consecutive_failures,
+            reset_count=self._reset_count,
+            tca_en_wired=self._tca_en_gpio is not None,
+            tca_en_pin=self._tca_en_gpio,
+            tca_en_pulse_low_ms=self._tca_en_pulse_low_ms,
+            recovery_delay_seconds=I2C_RECOVERY_DELAY_SECONDS,
+        )
+
+        # First try the TCA4307 EN-pin pulse if the pin is wired. Cheap, fast,
+        # and the correct recovery for the dominant lockup mode (TCA latched
+        # into protective isolation). Fall through to the legacy bit-bang path
+        # only when EN-pulse isn't available or doesn't recover the sensor.
+        if self._tca_en_gpio is not None:
+            log.info(
+                "tca_en_recovery_starting",
+                pin=self._tca_en_gpio,
+                pulse_low_ms=self._tca_en_pulse_low_ms,
+            )
+            pulse_ok = self._pulse_tca_en()
+            log.info(
+                "tca_en_pulse_result",
+                pin=self._tca_en_gpio,
+                pulse_ok=pulse_ok,
+            )
+            if pulse_ok:
+                try:
+                    if self._i2c is not None:
+                        self._i2c.deinit()  # type: ignore[attr-defined]
+                        log.debug("i2c_handle_deinit_post_tca_pulse")
+                except Exception as e:
+                    log.debug("i2c_handle_deinit_error_post_tca_pulse", error=str(e))
+                log.debug(
+                    "tca_en_recovery_settling",
+                    sleep_seconds=I2C_RECOVERY_DELAY_SECONDS,
+                )
+                time.sleep(I2C_RECOVERY_DELAY_SECONDS)
+                self.setup()
+                recovered = self._lsm6dsox is not None
+                log.info(
+                    "tca_en_recovery_setup_result",
+                    pin=self._tca_en_gpio,
+                    recovered=recovered,
+                )
+                if recovered:
+                    log.info("i2c_recovery_via_tca_en_pulse", pin=self._tca_en_gpio)
+                    return True
+                log.warning(
+                    "tca_en_pulse_did_not_recover_falling_through",
+                    pin=self._tca_en_gpio,
+                    next_path="bitbang_9pulse",
+                )
+            else:
+                log.warning(
+                    "tca_en_pulse_failed_falling_through",
+                    pin=self._tca_en_gpio,
+                    next_path="bitbang_9pulse",
+                )
+
         try:
             import RPi.GPIO as GPIO  # type: ignore[import]
         except ImportError:
             log.error("rpi_gpio_not_available", hint="Cannot perform I2C bit-bang recovery")
             return False
+
+        log.info("i2c_bitbang_recovery_starting", scl_pin=SCL_PIN, sda_pin=SDA_PIN)
 
         # Close the existing I2C connection
         try:
@@ -478,9 +669,38 @@ class HighRateSampler:
         return self._lsm6dsox is not None
 
     def _force_reboot(self) -> None:
-        """Force a system reboot after unrecoverable I2C failure."""
+        """Force a system reboot after unrecoverable I2C failure.
+
+        Diagnostic instrumentation added 2026-04-29 after observing 9 fired
+        forcing_reboot calls in a row that never produced a logind reboot
+        signal. Uses /usr/sbin/reboot directly (the binary the user's manual
+        recovery used and which is known to work) instead of `systemctl
+        reboot` which adds an extra DBus → systemd hop. `-n` makes sudo
+        fail fast rather than block on a TTY-less password prompt.
+        capture_output + log lets us see the next failure mode if there is
+        one — current `check=False` swallows everything.
+        """
         log.critical("i2c_recovery_failed_forcing_reboot")
-        subprocess.run(["sudo", "systemctl", "reboot"], check=False)
+        try:
+            result = subprocess.run(
+                ["sudo", "-n", "/usr/sbin/reboot"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            log.critical(
+                "force_reboot_subprocess_result",
+                returncode=result.returncode,
+                stdout=result.stdout[:500],
+                stderr=result.stderr[:500],
+            )
+        except Exception as e:
+            log.critical(
+                "force_reboot_subprocess_exception",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     def _read_sample(self) -> IMUSample:
         """Read accelerometer and gyroscope data from LSM6DSOX."""

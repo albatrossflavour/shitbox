@@ -43,6 +43,21 @@ except ImportError:  # pragma: no cover — only triggered when alerts is unavai
 
     alerts = _NoopAlertsSnapshot()  # type: ignore[assignment]
 
+# Phase 28 — graceful degradation: dashboard works without TPMSService
+# (e.g. unit tests, daemon started with tpms.enabled=false). WHEEL_POSITIONS
+# is the canonical FD/FP/RD/RP order; mirror the tpms.py constant so the
+# dashboard renders four deterministic rows even when the TPMS module is
+# unavailable.
+try:
+    from shitbox.sync.tpms import WHEEL_POSITIONS
+except ImportError:  # pragma: no cover
+    WHEEL_POSITIONS = (
+        "front-driver",
+        "front-passenger",
+        "rear-driver",
+        "rear-passenger",
+    )
+
 log = structlog.get_logger(__name__)
 
 _HARDWARE_LABELS: Dict[str, str] = {
@@ -183,6 +198,70 @@ def set_recent_events_provider(
     _recent_provider = fn
 
 
+# Phase 28 — TPMSService snapshot provider, set by the engine at startup.
+# Optional[Any] avoids the import-cycle dance (sse.py is imported by the
+# dashboard server before TPMSService is constructed). Tests
+# `monkeypatch.setattr` it to None or a stub.
+tpms_service: Optional[Any] = None
+
+
+def set_tpms_service(svc: Optional[Any]) -> None:
+    """Register the running TPMSService so _tpms_payload can pull state.
+
+    The engine calls this at start() with self.tpms (or None when the
+    service is disabled, missing the rtl_433 binary, or not yet built).
+    """
+    global tpms_service
+    tpms_service = svc
+
+
+# Phase 28 (SPEC-6) — TPMS section payload for /sse/slow.
+#
+# Always emits four rows in deterministic FD/FP/RD/RP order so Alpine's
+# x-for never sees rearrangements (28-RESEARCH.md Pitfall 4 — :key on
+# row.position prevents flicker).
+_TPMS_LABELS: Dict[str, str] = {
+    "front-driver": "FD",
+    "front-passenger": "FP",
+    "rear-driver": "RD",
+    "rear-passenger": "RP",
+}
+
+
+def _tpms_payload() -> List[Dict[str, Any]]:
+    """Render four TPMS wheel slots for /sse/slow.
+
+    State machine (matches TPMSService.snapshot() output):
+      no_data  → never seen a frame
+      ok       → PSI > yellow threshold (default 28)
+      low      → yellow threshold ≥ PSI > red threshold (default 25)
+      critical → PSI ≤ red threshold OR active leak alert
+      stale    → no frame for stale_timeout (default 5 min)
+
+    `since_ms` is millis since the wheel's last_seen_monotonic for any
+    state other than no_data, where it is None. The frontend renders
+    this as "3s ago" using sinceText().
+
+    When `tpms_service` is unset (engine never registered or
+    config.tpms.enabled=false), four no_data rows are emitted so the
+    frontend always has a complete grid.
+    """
+    snap: Dict[str, Dict[str, Any]] = (
+        tpms_service.snapshot() if tpms_service is not None else {}
+    )
+    out: List[Dict[str, Any]] = []
+    for position in WHEEL_POSITIONS:
+        st = snap.get(position) or {}
+        out.append({
+            "label": _TPMS_LABELS[position],
+            "position": position,
+            "psi": st.get("psi"),
+            "state": st.get("state", "no_data"),
+            "since_ms": st.get("since_ms"),
+        })
+    return out
+
+
 def push_event(event: Dict[str, Any]) -> None:
     """Broadcast a freshly-detected event to all connected /sse/events clients.
 
@@ -270,6 +349,7 @@ async def sse_slow(request: Request) -> Response:
                             "recording_active": snap.get("recording_active", False),
                             "hardware": _hardware_payload(),
                             "system_conditions": _system_conditions_payload(),
+                            "tpms": _tpms_payload(),
                         },
                         default=str,
                     ),

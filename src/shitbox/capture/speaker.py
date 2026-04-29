@@ -74,6 +74,19 @@ _CACHED_MESSAGES: dict[str, str] = {
     "hw_gps_restored": "GPS fix restored, Michael.",
     "hw_environment_missing": "Environment sensor isn't responding, Michael.",
     "hw_environment_restored": "Environment sensor back, Michael.",
+    # Phase 28 TPMS alerts — wheel × alert-type matrix (4 wheels × 3 types)
+    "tpms_low_front_driver": "Front driver tyre low pressure.",
+    "tpms_low_front_passenger": "Front passenger tyre low pressure.",
+    "tpms_low_rear_driver": "Rear driver tyre low pressure.",
+    "tpms_low_rear_passenger": "Rear passenger tyre low pressure.",
+    "tpms_leak_front_driver": "Tyre leaking, front driver.",
+    "tpms_leak_front_passenger": "Tyre leaking, front passenger.",
+    "tpms_leak_rear_driver": "Tyre leaking, rear driver.",
+    "tpms_leak_rear_passenger": "Tyre leaking, rear passenger.",
+    "tpms_restored_front_driver": "Front driver tyre pressure restored.",
+    "tpms_restored_front_passenger": "Front passenger tyre pressure restored.",
+    "tpms_restored_rear_driver": "Rear driver tyre pressure restored.",
+    "tpms_restored_rear_passenger": "Rear passenger tyre pressure restored.",
 }
 
 
@@ -452,6 +465,50 @@ def speak_power_restored() -> None:
     if not _should_alert():
         return
     _enqueue("Power restored, Michael. We're back to steady.")
+
+
+def speak_tpms_low(position: str) -> None:
+    """Announce sustained low pressure on a single wheel (Phase 28, SPEC-7).
+
+    `position` is one of "front-driver", "front-passenger", "rear-driver",
+    "rear-passenger". Other values are silently dropped (no logged warning;
+    invalid positions only reach here through misconfiguration, and the
+    log noise is more annoying than useful in a noisy cabin).
+
+    Suppressed during the boot grace period via `_should_alert()` —
+    matches the `speak_power_restored` shape.
+    """
+    if not _should_alert():
+        return
+    key = f"tpms_low_{position.replace('-', '_')}"
+    text = _CACHED_MESSAGES.get(key)
+    if text:
+        _enqueue(text)
+
+
+def speak_tpms_leak(position: str) -> None:
+    """Announce rapid deflation on a single wheel (Phase 28, SPEC-8).
+
+    Active-verb phrasing distinct from the sustained-low utterance so
+    the driver can ear-distinguish the two alert types from a single
+    announcement.
+    """
+    if not _should_alert():
+        return
+    key = f"tpms_leak_{position.replace('-', '_')}"
+    text = _CACHED_MESSAGES.get(key)
+    if text:
+        _enqueue(text)
+
+
+def speak_tpms_restored(position: str) -> None:
+    """Announce that a previously-low wheel has recovered (Phase 28, SPEC-7 _RESTORED)."""
+    if not _should_alert():
+        return
+    key = f"tpms_restored_{position.replace('-', '_')}"
+    text = _CACHED_MESSAGES.get(key)
+    if text:
+        _enqueue(text)
 
 
 def speak_service_crash() -> None:
