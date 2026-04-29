@@ -272,8 +272,15 @@ def test_escalation_counter_increments(sampler: HighRateSampler) -> None:
     assert sampler._reset_count == max_lockup_cycles
 
 
-def test_reboot_only_after_max_resets(sampler: HighRateSampler) -> None:
-    """_force_reboot() is NOT called until _reset_count reaches I2C_MAX_RESETS."""
+def test_force_reboot_not_called_after_max_resets(sampler: HighRateSampler) -> None:
+    """_force_reboot() is NEVER called from the recovery escalation.
+
+    Brain note open thread (2026-04-29): soft reboot does not recover a
+    TCA4307-latched I2C bus on Pi 5 (PMIC keeps 3.3V alive through
+    systemctl reboot). The escalation now drops _force_reboot entirely —
+    after I2C_MAX_RESETS short retries we transition to a long-backoff
+    retry mode and stay alive so the operator can hard power-cycle.
+    """
     reboot_mock = MagicMock()
     reset_calls = [0]
 
@@ -299,8 +306,11 @@ def test_reboot_only_after_max_resets(sampler: HighRateSampler) -> None:
         sampler._running = True
         sampler._sample_loop()
 
-    # Reboot must only be called after exactly I2C_MAX_RESETS failed attempts
-    reboot_mock.assert_called_once()
+    # _force_reboot is no longer in the escalation chain. The reset count
+    # still reaches I2C_MAX_RESETS, but the daemon stays alive instead of
+    # rebooting. Operator must hard power-cycle to recover when the
+    # EN-pulse path can't clear the latch.
+    reboot_mock.assert_not_called()
     assert sampler._reset_count == I2C_MAX_RESETS
 
 
@@ -412,8 +422,14 @@ def test_startup_setup_escalation(sampler: HighRateSampler) -> None:
     assert sampler._running is True
 
 
-def test_startup_all_attempts_fail_reboots(sampler: HighRateSampler) -> None:
-    """start() calls _force_reboot() when all setup attempts fail."""
+def test_startup_all_attempts_fail_no_reboot(sampler: HighRateSampler) -> None:
+    """start() returns without calling _force_reboot() when all setup attempts fail.
+
+    Brain note open thread (2026-04-29): _force_reboot is no longer in
+    the recovery escalation. When boot setup can't bring the IMU up the
+    daemon stays alive with IMU missing — supervisor's health check
+    surfaces the failure, manual hard power-cycle is the recovery.
+    """
     sampler._lsm6dsox = None  # Force the setup() path in start()
 
     with (
@@ -428,9 +444,9 @@ def test_startup_all_attempts_fail_reboots(sampler: HighRateSampler) -> None:
         mock_time.sleep = MagicMock()
         sampler.start()
 
-    # _force_reboot() must have been called
-    mock_reboot.assert_called_once()
-    # No thread started — start() returned early
+    # _force_reboot() must NOT have been called.
+    mock_reboot.assert_not_called()
+    # No thread started — start() returned early.
     assert sampler._running is False
 
 
@@ -518,27 +534,34 @@ def test_i2c_lockup_reports_degraded(sampler: HighRateSampler) -> None:
     mock_reset.assert_called_once()
 
 
-def test_i2c_max_resets_reports_missing_before_reboot(sampler: HighRateSampler) -> None:
-    """MISSING is reported for 'imu' before _force_reboot() is called."""
+def test_i2c_max_resets_reports_missing_in_give_up_mode(sampler: HighRateSampler) -> None:
+    """MISSING is reported for 'imu' once short retries are exhausted.
+
+    Brain note open thread (2026-04-29): _force_reboot is no longer in
+    the escalation chain. After I2C_MAX_RESETS short retries the daemon
+    transitions to long-backoff give-up mode and reports MISSING for the
+    imu role. _force_reboot is never invoked.
+    """
     from shitbox.hardware import state as hw_state
     from shitbox.hardware.state import DeviceState
+    from shitbox.events.sampler import I2C_GIVE_UP_BACKOFF_SECONDS
 
     hw_state.initialise({"imu": "critical"})
 
-    reboot_calls = []
-
-    def _record_reboot():
-        # Capture state at time of reboot call
-        reboot_calls.append(hw_state.snapshot().get("imu"))
-        sampler._running = False
-
     reset_calls = [0]
+    sleep_durations: list[float] = []
+    state_at_give_up: list = []
 
     def _always_fail_reset() -> bool:
         reset_calls[0] += 1
-        if reset_calls[0] >= I2C_MAX_RESETS:
+        # Once we transition to give-up mode, capture the role state and stop.
+        if reset_calls[0] > I2C_MAX_RESETS:
+            state_at_give_up.append(hw_state.snapshot().get("imu"))
             sampler._running = False
         return False
+
+    def _capture_sleep(duration: float) -> None:
+        sleep_durations.append(duration)
 
     sampler._consecutive_failures = 0
     sampler._reset_count = 0
@@ -546,19 +569,25 @@ def test_i2c_max_resets_reports_missing_before_reboot(sampler: HighRateSampler) 
     with (
         patch.object(sampler, "_read_sample", side_effect=OSError("I2C bus error")),
         patch.object(sampler, "_i2c_bus_reset", side_effect=_always_fail_reset),
-        patch.object(sampler, "_force_reboot", side_effect=_record_reboot),
+        patch.object(sampler, "_force_reboot") as mock_reboot,
         patch("shitbox.events.sampler.buzzer"),
         patch("shitbox.events.sampler.speaker"),
         patch("shitbox.events.sampler.time") as mock_time,
     ):
         mock_time.perf_counter.side_effect = lambda: float(reset_calls[0])
-        mock_time.sleep = MagicMock()
+        mock_time.sleep = _capture_sleep
         sampler._running = True
         sampler._sample_loop()
 
-    # _force_reboot was called
-    assert len(reboot_calls) > 0, "_force_reboot was never called"
-    # State at time of reboot was MISSING
-    assert reboot_calls[0].state == DeviceState.MISSING, (
-        f"Expected MISSING at reboot time, got {reboot_calls[0].state}"
+    # _force_reboot was never called.
+    mock_reboot.assert_not_called()
+    # We reached give-up mode with MISSING reported.
+    assert state_at_give_up, "give-up branch never executed"
+    assert state_at_give_up[0].state == DeviceState.MISSING, (
+        f"Expected MISSING in give-up mode, got {state_at_give_up[0].state}"
+    )
+    # Long backoff was applied at least once (60s give-up backoff).
+    assert I2C_GIVE_UP_BACKOFF_SECONDS in sleep_durations, (
+        f"Expected give-up backoff {I2C_GIVE_UP_BACKOFF_SECONDS}s in sleeps, "
+        f"got {sleep_durations}"
     )

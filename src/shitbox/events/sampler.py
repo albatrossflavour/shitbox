@@ -53,8 +53,15 @@ I2C_CONSECUTIVE_FAILURE_THRESHOLD = 5  # Triggers recovery after 5 failures (~50
 I2C_RECOVERY_DELAY_SECONDS = 0.1       # 100ms delay after GPIO cleanup before reinit
 SCL_PIN = 3                            # GPIO3 = physical pin 5
 SDA_PIN = 2                            # GPIO2 = physical pin 3
-I2C_MAX_RESETS = 3                     # Maximum recovery attempts before forced reboot
-I2C_RESET_BACKOFF_SECONDS = [0, 2, 5]  # Seconds to wait before each attempt (index = attempt)
+I2C_MAX_RESETS = 3                     # Short-retry attempts before switching to give-up backoff
+I2C_RESET_BACKOFF_SECONDS = [0, 2, 5]  # Backoff per short-retry attempt (index = attempt)
+# Once short retries are exhausted we keep the daemon alive and continue
+# trying recovery on a long backoff. _force_reboot is no longer in the
+# escalation chain — soft reboot doesn't drop the TCA4307 VCC on Pi 5
+# (PMIC keeps the rail alive across systemctl reboot), so rebooting just
+# churns systemd while leaving the bus dead. Manual hard power-cycle is
+# required when the EN-pulse path can't recover — see the open thread.
+I2C_GIVE_UP_BACKOFF_SECONDS = 60       # Backoff between retries after I2C_MAX_RESETS
 
 # LSM6DSOX control register addresses (ref: STMicroelectronics lsm6dsox_reg.h;
 # Adafruit _LSM6DS_CTRL1_XL / CTRL2_G / CTRL8_XL constants — see 22-RESEARCH.md)
@@ -167,6 +174,9 @@ class HighRateSampler:
         # I2C lockup recovery
         self._consecutive_failures: int = 0
         self._reset_count: int = 0
+        # TTS flap suppression: only beep + speak on the FIRST cycle of a
+        # lockup, not every retry. Reset on successful recovery.
+        self._lockup_announced: bool = False
 
         # TCA4307 EN-pin recovery (None when not wired)
         self._tca_en_gpio: Optional[int] = tca_en_gpio
@@ -283,8 +293,16 @@ class HighRateSampler:
                     if recovered:
                         break
                 else:
-                    log.critical("sampler_setup_unrecoverable")
-                    self._force_reboot()
+                    # No more _force_reboot escalation. Soft reboot doesn't
+                    # recover a wedged I2C bus (Pi 5 PMIC keeps 3.3V alive
+                    # through systemctl reboot, TCA latch survives) — see
+                    # the open thread. Daemon stays alive with IMU missing;
+                    # supervisor's health check will surface it. Manual
+                    # hard power-cycle is the recovery.
+                    log.critical(
+                        "sampler_setup_unrecoverable",
+                        note="manual hard power-cycle required if TCA latched",
+                    )
                     return
 
         self._running = True
@@ -378,24 +396,59 @@ class HighRateSampler:
                         samples_total=self.samples_total,
                     )
 
-            except OSError as e:
-                log.error("sample_read_error", error=str(e))
+            except Exception as e:
+                # Collapsed handler — every exception goes through the same
+                # threshold-based recovery path. Was previously split: OSError
+                # ran recovery, broad Exception silently incremented the
+                # counter, which produced an AttributeError-flood-forever bug
+                # after recovery deinit'd self._i2c (subsequent reads raised
+                # AttributeError, which the broad handler caught without ever
+                # crossing the threshold to retry recovery).
+                log.error(
+                    "sample_read_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 self._consecutive_failures += 1
 
                 if self._consecutive_failures >= I2C_CONSECUTIVE_FAILURE_THRESHOLD:
-                    log.warning(
-                        "i2c_bus_lockup_detected",
-                        consecutive_failures=self._consecutive_failures,
-                        reset_attempt=self._reset_count + 1,
-                        max_resets=I2C_MAX_RESETS,
-                    )
-                    hw_state.report_degraded(self.role)
-                    buzzer.beep_i2c_lockup()
-                    speaker.speak_i2c_lockup()
+                    in_give_up = self._reset_count >= I2C_MAX_RESETS
 
-                    backoff = I2C_RESET_BACKOFF_SECONDS[
-                        min(self._reset_count, len(I2C_RESET_BACKOFF_SECONDS) - 1)
-                    ]
+                    if in_give_up:
+                        # Long-backoff retry mode — short retries are exhausted
+                        # but we keep trying. Log critical so the journal flags
+                        # the persistent wedge; skip the audible alert (TTS
+                        # flap suppression — Knight Rider voice from earlier
+                        # repros). _lockup_announced is still set from the
+                        # first cycle so the operator already heard it once.
+                        log.critical(
+                            "i2c_bus_still_wedged",
+                            consecutive_failures=self._consecutive_failures,
+                            reset_attempt=self._reset_count + 1,
+                            note="manual hard power-cycle required if TCA latched",
+                        )
+                        hw_state.report_missing(self.role)
+                    else:
+                        log.warning(
+                            "i2c_bus_lockup_detected",
+                            consecutive_failures=self._consecutive_failures,
+                            reset_attempt=self._reset_count + 1,
+                            max_resets=I2C_MAX_RESETS,
+                        )
+                        hw_state.report_degraded(self.role)
+                        # Audible alert — only on the FIRST cycle of a lockup,
+                        # not every retry. Resets on recovery.
+                        if not self._lockup_announced:
+                            buzzer.beep_i2c_lockup()
+                            speaker.speak_i2c_lockup()
+                            self._lockup_announced = True
+
+                    if in_give_up:
+                        backoff = I2C_GIVE_UP_BACKOFF_SECONDS
+                    else:
+                        backoff = I2C_RESET_BACKOFF_SECONDS[
+                            min(self._reset_count, len(I2C_RESET_BACKOFF_SECONDS) - 1)
+                        ]
                     if backoff > 0:
                         time.sleep(backoff)
 
@@ -408,14 +461,14 @@ class HighRateSampler:
                         speaker.speak_service_recovered()
                         self._consecutive_failures = 0
                         self._reset_count = 0
-                    elif self._reset_count >= I2C_MAX_RESETS:
-                        log.critical("i2c_max_resets_exceeded", reset_count=self._reset_count)
-                        hw_state.report_missing(self.role)
-                        self._force_reboot()
-
-            except Exception as e:
-                log.error("sample_read_error", error=str(e))
-                self._consecutive_failures += 1
+                        self._lockup_announced = False
+                    # else: _force_reboot is no longer in the escalation
+                    # chain. Soft reboot doesn't recover a TCA-latched bus
+                    # (Pi 5 PMIC keeps 3.3V alive across systemctl reboot,
+                    # confirmed empirically). Loop continues; next iteration
+                    # hits the give-up backoff above. Manual hard power-cycle
+                    # remains the recovery when the EN-pulse path can't
+                    # clear it (see open thread).
 
             # Plan 22-05: periodic rate log at fixed 10 s cadence. Uses `now`
             # captured at loop top — no extra perf_counter call. Window is
