@@ -424,7 +424,9 @@ hardware:
       description: "Manual capture button"
     - role: display_hdmi
       bus: hdmi
-      connector: HDMI-A-2
+      # Port-agnostic: match any HDMI-A-N so the probe survives cable swaps
+      # between HDMI-A-1 and HDMI-A-2 without a config edit.
+      connector: HDMI-A-*
       criticality: best_effort
       description: "7in kiosk display"
     - role: tpms_radio

@@ -92,9 +92,14 @@ def probe_usb_vid_pid(vid_pid: str) -> bool:
 
 
 def probe_hdmi(connector: str) -> bool:
-    """Return True if the named HDMI connector is attached and driving output.
+    """Return True if a matching HDMI connector is attached and driving output.
 
-    connector: e.g. 'HDMI-A-1' (matches /sys/class/drm/*HDMI-A-1/status).
+    connector:
+      - Explicit name, e.g. 'HDMI-A-1' — matches /sys/class/drm/*HDMI-A-1.
+      - Wildcard pattern, e.g. 'HDMI-A-*' — port-agnostic, matches any HDMI-A-N.
+      - Empty string / None / sentinel ('*', 'any', 'auto') — treated as
+        port-agnostic (equivalent to 'HDMI-A-*'). Survives cable swaps between
+        HDMI-A-1 and HDMI-A-2 without a config edit.
 
     Status file values come from the kernel DRM driver. 'connected' is the
     explicit hot-plug-detected case. 'unknown' is common on Pi 5 once the
@@ -103,8 +108,16 @@ def probe_hdmi(connector: str) -> bool:
     hence the check is inverted: anything *other than* 'disconnected' counts
     as present, provided the connector node exists at all.
     """
+    spec = (connector or "").strip()
+    # Port-agnostic sentinels — match ANY HDMI-A-N. Anchored to HDMI-A
+    # explicitly so an empty connector spec doesn't accidentally glob DP/eDP.
+    if spec.lower() in ("", "*", "any", "auto"):
+        pattern = "*HDMI-A-*"
+    else:
+        pattern = f"*{spec}"
+
     try:
-        matches = list(Path("/sys/class/drm").glob(f"*{connector}"))
+        matches = list(Path("/sys/class/drm").glob(pattern))
     except OSError:
         return False
     if not matches:
