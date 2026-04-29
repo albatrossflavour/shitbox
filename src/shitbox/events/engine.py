@@ -9,7 +9,6 @@ Low-rate path (1 Hz):
 - GPS, IMU snapshot, temperature → SQLite → MQTT → Prometheus batch sync
 """
 
-import json
 import math
 import shutil
 import signal
@@ -713,8 +712,12 @@ class UnifiedEngine:
         # Logbook storage (notes + fuel stops) — REST-only, no thread
         self.logbook_storage = LogbookStorage(self.database)
         if self.capture_sync is not None:
-            self.capture_sync.register_json_generator("notes", self.logbook_storage.generate_notes_json)
-            self.capture_sync.register_json_generator("fuel", self.logbook_storage.generate_fuel_json)
+            self.capture_sync.register_json_generator(
+                "notes", self.logbook_storage.generate_notes_json
+            )
+            self.capture_sync.register_json_generator(
+                "fuel", self.logbook_storage.generate_fuel_json
+            )
 
         # Driver storage — REST-only, idempotent (same pattern as LogbookStorage)
         self.driver_storage = DriverStorage(self.database)
@@ -1093,7 +1096,10 @@ class UnifiedEngine:
         try:
             self.database.insert_reading(reading)
             self.telemetry_readings += 1
-            if reading.sensor_type == SensorType.ENVIRONMENT and reading.env_temp_celsius is not None:
+            if (
+                reading.sensor_type == SensorType.ENVIRONMENT
+                and reading.env_temp_celsius is not None
+            ):
                 self._cabin_temp_c = reading.env_temp_celsius
             elif (
                 reading.sensor_type == SensorType.TEMPERATURE
@@ -1138,8 +1144,14 @@ class UnifiedEngine:
                         "event_count_today": self.events_captured,
                         "active_driver": driver_state.get_active_driver(),
                         "recording_active": self._has_pending_captures()
-                            or (self.video_ring_buffer is not None and self.video_ring_buffer.is_saving)
-                            or (self.video_recorder is not None and self.video_recorder.is_recording),
+                            or (
+                                self.video_ring_buffer is not None
+                                and self.video_ring_buffer.is_saving
+                            )
+                            or (
+                                self.video_recorder is not None
+                                and self.video_recorder.is_recording
+                            ),
                     })
                 except Exception as exc:
                     log.warning("dashboard_snapshot_update_failed", error=str(exc))
@@ -1290,14 +1302,12 @@ class UnifiedEngine:
             save_after_seconds=self.config.detector.post_event_seconds,
         )
 
-        # Publish event to MQTT
-        if self.mqtt and self.mqtt.is_connected:
-            event_payload = event.to_dict()
-            topic = f"{self.config.mqtt_topic_prefix}/event"
-            try:
-                self.mqtt._publish(topic, json.dumps(event_payload))
-            except Exception as e:
-                log.error("mqtt_event_publish_error", error=str(e))
+        # MQTT event publish is parked. MQTT is config-disabled to avoid
+        # duplicate metrics with the Prometheus path, and the ad-hoc call
+        # here referenced a non-existent ``MQTTPublisher._publish`` (the
+        # publisher exposes ``publish_reading`` / ``publish_health``, not
+        # raw publish). If MQTT event publishing is wanted again, add a
+        # ``publish_event`` queue method on MQTTPublisher and wire it here.
 
     def trigger_manual_capture(self) -> None:
         """Trigger manual capture via button press or API call.
@@ -1998,7 +2008,9 @@ class UnifiedEngine:
                 self._current_satellites = gps_reading.satellites
                 # Resolve location name from coordinates
                 if gps_reading.latitude is not None and gps_reading.longitude is not None:
-                    gps_state.update_last_known_position(gps_reading.latitude, gps_reading.longitude)
+                    gps_state.update_last_known_position(
+                        gps_reading.latitude, gps_reading.longitude
+                    )
                     self._resolve_location(gps_reading.latitude, gps_reading.longitude)
                     self._distance_from_start_km = self._haversine_km(
                         self.config.rally_start_lat, self.config.rally_start_lon,

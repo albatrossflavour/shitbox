@@ -7,8 +7,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 import structlog
 
-from shitbox.storage.database import Database
 from shitbox.dashboard import gps_state
+from shitbox.storage.database import Database
 
 log = structlog.get_logger(__name__)
 
@@ -21,7 +21,11 @@ class LogbookStorage:
     a lambda that returns a controlled dict so hardware is never touched.
     """
 
-    def __init__(self, db: Database, snapshot_fn: Optional[Callable[[], Dict[str, Any]]] = None) -> None:
+    def __init__(
+        self,
+        db: Database,
+        snapshot_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+    ) -> None:
         self.db = db
         self._snapshot_fn = snapshot_fn
 

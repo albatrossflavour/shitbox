@@ -825,16 +825,28 @@ class VideoRingBuffer:
             self._running = False
 
     def _read_stderr(self) -> str:
-        """Read available stderr from the current process without blocking."""
+        """Read available stderr from the current process without blocking.
+
+        On a non-blocking pipe ``os.read`` raises ``BlockingIOError`` once
+        the buffer is empty rather than returning ``b""``. The earlier
+        version of this method swallowed the error inside the bare
+        ``except Exception: pass`` and lost any bytes already drained.
+        Catch BlockingIOError as the loop-exit signal and return what
+        we already have. Same fix shape as
+        ``shitbox.sync.tpms._read_stderr_nonblocking``.
+        """
         if self._process and self._process.stderr:
+            data = b""
             try:
                 fd = self._process.stderr.fileno()
                 flags = os.get_blocking(fd)
                 os.set_blocking(fd, False)
                 try:
-                    data = b""
                     while True:
-                        chunk = os.read(fd, 4096)
+                        try:
+                            chunk = os.read(fd, 4096)
+                        except BlockingIOError:
+                            break
                         if not chunk:
                             break
                         data += chunk
@@ -842,7 +854,7 @@ class VideoRingBuffer:
                     os.set_blocking(fd, flags)
                 return data.decode(errors="replace")[-500:]
             except Exception:
-                pass
+                return data.decode(errors="replace")[-500:] if data else ""
         return ""
 
     def _kill_current(self) -> None:

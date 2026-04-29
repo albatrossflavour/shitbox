@@ -7,7 +7,7 @@ dashboard integration. Graceful degradation per D-24.
 from typing import Optional
 
 from shitbox.collectors.base import BaseCollector
-from shitbox.storage.models import Reading, SensorType
+from shitbox.storage.models import Reading
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -16,8 +16,8 @@ log = get_logger(__name__)
 #   patch("shitbox.collectors.light.adafruit_veml7700")
 #   patch("shitbox.collectors.light.busio")
 try:
-    import board
     import adafruit_veml7700
+    import board
     import busio
     _HAS_VEML = True
 except ImportError:
