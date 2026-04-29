@@ -19,14 +19,19 @@ def _read_service_file() -> str:
     return SERVICE_FILE.read_text()
 
 
-def _parse_service_section() -> configparser.SectionProxy:
-    """Parse the [Service] section of the unit file using configparser."""
+def _parse_section(section: str) -> configparser.SectionProxy:
+    """Parse a named section ([Unit] / [Service] / [Install]) of the unit file."""
     contents = _read_service_file()
     parser = configparser.ConfigParser(allow_no_value=True)
     # configparser treats lines starting with # as comments by default,
     # but systemd unit files use ; for inline comments. We read as-is.
     parser.read_string(contents)
-    return parser["Service"]
+    return parser[section]
+
+
+def _parse_service_section() -> configparser.SectionProxy:
+    """Parse the [Service] section of the unit file using configparser."""
+    return _parse_section("Service")
 
 
 def test_watchdog_unit_file_has_30s() -> None:
@@ -43,13 +48,19 @@ def test_watchdog_unit_file_has_30s() -> None:
 
 
 def test_service_unit_restart_policy() -> None:
-    """[Service] section must have Restart=always and StartLimitIntervalSec=0."""
-    section = _parse_service_section()
-    assert section.get("restart") == "always", (
-        f"Expected Restart=always, got {section.get('restart')!r}"
+    """[Service] has Restart=always; [Unit] has StartLimitIntervalSec=0.
+
+    StartLimitIntervalSec belongs in [Unit] — systemd silently ignores it in
+    [Service] and emits a "Unknown key" warning on load (caught 2026-04-29).
+    """
+    service = _parse_service_section()
+    unit = _parse_section("Unit")
+    assert service.get("restart") == "always", (
+        f"Expected Restart=always, got {service.get('restart')!r}"
     )
-    assert section.get("startlimitintervalsec") == "0", (
-        f"Expected StartLimitIntervalSec=0, got {section.get('startlimitintervalsec')!r}"
+    assert unit.get("startlimitintervalsec") == "0", (
+        f"Expected StartLimitIntervalSec=0 in [Unit], "
+        f"got {unit.get('startlimitintervalsec')!r}"
     )
 
 
