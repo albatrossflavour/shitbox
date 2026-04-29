@@ -1,7 +1,10 @@
 """Unit tests for the systemd shitbox-telemetry.service unit file.
 
 Validates that the service unit is correctly hardened for unlimited
-restarts and a 10-second watchdog timeout.
+restarts and a 30-second watchdog timeout. The 30s budget gives cold-start
+GPS acquisition (max_wait_seconds=20) plus the rest of startup enough
+headroom; engine.py also pings WATCHDOG=1 inside the GPS-wait loop so a
+slow cold fix can't burn the whole budget on its own.
 """
 
 import configparser
@@ -26,11 +29,16 @@ def _parse_service_section() -> configparser.SectionProxy:
     return parser["Service"]
 
 
-def test_watchdog_unit_file_has_10s() -> None:
-    """[Service] section must declare WatchdogSec=10."""
+def test_watchdog_unit_file_has_30s() -> None:
+    """[Service] section must declare WatchdogSec=30.
+
+    Bumped from 10s after cold-start GPS acquisition was burning the entire
+    budget before engine.py reached the main loop. Engine now also pings
+    WATCHDOG=1 inside _wait_for_gps_fix; 30s gives belt-and-braces headroom.
+    """
     section = _parse_service_section()
-    assert section.get("watchdogsec") == "10", (
-        f"Expected WatchdogSec=10, got {section.get('watchdogsec')!r}"
+    assert section.get("watchdogsec") == "30", (
+        f"Expected WatchdogSec=30, got {section.get('watchdogsec')!r}"
     )
 
 

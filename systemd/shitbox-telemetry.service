@@ -15,8 +15,10 @@ RestartSec=5
 # Never stop restarting after rapid crash loops
 StartLimitIntervalSec=0
 
-# Watchdog - service must ping within 10s or gets restarted
-WatchdogSec=10
+# Watchdog - service must ping within 30s or gets restarted.
+# Engine pings WATCHDOG=1 inside the cold-start GPS-wait loop, but 30s gives
+# headroom for slow cold fixes (max_wait_seconds=20) plus the rest of startup.
+WatchdogSec=30
 
 # Environment
 Environment=PYTHONUNBUFFERED=1

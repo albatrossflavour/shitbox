@@ -129,6 +129,12 @@ class EngineConfig:
     max_event_age_days: int = 14
     max_event_storage_mb: int = 500
 
+    # Periodic data-deletion cleanup (events + capture videos). Disabled by
+    # default — the 14-day age-out would silently nuke saved events and
+    # videos we want to keep on the live site indefinitely. Re-enable once
+    # a retention strategy that protects the keepers is in place.
+    cleanup_old_data_enabled: bool = False
+
     # SQLite storage
     database_path: str = "/var/lib/shitbox/telemetry.db"
     home_lat: float = 0.0
@@ -1037,6 +1043,10 @@ class UnifiedEngine:
         for i in range(max_wait):
             if not self._running:
                 return False
+            # Keep systemd watchdog fed during cold-start GPS acquisition.
+            # WatchdogSec is shorter than max_wait, so without this a slow
+            # cold fix burns the entire budget and the service gets killed.
+            self._notify_systemd("WATCHDOG=1")
             try:
                 reading = self._read_gps()
                 if reading and reading.latitude is not None:
@@ -1158,8 +1168,19 @@ class UnifiedEngine:
         # (e.g. hard brake → high G → hard brake) produce one video, not many.
         # Manual captures also extend rather than starting overlapping saves.
         # Boot events always go through (only fires once).
+        # Two suppression conditions: a pending post-capture window is open,
+        # OR the previous video worker is still running. The window is
+        # time-based and can release before the concat worker finishes; without
+        # the second gate, a fresh event can spawn a second concurrent ffmpeg
+        # concat and spike CPU.
+        save_in_progress = bool(
+            self.video_ring_buffer is not None and self.video_ring_buffer.is_saving
+        )
         with self._pending_lock:
-            if self._pending_post_capture and event.event_type != EventType.BOOT:
+            if (
+                (self._pending_post_capture or save_in_progress)
+                and event.event_type != EventType.BOOT
+            ):
                 # Extend the post-capture window of the most recent pending event
                 extension = self.config.detector.post_event_seconds
                 for pending in self._pending_post_capture.values():
@@ -1169,6 +1190,7 @@ class UnifiedEngine:
                 pending_count = len(self._pending_post_capture)
                 is_suppressed = True
             else:
+                pending_count = 0
                 is_suppressed = False
         if is_suppressed:
             if event.event_type == EventType.MANUAL_CAPTURE:
@@ -1178,6 +1200,7 @@ class UnifiedEngine:
                 suppressed_type=event.event_type.value,
                 peak_g=round(event.peak_value, 2),
                 pending_count=pending_count,
+                save_in_progress=save_in_progress,
             )
             return
 
@@ -2406,14 +2429,27 @@ class UnifiedEngine:
 
     def _do_cleanup(self) -> None:
         """Run periodic cleanup tasks."""
+        # fake-hwclock sync is not destructive — always runs so reboots start
+        # with a recent time even when data cleanup is disabled.
+        self._sync_fake_hwclock()
+
+        # Data-deletion cleanups are disabled by default — the 14-day age-out
+        # would silently nuke saved events and capture videos that we want to
+        # keep on the live site indefinitely. Re-enable via
+        # cleanup_old_data_enabled=true once a retention strategy that keeps
+        # the things we care about is in place. Methods kept intact.
+        if not self.config.cleanup_old_data_enabled:
+            log.debug(
+                "data_cleanup_skipped",
+                reason="cleanup_old_data_enabled=false",
+            )
+            return
+
         try:
             self.event_storage.cleanup_old_events()
             self.event_storage.cleanup_by_size()
         except Exception as e:
             log.error("cleanup_error", error=str(e))
-
-        # Update fake-hwclock so reboots start with a recent time
-        self._sync_fake_hwclock()
 
         # Clean up old video captures
         if self.video_ring_buffer:
