@@ -1,18 +1,25 @@
-// Shitbox Rally — Pi 5 stack enclosure v2 — CASTLE CLAMSHELL EDITION
+// Shitbox Rally — Pi 5 stack enclosure v3 — 3-PIECE CASTLE EDITION
 //
-// Horizontally-split clamshell shell with open right (USB-A / Ethernet)
-// short wall. Rally-side service wins over full seal: the upper half
-// lifts clear of the tray on four M3 clamshell bolts, exposing the
-// perma-proto HAT, GPIO extender and top of the Pi 5 stack without
-// disturbing the NVMe HAT, brass standoffs or any cable routed through
-// a fixed wall. USB ports stay permanently accessible through the
-// skeletal right-side gatehouse.
+// Horizontally-split shell with open right (USB-A / Ethernet) short wall.
+// Three pieces:
+//   1. BOTTOM — tray. Floor + walls. Sits on car mount (M4 flanges).
+//   2. TOP    — sealed flat upper. Smooth structural box, no decoration.
+//              Magnets in corner towers mate with bottom.
+//   3. ROOF   — full-area decorated plate. Bonds permanently on top of TOP
+//              via PETG solvent weld. Carries all castle decoration:
+//              perimeter crenellations, corner tower caps, shield, vents.
+//
+// Why split into three? Castle decoration on a single lid forced
+// support-heavy prints in PETG — overhang under crenellation gaps fused
+// into the merlons and could not be removed cleanly (see brain note +
+// IMG_2036). Splitting into a sealed flat TOP + decorated ROOF means
+// both pieces print bed-down with no support material.
 //
 // Stack (bottom to top):
 //   NVMe HAT (HAT_H = 20 mm) → Pi 5 PCB → active cooler →
 //   GPIO extender → perma-proto HAT
 //
-// Pi 5 orientation (same as v1):
+// Pi 5 orientation:
 //   HDMI / USB-C / fan header long edge → case FRONT (Y=0)
 //   GPIO header long edge                → case BACK (Y=OUTER_D)
 //   USB-A + Ethernet short edge          → case RIGHT (+X, open gatehouse)
@@ -22,57 +29,51 @@
 //   Pi mount     — 4× M2.5 heat-set inserts in floor → brass standoffs
 //                  carry the NVMe HAT, then Pi.
 //   Plywood mnt  — 4× M4 through-hole flanges on left+right exteriors.
-//   Clamshell    — 4× M3 cap screws down through the four corner
-//                  buttress towers; M3 heat-set inserts in the tray
-//                  tower tops, clearance hole + cap-head recess up
-//                  through the upper tower, corbel and battlement ring.
-//                  Interior bolt posts are deliberately absent so the
-//                  four Pi mounts are clear and the Pi stack is fully
-//                  4-point supported under rally vibration.
+//                  Bolt holes sit between the corner towers, inset
+//                  ~4 mm past each tower edge — clear of the towers
+//                  on both sides without widening the flange tabs.
+//   Top↔Bottom   — 4× N35 magnet pairs in corner buttress towers.
+//   Top↔Roof     — permanent bond (PETG solvent weld, full-area).
 //
-// v1 bugs fixed (see memory: project_pi_case_v2):
-//   1. USB cutout count — right short wall is absent (open gatehouse).
-//   2. USB-C X offset   — anchored to USB/Ethernet short edge regardless
-//                         of which wall is present.
-//   3. GX12/SMA cutouts — rotation fixed so cylinders pierce the back
-//                         wall fully rather than leaving a 0.1 mm sliver.
-//   4. GX12 labelled    — left port is the arcade BUTTON on GPIO 17.
-//   5. Back-wall ports  — standardised on GX12 panel mounts: left port
-//                         BUTTON, right port 1-WIRE bus, flanking the
-//                         portcullis at upper-third Z. SMA (GPS) drops
-//                         to centre-X low (FLOOR+8) so the castle face
-//                         reads symmetric.
-//   6. Pi mounting      — brass standoffs into heat-set inserts at all
-//                         FOUR Pi mount positions. Clamshell bolts
-//                         relocated into corner towers so they no
-//                         longer collide with the display-side Pi
-//                         mount pair.
-//   7. Seam lip         — replaced free-standing 0.8×3 mm tab (snapped
-//                         off on first print) with a 50/50 shiplap:
-//                         tray walls extend LIP_DROP above SPLIT_Z as
-//                         an outer slice, upper walls carry a matching
-//                         inner-slice skirt. Full wall cross-section
-//                         through the overlap, nothing cantilevered.
+// v3 changes from v2 (see ~/Brain/projects/shitbox-pi-case-redesign-spec.md):
+//   - Three-piece split: bottom + top + roof.
+//   - Top is fully smooth (no shield, no crenellations, no slits).
+//   - All decoration moves to roof.
+//   - Top has large central vent cutout matching roof vent footprint.
+//   - Gate post stubs truncated to 4 mm at the OUTER end of each piece
+//     (bottom-of-bottom, top-of-top) — USB-A / Ethernet plug clearance
+//     through the gatehouse, structural reinforcement only at the
+//     joining surfaces.
+//   - Mounting flange bolt holes moved between the corner towers
+//     (inset ~4 mm past each tower edge) instead of crammed into the
+//     corner alongside the towers. No flange extension required.
 //
-// Castle features (print-safe set — see repo notes for what was
-// considered and dropped for PETG overhang margin):
-//   - Corner buttress towers at all 4 exterior corners, full height,
-//     crenellated battlements, arrow slits on each tower face.
-//   - Stepped battered course along the clamshell seam (decorative
-//     thickening that masks the split line; zero overhang).
-//   - Gatehouse pointed arch (frame only — no hanging bars) across the
-//     open right side, structural top beam.
-//   - Running-bond mortar grooves on the three solid walls.
-//   - Sword relief carvings on front and back walls.
-//   - Portcullis vents (decorative ogival arch with bars) on back wall.
-//   - Crenellated battlements around lid perimeter.
-//   - Heater-shield sigil with chevron on lid.
-//   - Cross-shaped arrow-slit ventilation through lid.
-//   - Fan intake arch ring around the 40 mm Noctua on left wall.
+// Castle features now living on the ROOF (printed standalone, bed-down):
+//   - Perimeter crenellations w/ pyramidal merlon caps + arrow slits
+//   - Machicolation gallery (corbelled overhang) w/ murder holes
+//   - Corner tower caps: corbel ring + battlement merlons + conical roof
+//   - Heater shield + chevron sigil at roof centre
+//   - Functional cross-shaped ventilation cuts through the plate
+//   - Mortar engraving on merlon faces
+//   - Drawbridge relief on the gatehouse edge
+//   - Flag finial on one corner tower
+//
+// Castle features still on the BOTTOM walls (zero overhang):
+//   - Corner buttress towers (cylinders, full bottom-half height)
+//   - Stepped battered course along clamshell seam
+//   - Running-bond mortar grooves on three solid walls
+//   - Sword relief carvings on front wall
+//   - Tower arrow slits in tower bodies
+//   - Fan intake aperture on left wall
+//
+// Castle features on the TOP walls:
+//   - Corner buttress towers (cylinders, top-half height)
+//   - Running-bond mortar grooves on three solid walls
+//   - Sword relief on back wall
+//   - Portcullis vent on back wall
+//   - Tower arrow slits (continued from bottom)
 //
 // Units: mm. $fn = 64 for STL export; reduce for live preview.
-//
-// All key dimensions measured with calipers 2026-04-17 ±0.5 mm.
 
 $fn = 64;
 
@@ -95,149 +96,149 @@ PI5_HOLE_W         = 58.0;
 PI5_HOLE_D_SPACING = 49.0;
 
 // ---- NVMe HAT (Freenove V2, measured 2026-04-28) ----
-// HAT is 88 mm long × 55.6 mm wide — extends 3 mm past Pi 5 in +X.
-// Has 3.5 mm socket on underside; ribbon cable to Pi connects there
-// and needs ~3 mm clearance. Both handled by lifting HAT on standoffs
-// (HAT_BASE_OFFSET) above the case floor.
 HAT_W            = 88.0;
 HAT_D            = 55.6;
-HAT_OVERHANG_X   = HAT_W - PI5_W;  // 3 mm — HAT extends past Pi's +X edge
-HAT_BASE_OFFSET  = 6;              // standoff height (clears 3.5 mm socket + 3 mm ribbon)
+HAT_OVERHANG_X   = HAT_W - PI5_W;
+HAT_BASE_OFFSET  = 6;
 
-// ---- Stack heights (measured 2026-04-28, actual built stack) ----
-STACK_H = 47;       // HAT bottom to top of GPS — measured, not estimated
-HAT_H   = 18;       // floor to Pi 5 PCB bottom: HAT_BASE_OFFSET (6) + HAT body (~2)
-                    //   + HAT-to-Pi standoff (~10)
+// ---- Stack heights ----
+STACK_H = 47;
+HAT_H   = 18;
 
-// ---- Pi 5 connector offsets (from RPi mech drawing) ----
-// All X offsets measure inward from the SD card / display short edge
-// (Pi's −X corner, opposite end from USB-A/Ethernet). USB-C sits at
-// 11.5 mm from this edge. Earlier version of this file had the
-// reference edge wrong (claimed USB/Ethernet edge); cutouts came out
-// on the wrong end of the front wall as a result.
+// ---- Pi 5 connector offsets ----
 HDMI1_OFFSET = 26.0;
 HDMI2_OFFSET = 39.5;
 HDMI_PORT_H  = 3.5;
 USB_OFFSET   = 29.0;
 PWR_OFFSET   = 11.5;
 PWR_PORT_H   = 3.5;
-PORT_TOL     = 1.0;       // tolerance below port body bottom for cutout
+PORT_TOL     = 1.0;
 
 // ---- Fan (Noctua NF-A4x10 5V) ----
 FAN_W            = 40;
 FAN_MOUNT_SPG    = 32;
-FAN_SCREW_D      = 3.4;   // M3 clearance
+FAN_SCREW_D      = 3.4;
 FAN_APERTURE     = 37;
-FAN_BODY_DEPTH   = 10;    // NF-A4x10 body thickness (Z-axis on the wall it sits on)
-FAN_PI_GAP       = 5;     // clearance between fan body and Pi PCB inside the case
+FAN_BODY_DEPTH   = 10;
+FAN_PI_GAP       = 5;
 
 // ---- Back-wall connector cutouts ----
-GX12_D     = 12.5;     // arcade button (GPIO 17) — 12 mm panel mount + 0.5 mm
-SMA_HOLE_D = 6.7;      // GPS antenna SMA bulkhead — 6.35 mm + 0.35 mm
+GX12_D     = 12.5;
+SMA_HOLE_D = 6.7;
 
 // ---- Pi mounting: heat-set inserts in floor ----
-// RUTHEX M2.5 short inserts — 4.0 mm pocket D, 5 mm depth.
-// Boss height chosen so the insert seats blind (pocket stays above
-// the floor underside): FLOOR (2.5) + BOSS_H_M25 (3.0) = 5.5 mm,
-// ≥ INSERT_H_M25 (5.0).
 INSERT_D_M25     = 4.0;
 INSERT_H_M25     = 5.0;
 BOSS_H_M25       = 3.0;
-STANDOFF_BOSS_OD = 7.0;   // boss wrapping the insert for lateral rigidity
+STANDOFF_BOSS_OD = 7.0;
 
 // ---- Mounting flanges (M4 to plywood panel) ----
-FLANGE_W     = 12;
-FLANGE_THICK = 3.0;
-BOLT_D       = 4.5;
-BOLT_HEAD_D  = 8.5;
-BOLT_HEAD_H  = 1.5;
-FLANGE_MARGIN = 6;       // flange bolt hole inset from flange edge
+FLANGE_W      = 12;
+FLANGE_THICK  = 3.0;
+BOLT_D        = 4.5;       // M4 clearance
+BOLT_HEAD_D   = 8.5;       // M4 cap-head clearance
+BOLT_HEAD_H   = 1.5;
+FLANGE_MARGIN = 6;
+// v3 take 3: bolt holes sit BETWEEN the corner towers along each flange,
+// inset BOLT_TOWER_INSET from the tower outer edge. No flange extension
+// in Y — the original [0..OUTER_D] flange length is enough once the
+// bolts move out of the corners.
+FLANGE_Y_EXT     = 0;
+BOLT_TOWER_INSET = 4;     // gap from tower outer edge to bolt centre
 
 // ---- Clamshell closure (4× N35 magnet pairs, 4×2 mm) ----
-// Closure lives in the four corner buttress towers, opening toward the
-// seam. Lid is ~120 g of PETG, alignment lip carries shear, magnets only
-// resist gravity + vibration lift-off. 4 pairs × ~300 g pull each
-// ≫ lid mass under 1–2 g rally loads (≥4× margin worst case).
-MAGNET_D        = 4.0;     // N35 disc magnet diameter
-MAGNET_H        = 2.0;     // N35 disc magnet height
-MAGNET_POCKET_D = 4.1;     // press-fit clearance (0.05 mm radial)
-MAGNET_POCKET_H = MAGNET_H + 0.1;  // 0.1 mm seat clearance
+MAGNET_D        = 4.0;
+MAGNET_H        = 2.0;
+MAGNET_POCKET_D = 4.1;
+MAGNET_POCKET_H = MAGNET_H + 0.1;
 
-// Parked: bolts replaced by magnets. Constants left in place in case a
-// future revision wants to revert. Not currently referenced.
-CLAM_BOLT_D       = 3.4;   // M3 clearance
-CLAM_BOLT_HEAD_D  = 6.0;   // M3 cap head
-CLAM_BOLT_HEAD_H  = 3.2;   // counterbore depth in upper half
-INSERT_D_M3       = 4.6;   // RUTHEX M3 pocket D
+// Parked: bolts replaced by magnets.
+CLAM_BOLT_D       = 3.4;
+CLAM_BOLT_HEAD_D  = 6.0;
+CLAM_BOLT_HEAD_H  = 3.2;
+INSERT_D_M3       = 4.6;
 INSERT_H_M3       = 6.0;
 
 // ---- Clamshell geometry ----
-SPLIT_Z    = 30;           // seam Z, above Pi PCB + active cooler;
-                           // GPS sits in upper half above SPLIT_Z
-INNER_H    = 60;           // HAT_BASE_OFFSET (6) + STACK_H (47) + breathing (~7)
+SPLIT_Z    = 30;
+INNER_H    = 60;
 
-// Shiplap seam (replaces earlier thin-tab alignment lip).
-// Tray walls extend LIP_DROP above SPLIT_Z carrying only their OUTER
-// slice (LIP_SLICE thick); upper walls start at SPLIT_Z with an
-// INNER-slice skirt of matching width that nests alongside. Total
-// wall cross-section through the overlap is full OUTER_WALL — no
-// free-standing thin feature to shear at the layer line. 50/50 split
-// keeps both slices at ≥3 perimeters on a 0.4 mm nozzle.
-LIP_SLICE = OUTER_WALL / 2;  // 1.25 mm — outer slice on tray, inner slice on upper
-LIP_DROP  = 3.0;             // vertical overlap depth (inside seam at SPLIT_Z,
-                             // outside seam at SPLIT_Z + LIP_DROP)
+// Shiplap seam
+LIP_SLICE = OUTER_WALL / 2;
+LIP_DROP  = 3.0;
 
 // ---- Cable exit slots ----
-HDMI_SLOT    = [15, 6];     // port body 3.5 mm + 1 mm tolerance each side + 0.5 slack
-USB_SLOT     = [15, 18];    // (unused — right wall absent)
-PWR_SLOT     = [12, 6];     // USB-C body 3.5 mm + tolerance, matching HDMI height
+HDMI_SLOT    = [15, 6];
+USB_SLOT     = [15, 18];
+PWR_SLOT     = [12, 6];
 QWIIC_SLOT   = [7, 5];
 ONEWIRE_SLOT = [6, 4];
-SD_SLOT      = [16, 4];     // microSD extraction clearance on left wall
+SD_SLOT      = [16, 4];
 
-// ---- Lid ----
-LID_THICK = 1.6;
+// ---- Top lid + roof plate ----
+LID_THICK     = 1.6;
+ROOF_PLATE_T  = 2.0;
+
+// v3: gate post stubs truncated to GATE_POST_STUB_H above each half's
+// base. USB-A / Ethernet plug insertion clearance was blocked by full-
+// height stubs at the front-right and back-right corners.
+GATE_POST_STUB_H = 4.0;
+
+// v3: large central vent cutout in the TOP lid plate. Matches the roof
+// vent cluster footprint plus tolerance so air flows from interior →
+// top cutout → roof vents → atmosphere. Loose fit; the roof's vent
+// cluster can land anywhere within this rectangle.
+TOP_VENT_W = 60;
+TOP_VENT_D = 42;
 
 
 // =====================================================
 //   Castle decoration parameters
 // =====================================================
 
-// Running-bond stone mortar
+// Running-bond stone mortar (walls)
 MORTAR_W    = 0.4;
-MORTAR_D    = 0.5;        // leaves 2.0 mm structural wall
+MORTAR_D    = 0.5;
 STONE_ROW_H = 7.0;
 STONE_COL_W = 11.0;
 
-// Lid perimeter crenellations
-MERLON_W = 5.0;
-MERLON_H = 5.0;
-CRENEL_W = 4.0;
+// Roof perimeter crenellations
+MERLON_W      = 5.0;
+MERLON_H      = 5.0;
+CRENEL_W      = 4.0;
+MERLON_CAP_H  = 2.0;       // pyramidal cap height on top of each merlon
+MERLON_SLIT_W = 1.0;       // arrow slit through merlon face
+MERLON_SLIT_H = 3.0;
 
-// Corner buttress towers
-TOWER_OD         = 12.0;   // tower outer diameter — sized so clamshell
-                           // bolt at tower centre clears the Pi
-                           // display-side standoff boss with room to
-                           // spare (centre-to-centre 9.19 mm, insert r
-                           // 2.3 + boss r 3.5 = 5.8 mm, margin 3.4 mm).
-TOWER_CORBEL_H   = 2.0;    // stepped corbel table height under battlements
-TOWER_CORBEL_PROJ= 0.8;    // corbel table outward projection
-TOWER_SLIT_W     = 1.2;    // arrow slit width in tower face
-TOWER_SLIT_H     = 7.0;    // arrow slit height
-TOWER_SLIT_COUNT = 3;      // vertical slits stacked per tower face
-TOWER_MERLON_N   = 8;      // battlement merlons ringing each tower top
-TOWER_MERLON_W   = 2.8;
-TOWER_MERLON_H   = 3.5;
+// Corner buttress towers (case body — bottom + top halves)
+TOWER_OD          = 12.0;
+TOWER_CORBEL_H    = 2.0;
+TOWER_CORBEL_PROJ = 0.8;
+TOWER_SLIT_W      = 1.2;
+TOWER_SLIT_H      = 7.0;
+TOWER_SLIT_COUNT  = 3;
+TOWER_MERLON_N    = 8;
+TOWER_MERLON_W    = 2.8;
+TOWER_MERLON_H    = 3.5;
+
+// Roof corner tower caps (continue the towers above the roof plate)
+TOWER_CAP_CORBEL_H    = 2.0;
+TOWER_CAP_CORBEL_PROJ = 1.0;     // slightly more than the case-body corbel
+TOWER_CAP_MERLON_H    = 3.5;
+TOWER_CAP_MERLON_W    = 2.8;
+TOWER_CAP_MERLON_N    = 8;
+TOWER_CAP_CONE_H      = 9.0;
+TOWER_CAP_CONE_TIP_D  = 1.0;
 
 // Stepped battered course masking the clamshell seam
-SEAM_COURSE_H    = 2.5;    // total vertical height of the decorative band
-SEAM_STEP_PROJ   = 0.5;    // outward projection of each step (×2 steps)
+SEAM_COURSE_H    = 2.5;
+SEAM_STEP_PROJ   = 0.5;
 
-// Gatehouse pointed arch across the open right side (frame only)
-GATE_FRAME_T     = 2.5;    // arch frame wall thickness
-GATE_HEADER_H    = 8.0;    // depth of horizontal stone header under arch
+// Gatehouse pointed arch (frame only — parked, replaced by lid plate)
+GATE_FRAME_T     = 2.5;
+GATE_HEADER_H    = 8.0;
 
-// Decorative portcullis vent on back wall (ogival arch with bars)
+// Decorative portcullis vent on back wall (top half)
 PORTCULLIS_W = 20;
 PORTCULLIS_H = 22;
 PORT_BAR_W   = 1.2;
@@ -254,172 +255,187 @@ SWORD_GRIP_W   = 1.5;
 SWORD_POMMEL_D = 2.5;
 SWORD_RELIEF   = 0.3;
 
-// Heater shield sigil on lid
+// Heater shield sigil on roof centre
 SHIELD_W     = 28;
 SHIELD_H     = 35;
 SHIELD_RAISE = 0.8;
 
-// Fan intake ring
+// Fan intake ring (on top half left wall)
 FAN_FRAME_OD = FAN_APERTURE + 6;
 FAN_FRAME_T  = 0.8;
+
+// Machicolation gallery (corbelled overhang ring beneath roof crenellations)
+MACHI_BAND_H    = 1.6;       // height of corbel band above roof plate
+MACHI_PROJ      = 0.8;       // outward projection beyond roof plate edge
+MACHI_HOLE_W    = 2.0;       // murder-hole slot width (along wall)
+MACHI_HOLE_D    = 1.6;       // murder-hole slot depth (perpendicular to wall)
+MACHI_HOLE_GAP  = 6.0;       // murder-hole period along wall
+
+// Drawbridge relief (engraved on the +X edge of the roof, between corner caps)
+BRIDGE_PLANK_W  = 3.0;       // visible plank width along Y
+BRIDGE_PLANK_GAP= 0.8;       // groove width between planks
+BRIDGE_RELIEF   = 0.5;       // depth of relief
+BRIDGE_INSET    = 1.5;       // how far in from roof +X edge the bridge sits
+
+// Flag finial (one tower)
+FLAG_MAST_D     = 1.0;
+FLAG_MAST_H     = 6.0;
+FLAG_W          = 4.0;
+FLAG_H          = 2.5;
+FLAG_T          = 0.6;
 
 
 // =====================================================
 //   Derived dimensions
 // =====================================================
-// INNER_W: fan body (10) + fan-to-Pi gap (5) + PCB_TOL (1, half each side) +
-//          PI5_W (85) + HAT_OVERHANG_X (3) + right-side clearance (~6).
-//          = ~110 mm. Hardcoded to allow generous fit on the +X side.
 INNER_W = 110;
-INNER_D = max(PI5_D, HAT_D) + PCB_TOL + 3;   // 56 + 1 + 3 = 60 — extra space for cable routing
+INNER_D = max(PI5_D, HAT_D) + PCB_TOL + 3;
 OUTER_W = INNER_W + 2 * OUTER_WALL;
 OUTER_D = INNER_D + 2 * OUTER_WALL;
 TOTAL_W = OUTER_W + 2 * FLANGE_W;
 
-// Pi PCB origin relative to outer shell.
-// Anchored on the −X side, but inset by FAN_BODY_DEPTH + FAN_PI_GAP so
-// the fan body fits inside the case on the −X (left) wall with airflow
-// clearance to the Pi.
 PI_X0 = FLANGE_W + OUTER_WALL + FAN_BODY_DEPTH + FAN_PI_GAP + PCB_TOL / 2;
 PI_Y0 = OUTER_WALL + PCB_TOL / 2;
-PI_Z0 = FLOOR + HAT_H;   // Pi PCB bottom (FLOOR + HAT_BASE_OFFSET + HAT body + HAT-Pi standoff)
+PI_Z0 = FLOOR + HAT_H;
 
-// Virtual USB-A/Ethernet reference plane (right short edge of Pi).
-// Kept as a named landmark for the gatehouse stub geometry; cutouts
-// no longer derive from it (offsets are now from PI_X0, the SD-card
-// short edge, per the Pi 5 mech drawing).
 RIGHT_EDGE_X = PI_X0 + PI5_W;
 
-// Fan centre on left wall — positioned mid-stack so airflow crosses the
-// Pi rather than the empty cavity above. Stack centre ≈ FLOOR +
-// HAT_BASE_OFFSET + STACK_H/2 = 2.5 + 6 + 23.5 = 32. Round to 30.
 FAN_CZ = 30;
 FAN_CY = OUTER_D / 2;
 
 // Split geometry
-TRAY_TOP_Z  = SPLIT_Z;           // tray walls stop here
-UPPER_TOP_Z = FLOOR + INNER_H;   // top of walls (below lid plate)
+TRAY_TOP_Z   = SPLIT_Z;
+UPPER_TOP_Z  = FLOOR + INNER_H;
 UPPER_WALL_H = UPPER_TOP_Z - SPLIT_Z;
 
-// Corner tower centres (at case-shell outer corners)
+// Corner tower centres
 TOWER_X_L = FLANGE_W;
 TOWER_X_R = FLANGE_W + OUTER_W;
 TOWER_Y_F = 0;
 TOWER_Y_B = OUTER_D;
 
-// Clamshell bolts live at the centres of the four corner buttress
-// towers — NOT inside the case — so they do not collide with the Pi
-// mount grid. See pi_case_clamshell_holes().
-
-// Right-side gatehouse — width of the open bay
-//   Front/back walls keep a short stub (GATE_POST_L) at their +X end
-//   to carry the portcullis arch springings and the back-right tower
-//   shoulder. Between those stubs is open air (the gate).
-GATE_POST_L = 11.0;  // stub length along +X from wall inner face
-                     // (tuned to hide tower-wall join and give the
-                     // gatehouse arch a visible spring point)
-GATE_OPENING_Y0 = GATE_POST_L;               // opening starts at this Y from Y=0
-GATE_OPENING_Y1 = OUTER_D - GATE_POST_L;     // opening ends here
-GATE_OPENING_H  = INNER_H;                   // full interior height
+// Right-side gatehouse
+GATE_POST_L     = 11.0;
+GATE_OPENING_Y0 = GATE_POST_L;
+GATE_OPENING_Y1 = OUTER_D - GATE_POST_L;
+GATE_OPENING_H  = INNER_H;
 
 
 // =====================================================
-//   Main — render tray and upper half side by side
+//   Main — render bottom + top + roof side by side
 // =====================================================
-pi_case_tray();
-translate([0, OUTER_D + TOWER_OD + 15, 0]) pi_case_upper();
+pi_case_bottom();
+translate([0,     OUTER_D + TOWER_OD + 15, 0]) pi_case_top();
+translate([0, 2 * (OUTER_D + TOWER_OD + 15), 0]) pi_case_roof();
 
-// Assembled preview: uncomment to stack upper over tray.
-// pi_case_tray();
-// translate([0, 0, 0.01]) pi_case_upper();
+// Assembled preview: uncomment to stack roof on top of top on top of bottom.
+// pi_case_bottom();
+// translate([0, 0, 0.01]) pi_case_top();
+// translate([0, 0, UPPER_TOP_Z + LID_THICK + 0.02]) pi_case_roof();
 
 
 // =====================================================
-//   Tray (bottom clamshell half)
+//   Bottom (lower clamshell half)
 // =====================================================
-module pi_case_tray() {
+module pi_case_bottom() {
     difference() {
         union() {
             pi_case_base_plate();
-            pi_case_tray_walls();
-            pi_case_gate_posts(tray = true);
-            pi_case_corner_towers(tray = true);
+            pi_case_bottom_walls();
+            pi_case_gate_posts(bottom = true);
+            pi_case_corner_towers(bottom = true);
             pi_case_standoff_bosses();
-            castle_fan_arch_tray();          // fan partially in tray if any overhang
-            castle_seam_course(upper = false);
+            castle_fan_arch_bottom();
+            castle_seam_course(top = false);
         }
         pi_case_standoff_insert_holes();
-        pi_case_cable_slots_tray();
-        pi_case_fan_cutout();   // fan straddles the seam (FAN_CZ=30, aperture 37);
-                                // both halves need to subtract it or you get a
-                                // semi-circle opening on the assembled left wall
+        pi_case_cable_slots_bottom();
+        pi_case_fan_cutout();
         pi_case_flange_holes();
-        pi_case_clamshell_holes(tray = true);
+        pi_case_clamshell_holes(bottom = true);
         castle_tower_arrow_slits();
-        castle_stone_mortar_tray();
-        castle_sword_relief_tray();
+        castle_stone_mortar_bottom();
+        castle_sword_relief_bottom();
     }
 }
 
 
 // =====================================================
-//   Upper (top clamshell half)
+//   Top (upper clamshell half — sealed flat, no decoration)
 // =====================================================
-module pi_case_upper() {
+module pi_case_top() {
     difference() {
         union() {
-            pi_case_upper_walls();
-            pi_case_gate_posts(tray = false);
-            pi_case_corner_towers(tray = false);
-            pi_case_upper_lid_plate();
-            // castle_fan_arch_upper();  // dropped: 43 mm ring centred at
-                                         // z=51.5 dips 3 mm below the seam,
-                                         // forcing supports under the upper
-                                         // print. Aperture + screw holes
-                                         // remain in pi_case_fan_cutout().
-            castle_seam_course(upper = true);
-            // castle_gate_arch();  // dropped: pointed-arch crown is a
-                                    // PETG overhang, lid plate is the
-                                    // real top chord across the open
-                                    // gatehouse end. Module left parked.
-            castle_lid_crenellations();
-            castle_lid_shield();
+            pi_case_top_walls();
+            pi_case_gate_posts(bottom = false);
+            pi_case_corner_towers(bottom = false);
+            pi_case_top_lid_plate();
+            castle_seam_course(top = true);
         }
         pi_case_fan_cutout();
-        pi_case_cable_slots_upper();
-        pi_case_clamshell_holes(tray = false);
+        pi_case_cable_slots_top();
+        pi_case_clamshell_holes(bottom = false);
         castle_tower_arrow_slits();
-        castle_stone_mortar_upper();
+        castle_stone_mortar_top();
         castle_portcullis_vents();
-        castle_sword_relief_upper();
-        castle_arrow_slit_vents();
+        castle_sword_relief_top();
+        pi_case_top_lid_vent();          // large central air cutout
         pi_case_shiplap_slot_clearance();
     }
 }
 
 
 // =====================================================
-//   Tray solid geometry
+//   Roof (decorated plate, bonds permanently to top)
+// =====================================================
+module pi_case_roof() {
+    difference() {
+        union() {
+            roof_plate();
+            roof_machicolation();
+            roof_perimeter_crenellations();
+            roof_corner_caps();
+            roof_corner_gargoyles();
+            roof_corner_flag();
+            roof_shield();
+            roof_drawbridge_relief_solid();
+        }
+        roof_vent_cuts();
+        roof_merlon_arrow_slits();
+        roof_crenel_gap_slits();
+        roof_machicolation_holes();
+        roof_drawbridge_grooves();
+        // roof_perimeter_rope_grooves(): dropped — ~120 rotated cube
+        // subtractions blew the CSG normalization tree past 100k
+        // elements and the whole render came back empty. Module
+        // definition retained below in case a future rev simplifies it.
+    }
+}
+
+
+// =====================================================
+//   Bottom solid geometry
 // =====================================================
 module pi_case_base_plate() {
     union() {
         // main floor
         translate([FLANGE_W, 0, 0])
             cube([OUTER_W, OUTER_D, FLOOR]);
-        // M4 mounting flanges — only along left/right exteriors, not
-        // under the corner towers (which already sit at Z=0 and fuse
-        // cleanly with the flange top).
+        // M4 mounting flanges along the left + right exteriors. Run
+        // the full case Y length; bolt holes sit between the corner
+        // towers (see pi_case_flange_holes). FLANGE_Y_EXT left as a
+        // tunable in case a future revision wants to widen the tabs.
         for (side = [0, 1])
-            translate([side == 0 ? 0 : FLANGE_W + OUTER_W, 0, 0])
-                cube([FLANGE_W, OUTER_D, FLANGE_THICK]);
+            translate([side == 0 ? 0 : FLANGE_W + OUTER_W,
+                       -FLANGE_Y_EXT,
+                       0])
+                cube([FLANGE_W,
+                      OUTER_D + 2 * FLANGE_Y_EXT,
+                      FLANGE_THICK]);
     }
 }
 
-module pi_case_tray_walls() {
-    // Front + back + left walls, from Z=FLOOR up to SPLIT_Z, plus a
-    // shiplap outer-slice projection continuing LIP_DROP above SPLIT_Z.
-    // Projection is trimmed to clear corner tower footprints so the
-    // upper's tower cylinders seat flush at Z=SPLIT_Z.
+module pi_case_bottom_walls() {
     wall_h = TRAY_TOP_Z - FLOOR;
 
     // Full-thickness walls, FLOOR .. SPLIT_Z
@@ -433,29 +449,22 @@ module pi_case_tray_walls() {
     // Shiplap outer-slice projection, SPLIT_Z .. SPLIT_Z + LIP_DROP
     difference() {
         union() {
-            // Front wall outer slice (Y=0 .. LIP_SLICE)
             translate([FLANGE_W, 0, TRAY_TOP_Z])
                 cube([OUTER_W, LIP_SLICE, LIP_DROP]);
-            // Back wall outer slice (Y=OUTER_D - LIP_SLICE .. OUTER_D)
             translate([FLANGE_W, OUTER_D - LIP_SLICE, TRAY_TOP_Z])
                 cube([OUTER_W, LIP_SLICE, LIP_DROP]);
-            // Left wall outer slice (X=FLANGE_W .. FLANGE_W + LIP_SLICE)
             translate([FLANGE_W, 0, TRAY_TOP_Z])
                 cube([LIP_SLICE, OUTER_D, LIP_DROP]);
         }
-        // Clear corner tower footprints (upper half's towers land here)
         for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B])
             translate([cx, cy, TRAY_TOP_Z - 0.05])
                 cylinder(d = TOWER_OD + 0.4, h = LIP_DROP + 0.1);
     }
 }
 
-module pi_case_upper_walls() {
-    // Shiplap counterpart to the tray: full-thickness walls above
-    // SPLIT_Z + LIP_DROP, inner-slice skirt from SPLIT_Z down through
-    // the overlap zone. Skirt is trimmed to clear tower footprints.
+module pi_case_top_walls() {
     wall_h_full = UPPER_TOP_Z - (SPLIT_Z + LIP_DROP);
-    skirt_off   = OUTER_WALL - LIP_SLICE;   // inner-slice offset from outer face
+    skirt_off   = OUTER_WALL - LIP_SLICE;
 
     // Full-thickness walls above the shiplap overlap
     translate([FLANGE_W, 0, SPLIT_Z + LIP_DROP])
@@ -465,20 +474,16 @@ module pi_case_upper_walls() {
     translate([FLANGE_W, 0, SPLIT_Z + LIP_DROP])
         cube([OUTER_WALL, OUTER_D, wall_h_full]);
 
-    // Shiplap inner-slice skirt, SPLIT_Z .. SPLIT_Z + LIP_DROP
+    // Shiplap inner-slice skirt
     difference() {
         union() {
-            // Front inner slice (Y = skirt_off .. OUTER_WALL)
             translate([FLANGE_W, skirt_off, SPLIT_Z])
                 cube([OUTER_W, LIP_SLICE, LIP_DROP]);
-            // Back inner slice (Y = OUTER_D - OUTER_WALL .. OUTER_D - OUTER_WALL + LIP_SLICE)
             translate([FLANGE_W, OUTER_D - OUTER_WALL, SPLIT_Z])
                 cube([OUTER_W, LIP_SLICE, LIP_DROP]);
-            // Left inner slice (X = FLANGE_W + skirt_off .. FLANGE_W + OUTER_WALL)
             translate([FLANGE_W + skirt_off, 0, SPLIT_Z])
                 cube([LIP_SLICE, OUTER_D, LIP_DROP]);
         }
-        // Clear corner tower footprints
         for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B])
             translate([cx, cy, SPLIT_Z - 0.05])
                 cylinder(d = TOWER_OD + 0.4, h = LIP_DROP + 0.1);
@@ -486,44 +491,26 @@ module pi_case_upper_walls() {
 }
 
 module pi_case_shiplap_slot_clearance() {
-    // Hollow out the outer-slice slot across the upper's shiplap zone so
-    // the tray's outer slice has clean space to seat. Without this,
-    // three separate features collide with the tray's projecting slice
-    // and stop the lid closing:
-    //   - left-wall inner skirt extends Y in [0, OUTER_D] across the
-    //     front-left and back-left corner inner cubes, where the tray's
-    //     front/back outer slices already sit
-    //   - right gate posts run full thickness through the shiplap zone,
-    //     blocking the tray's outer slice at Y in [0, LIP_SLICE] /
-    //     Y in [OD-LIP_SLICE, OD]
-    //   - the seam course on the upper covers the full wall cross-
-    //     section plus a SEAM_STEP_PROJ outward bump, filling the slot
-    //     and (for the bump) leaving a free-standing tab in print
-    //
-    // Slot footprint = tray's outer-slice footprint (front/back/left
-    // strips), expanded outward by SEAM_STEP_PROJ to also strip the
-    // seam-course outward bump in this zone. Corner tower bodies are
-    // preserved so they stay solid through the seam.
+    // Carve a slot through the upper's shiplap zone so the bottom's outer
+    // slice has clean space to seat. Without this, several features (left
+    // wall inner skirt, gate post stub, seam course outward bump) collide
+    // with the bottom's outer slice and stop the lid closing.
     eps = 0.05;
     slot_h = LIP_DROP + 2 * eps;
     difference() {
         union() {
-            // Front strip — extends past +X to clip the front-right
-            // gate-post seam-course bump
             translate([FLANGE_W - eps,
                        -SEAM_STEP_PROJ,
                        SPLIT_Z - eps])
                 cube([OUTER_W + SEAM_STEP_PROJ + 2 * eps,
                       SEAM_STEP_PROJ + LIP_SLICE,
                       slot_h]);
-            // Back strip — same trick at the back-right
             translate([FLANGE_W - eps,
                        OUTER_D - LIP_SLICE,
                        SPLIT_Z - eps])
                 cube([OUTER_W + SEAM_STEP_PROJ + 2 * eps,
                       SEAM_STEP_PROJ + LIP_SLICE,
                       slot_h]);
-            // Left strip
             translate([FLANGE_W - SEAM_STEP_PROJ,
                        -eps,
                        SPLIT_Z - eps])
@@ -531,45 +518,61 @@ module pi_case_shiplap_slot_clearance() {
                       OUTER_D + 2 * eps,
                       slot_h]);
         }
-        // Preserve corner towers — they stay solid through the seam.
         for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B])
             translate([cx, cy, SPLIT_Z - 0.1])
                 cylinder(d = TOWER_OD, h = LIP_DROP + 0.2);
     }
 }
 
-module pi_case_upper_lid_plate() {
-    // Lid top plate — spans the full case footprint.
+module pi_case_top_lid_plate() {
+    // Rectangular lid spanning the case footprint, plus circular caps
+    // at each corner that cover the half of every tower projecting
+    // outside the rectangle. Without the caps the lid edge cuts the
+    // tower in half at z = UPPER_TOP_Z and the outer half of the
+    // tower top stays exposed.
     translate([FLANGE_W, 0, UPPER_TOP_Z])
         cube([OUTER_W, OUTER_D, LID_THICK]);
+    for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B])
+        translate([cx, cy, UPPER_TOP_Z])
+            cylinder(d = TOWER_OD, h = LID_THICK);
 }
 
-module pi_case_gate_posts(tray = true) {
-    // Short wall stubs at the front-right and back-right corners that
-    // frame the open gatehouse. Run full height of their half so they
-    // carry the corner towers + clamshell posts on the open side.
-    z0 = tray ? 0 : SPLIT_Z;
-    z1 = tray ? TRAY_TOP_Z : UPPER_TOP_Z;
+module pi_case_top_lid_vent() {
+    // Large central cutout in the top's lid plate. Generous tolerance so
+    // the roof's vent cluster can land within without precise alignment.
+    cx = FLANGE_W + OUTER_W / 2;
+    cy = OUTER_D / 2;
+    translate([cx - TOP_VENT_W / 2,
+               cy - TOP_VENT_D / 2,
+               UPPER_TOP_Z - 0.1])
+        cube([TOP_VENT_W,
+              TOP_VENT_D,
+              LID_THICK + 0.2]);
+}
 
-    // Front-right stub: extends +X from the front-right inner corner
+module pi_case_gate_posts(bottom = true) {
+    // Short stubs at the front-right and back-right corners. Each piece
+    // gets a 4 mm stub at its OUTER end (away from the seam):
+    //   - Bottom piece: stub at Z = 0..4 (bottom of bottom — sits on
+    //     the floor, reinforces flange-to-tower junction).
+    //   - Top piece: stub at Z = UPPER_TOP_Z-4..UPPER_TOP_Z (top of top —
+    //     reinforces the lid-to-tower junction where the roof bonds).
+    // Middle of each tower is left clear so USB-A / Ethernet plugs have
+    // unobstructed insertion clearance through the gatehouse mouth.
+    h  = GATE_POST_STUB_H;
+    z0 = bottom ? 0 : (UPPER_TOP_Z - h);
+
+    // Front-right stub
     translate([FLANGE_W + OUTER_W - OUTER_WALL, 0, z0])
-        cube([OUTER_WALL, GATE_POST_L, z1 - z0]);
+        cube([OUTER_WALL, GATE_POST_L, h]);
 
     // Back-right stub
     translate([FLANGE_W + OUTER_W - OUTER_WALL,
                OUTER_D - GATE_POST_L, z0])
-        cube([OUTER_WALL, GATE_POST_L, z1 - z0]);
+        cube([OUTER_WALL, GATE_POST_L, h]);
 }
 
 module pi_case_standoff_bosses() {
-    // Bosses around the M2.5 heat-set insert pockets in the floor.
-    // Full 4-position grid (all four Pi mount holes). The display-side
-    // pair (sx=0) is now clear: clamshell bolts were relocated from
-    // interior posts at (POST_X_L, ...) into the corner towers, so the
-    // (18.5, 6.5) and (18.5, 55.5) Pi mounts are no longer blocked.
-    // Boss fuses cosmetically with the nearest corner tower (centre-
-    // to-centre 9.19 mm vs boss-r 3.5 + tower-r 6.0 = 9.5) — the 0.31
-    // mm overlap is welcome extra material around the Pi mount.
     for (sx = [0, 1], sy = [0, 1]) {
         x = PI_X0 + PI5_INSET + sx * PI5_HOLE_W;
         y = PI_Y0 + PI5_INSET + sy * PI5_HOLE_D_SPACING;
@@ -578,14 +581,11 @@ module pi_case_standoff_bosses() {
     }
 }
 
+
 // =====================================================
-//   Tray / upper cutouts (functional)
+//   Bottom / top cutouts (functional)
 // =====================================================
 module pi_case_standoff_insert_holes() {
-    // Heat-set insert pockets for M2.5 brass standoffs — full 4-
-    // position grid to match the Pi mount pattern.
-    // Pocket anchored to boss top so the 5 mm insert seats blind above
-    // the floor underside (FLOOR 2.5 + BOSS_H_M25 3.0 = 5.5 mm ≥ 5.0).
     boss_top_z = FLOOR + BOSS_H_M25;
     for (sx = [0, 1], sy = [0, 1]) {
         x = PI_X0 + PI5_INSET + sx * PI5_HOLE_W;
@@ -597,13 +597,6 @@ module pi_case_standoff_insert_holes() {
 }
 
 module pi_case_fan_cutout() {
-    // Fan straddles the clamshell seam (FAN_CZ = 30, aperture 37 ⇒
-    // Z 11.5 .. 48.5). Subtracted from BOTH tray and upper.
-    //
-    // Cutout extends from SEAM_STEP_PROJ outside the wall to OUTER_WALL
-    // inside, so it carves through the seam-course outward projection
-    // too — otherwise a 1.25 mm tall × 0.4 mm thick sliver of seam
-    // course material stays put across the fan opening on each half.
     cut_x_start = FLANGE_W - SEAM_STEP_PROJ - 0.1;
     cut_x_depth = OUTER_WALL + SEAM_STEP_PROJ + 0.2;
     translate([cut_x_start, FAN_CY, FAN_CZ])
@@ -616,19 +609,7 @@ module pi_case_fan_cutout() {
         }
 }
 
-module pi_case_cable_slots_tray() {
-    // HDMI0, HDMI1, USB-C live on the Pi HDMI long edge (case front,
-    // Y=0). All three sit at Pi PCB top + port body — below SPLIT_Z,
-    // so they live in the tray half of the front wall.
-    //
-    // Cutout X math: offsets are measured from the SD card / display
-    // short edge of the Pi (the −X corner per RPi mech drawing), so
-    // we anchor at PI_X0 and add the offset. Older revs of this file
-    // had it reversed (RIGHT_EDGE_X − offset), which placed cutouts
-    // at the wrong end of the front wall.
-    //
-    // Cutout Z math: anchor at PI PCB top (PI_Z0 + PI5_PCB_T) minus
-    // PORT_TOL so the slot has 1 mm slack below the port body bottom.
+module pi_case_cable_slots_bottom() {
     cutout_z = PI_Z0 + PI5_PCB_T - PORT_TOL;
     for (offset = [HDMI1_OFFSET, HDMI2_OFFSET]) {
         x = PI_X0 + offset - HDMI_SLOT[0] / 2;
@@ -640,40 +621,22 @@ module pi_case_cable_slots_tray() {
     translate([pwr_x, -0.1, cutout_z])
         cube([PWR_SLOT[0], OUTER_WALL + 0.2, PWR_SLOT[1]]);
 
-    // Back-wall low-Z cable pass-throughs: removed in v3 — all external
-    // connectors (button GX12, 1-Wire GX12, GPS SMA) are now on the
-    // front wall upper half (see pi_case_cable_slots_upper). The back
-    // wall is purely decorative (portcullis + sword relief).
-
-    // microSD extraction slot — left wall, at Pi PCB level.
     sd_y = PI_Y0 + PI5_D / 2 - SD_SLOT[0] / 2;
     sd_z = PI_Z0 - SD_SLOT[1] / 2;
     translate([FLANGE_W - 0.1, sd_y, sd_z])
         cube([OUTER_WALL + 0.2, SD_SLOT[0], SD_SLOT[1]]);
 }
 
-module pi_case_cable_slots_upper() {
-    // FRONT WALL upper half — three external connectors:
-    //   left   : button GX12 (GPIO 17 arcade button)
-    //   centre : SMA bulkhead (GPS antenna)
-    //   right  : 1-Wire GX12 (DS18B20 bus → engine bay + exterior)
-    // Rotation trick: sit at Y = -small-overlap, extrude through the
-    // front wall via rotate([-90, 0, 0]).
-    //
-    // Z: 75% of INNER_H above FLOOR — keeps the connectors clear of
-    // the Pi stack and roughly horizontally aligned with the back-wall
-    // portcullis arch springline.
+module pi_case_cable_slots_top() {
     conn_z   = FLOOR + INNER_H * 0.75;
     centre_x = FLANGE_W + INNER_W / 2;
 
-    // Centre SMA (GPS)
     translate([centre_x, -0.1, conn_z])
         rotate([-90, 0, 0])
             cylinder(d = SMA_HOLE_D,
                      h = OUTER_WALL + 0.2,
                      $fn = 32);
 
-    // Flanking GX12 ports
     for (x_off = [-15, 15])
         translate([centre_x + x_off,
                    -0.1,
@@ -685,8 +648,17 @@ module pi_case_cable_slots_upper() {
 }
 
 module pi_case_flange_holes() {
+    // Bolt holes sit on each side flange BETWEEN the corner towers,
+    // inset BOLT_TOWER_INSET past the tower outer edge. With towers at
+    // (TOWER_X_*, TOWER_Y_F=0) and (..., TOWER_Y_B=OUTER_D) and tower
+    // radius TOWER_OD/2, that puts the front bolt at y = TOWER_OD/2 +
+    // BOLT_TOWER_INSET and the back at OUTER_D - TOWER_OD/2 -
+    // BOLT_TOWER_INSET. Plenty of flange material around the hole and
+    // socket access stays clear of the tower bodies.
+    bolt_y_front = TOWER_OD / 2 + BOLT_TOWER_INSET;
+    bolt_y_back  = OUTER_D - TOWER_OD / 2 - BOLT_TOWER_INSET;
     for (x = [FLANGE_MARGIN, TOTAL_W - FLANGE_MARGIN],
-         y = [FLANGE_MARGIN, OUTER_D - FLANGE_MARGIN])
+         y = [bolt_y_front, bolt_y_back])
         translate([x, y, -0.1]) {
             cylinder(d = BOLT_D, h = FLANGE_THICK + 0.2);
             translate([0, 0, -0.1])
@@ -694,18 +666,8 @@ module pi_case_flange_holes() {
         }
 }
 
-module pi_case_clamshell_holes(tray = true) {
-    // Magnet pockets at the four CORNER TOWER CENTRES, opening toward
-    // the seam. Press-fit (5.1 mm pocket vs 5.0 mm magnet, 0.05 mm
-    // radial slip). No glue channel on first try — slicer cold seat
-    // should hold; revisit if any pocket spits its magnet.
-    //
-    // ASSEMBLY: install all four tray magnets with the SAME pole up,
-    // and all four lid magnets with the OPPOSITE pole down, before
-    // first mating. Get this wrong and the lid will jump off the tray.
-    //   tray side: pocket top at TRAY_TOP_Z, depth MAGNET_POCKET_H downward
-    //   upper side: pocket bottom at SPLIT_Z, depth MAGNET_POCKET_H upward
-    if (tray) {
+module pi_case_clamshell_holes(bottom = true) {
+    if (bottom) {
         for (x = [TOWER_X_L, TOWER_X_R], y = [TOWER_Y_F, TOWER_Y_B])
             translate([x, y, TRAY_TOP_Z - MAGNET_POCKET_H])
                 cylinder(d = MAGNET_POCKET_D,
@@ -720,62 +682,22 @@ module pi_case_clamshell_holes(tray = true) {
 
 
 // =====================================================
-//   Corner buttress towers
+//   Corner buttress towers (case body)
 // =====================================================
-// Cylindrical towers at the four exterior case corners. Full height
-// in their respective half; capped with a corbel table step and a
-// ring of crenellated merlons on the upper half. Arrow slits carved
-// through the tower face on whichever side points outward.
-module pi_case_corner_towers(tray = true) {
-    z0 = tray ? 0 : SPLIT_Z;
-    z1 = tray ? TRAY_TOP_Z : UPPER_TOP_Z;
+module pi_case_corner_towers(bottom = true) {
+    z0 = bottom ? 0 : SPLIT_Z;
+    z1 = bottom ? TRAY_TOP_Z : UPPER_TOP_Z;
     h  = z1 - z0;
 
     for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B])
         translate([cx, cy, z0])
             cylinder(d = TOWER_OD, h = h);
 
-    // Corbel table + battlements only on the upper half tops
-    if (!tray) {
-        for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B]) {
-            translate([cx, cy, UPPER_TOP_Z]) {
-                // Corbel table (stepped band, no overhang — it is a
-                // thicker ring directly above the tower; battlements
-                // grow from the top of this ring).
-                cylinder(d = TOWER_OD + 2 * TOWER_CORBEL_PROJ,
-                         h = TOWER_CORBEL_H);
-                // Ring of merlons
-                translate([0, 0, TOWER_CORBEL_H])
-                    _tower_battlements();
-            }
-        }
-    }
-}
-
-module _tower_battlements() {
-    r_out = TOWER_OD / 2 + TOWER_CORBEL_PROJ;
-    r_in  = r_out - TOWER_MERLON_W;
-    for (i = [0 : TOWER_MERLON_N - 1]) {
-        a = i * (360 / TOWER_MERLON_N);
-        rotate([0, 0, a])
-            translate([r_in, -TOWER_MERLON_W / 2, 0])
-                cube([TOWER_MERLON_W,
-                      TOWER_MERLON_W,
-                      TOWER_MERLON_H]);
-    }
+    // Battlement caps moved to the ROOF — case-body towers terminate at
+    // UPPER_TOP_Z. The roof's corner caps continue them visually.
 }
 
 module castle_tower_arrow_slits() {
-    // Tall narrow slits on the outward face of each tower. Each
-    // tower has TOWER_SLIT_COUNT slits stacked vertically, centred
-    // on the case-height midpoint of its clamshell half.
-    // The outward face direction per corner:
-    //   front-left  (-X, -Y)
-    //   front-right (+X, -Y)
-    //   back-left   (-X, +Y)
-    //   back-right  (+X, +Y)
-    // We cut through both halves in one pass — the cutter is placed
-    // at the tower centre and radiates outward on both tray + upper.
     for (corner = [[TOWER_X_L, TOWER_Y_F, 225],
                    [TOWER_X_R, TOWER_Y_F, 315],
                    [TOWER_X_L, TOWER_Y_B, 135],
@@ -785,7 +707,6 @@ module castle_tower_arrow_slits() {
         cy = corner[1];
         face_angle = corner[2];
 
-        // Stack of slits along the tower height
         slit_span_z = TOWER_SLIT_H * TOWER_SLIT_COUNT
                       + (TOWER_SLIT_COUNT - 1) * 3;
         z_start = (INNER_H + FLOOR) / 2 - slit_span_z / 2;
@@ -805,7 +726,6 @@ module castle_tower_arrow_slits() {
 }
 
 module _arrow_slit_2d(w, h) {
-    // Simple cross-shaped slit
     cw = w * 3.0;
     ch = w;
     translate([-w / 2, -h / 2]) square([w, h]);
@@ -814,17 +734,14 @@ module _arrow_slit_2d(w, h) {
 
 
 // =====================================================
-//   Seam course (stepped battered band along the clamshell split)
+//   Seam course (stepped band along the clamshell split)
 // =====================================================
-// Purely decorative — sits centred on SPLIT_Z, split between tray
-// (lower half of the band) and upper (upper half). Each half has its
-// own step of SEAM_STEP_PROJ outward projection; visually it reads as
-// a thickened corbel table that hides the split line. Zero overhang.
-module castle_seam_course(upper = false) {
+module castle_seam_course(top = false) {
+    // Decorative step centred on SPLIT_Z. v3 dropped the right-side gate
+    // post bands — the gate post stubs are now only 4 mm tall and don't
+    // span the seam zone at all.
     band_h = SEAM_COURSE_H / 2;
-    z0 = upper ? SPLIT_Z : SPLIT_Z - band_h;
-    // Only apply along the three solid walls (front / back / left)
-    // and across the front-right / back-right gate post stubs.
+    z0 = top ? SPLIT_Z : SPLIT_Z - band_h;
 
     // Front wall band
     translate([FLANGE_W,
@@ -841,89 +758,13 @@ module castle_seam_course(upper = false) {
     // Left wall band
     translate([FLANGE_W - SEAM_STEP_PROJ, 0, z0])
         cube([SEAM_STEP_PROJ + OUTER_WALL, OUTER_D, band_h]);
-
-    // Right gate post stubs band (just the short stubs, not across
-    // the open gatehouse mouth)
-    translate([FLANGE_W + OUTER_W - OUTER_WALL, 0, z0])
-        cube([OUTER_WALL + SEAM_STEP_PROJ,
-              GATE_POST_L, band_h]);
-    translate([FLANGE_W + OUTER_W - OUTER_WALL,
-               OUTER_D - GATE_POST_L, z0])
-        cube([OUTER_WALL + SEAM_STEP_PROJ,
-              GATE_POST_L, band_h]);
-}
-
-
-// =====================================================
-//   Gatehouse arch — spans the open right side, upper half
-// =====================================================
-// Pointed (ogival) stone arch that sits across the top of the
-// gatehouse opening. Structural: ties front-right tower to back-right
-// tower, providing a top chord for the otherwise-open side. No bars:
-// unsupported bars would print as failure overhangs in PETG.
-module castle_gate_arch() {
-    // Arch span (Y direction): from GATE_OPENING_Y0 to GATE_OPENING_Y1
-    // Arch rise: from just above SPLIT_Z to just under the lid plate.
-    // We build it as a horizontal header below the arch springline,
-    // plus the arch frame above, extruded through the outer X plane.
-    span_y0 = GATE_OPENING_Y0;
-    span_y1 = GATE_OPENING_Y1;
-    span_w  = span_y1 - span_y0;       // in Y
-
-    header_z0 = SPLIT_Z;               // header base
-    arch_z0   = header_z0 + GATE_HEADER_H;
-    arch_z1   = UPPER_TOP_Z - 1;       // arch crown just under lid
-    arch_h    = arch_z1 - arch_z0;
-
-    // Horizontal stone header across the top of the opening
-    translate([FLANGE_W + OUTER_W - OUTER_WALL,
-               span_y0,
-               header_z0])
-        cube([OUTER_WALL + GATE_FRAME_T,
-              span_w,
-              GATE_HEADER_H]);
-
-    // Pointed arch frame above
-    translate([FLANGE_W + OUTER_W - OUTER_WALL,
-               span_y0,
-               arch_z0])
-        rotate([0, -90, 0])
-            rotate([0, 0, 90])
-                linear_extrude(height = OUTER_WALL + GATE_FRAME_T)
-                    _gate_arch_frame_2d(span_w, arch_h);
-}
-
-module _gate_arch_frame_2d(w, h) {
-    // 2D: pointed arch outline at (0,0)..(w, h), frame thickness
-    // GATE_FRAME_T inset inward from outer rectangle.
-    difference() {
-        _pointed_arch_2d(w, h);
-        translate([GATE_FRAME_T, 0])
-            _pointed_arch_2d(w - 2 * GATE_FRAME_T,
-                             h - GATE_FRAME_T);
-    }
-}
-
-module _pointed_arch_2d(w, h) {
-    // Rectangular base + two-arc gothic ogive cap, origin at BL
-    spring_h = h * 0.45;
-    arch_r   = w;       // equilateral ogive
-    square([w, spring_h]);
-    translate([0, spring_h])
-        intersection() {
-            circle(r = arch_r, $fn = 48);
-            translate([w, 0]) circle(r = arch_r, $fn = 48);
-            square([w, h - spring_h]);
-        }
 }
 
 
 // =====================================================
 //   Running-bond mortar grooves
 // =====================================================
-// Reused across tray and upper halves. Each face has its own Z range.
 module _mortar_face_y(w, h) {
-    // Grooves projected in +Y (applied to front wall; mirror for back)
     for (i = [1 : floor(h / STONE_ROW_H)]) {
         translate([0, 0, i * STONE_ROW_H - MORTAR_W / 2])
             cube([w, MORTAR_D + 0.01, MORTAR_W]);
@@ -940,7 +781,6 @@ module _mortar_face_y(w, h) {
 }
 
 module _mortar_face_x(w, h) {
-    // Grooves projected in +X (applied to left wall)
     for (i = [1 : floor(h / STONE_ROW_H)]) {
         translate([0, 0, i * STONE_ROW_H - MORTAR_W / 2])
             cube([MORTAR_D + 0.01, w, MORTAR_W]);
@@ -956,22 +796,19 @@ module _mortar_face_x(w, h) {
     }
 }
 
-module castle_stone_mortar_tray() {
+module castle_stone_mortar_bottom() {
     h = TRAY_TOP_Z - FLOOR;
-    // Front wall
     translate([FLANGE_W, -0.01, FLOOR])
         _mortar_face_y(OUTER_W, h);
-    // Back wall (mirror grooves inward in -Y)
     translate([FLANGE_W + OUTER_W, OUTER_D + 0.01, FLOOR])
         mirror([1, 0, 0])
             mirror([0, 1, 0])
                 _mortar_face_y(OUTER_W, h);
-    // Left wall
     translate([FLANGE_W - 0.01, 0, FLOOR])
         _mortar_face_x(OUTER_D, h);
 }
 
-module castle_stone_mortar_upper() {
+module castle_stone_mortar_top() {
     h = UPPER_TOP_Z - SPLIT_Z;
     translate([FLANGE_W, -0.01, SPLIT_Z])
         _mortar_face_y(OUTER_W, h);
@@ -985,11 +822,9 @@ module castle_stone_mortar_upper() {
 
 
 // =====================================================
-//   Back-wall portcullis vent (decorative, upper half only)
+//   Back-wall portcullis vent (top half)
 // =====================================================
 module castle_portcullis_vents() {
-    // Pointed gothic arch cut into back wall, flanked by sword reliefs.
-    // Centre at X = case centre, Z = upper-half midline.
     cy = OUTER_D + 0.1;
     cx = FLANGE_W + OUTER_W / 2 - PORTCULLIS_W / 2;
     cz = SPLIT_Z + (UPPER_TOP_Z - SPLIT_Z) / 2 - PORTCULLIS_H / 2;
@@ -1003,15 +838,25 @@ module castle_portcullis_vents() {
 module _portcullis_2d(w, h) {
     difference() {
         _pointed_arch_2d(w, h);
-        // vertical bars
         bar_spacing = w / (PORT_BAR_N + 1);
         for (i = [1 : PORT_BAR_N])
             translate([i * bar_spacing - PORT_BAR_W / 2, 0])
                 square([PORT_BAR_W, h]);
-        // horizontal crossbar
         translate([0, h * 0.4 - PORT_BAR_W / 2])
             square([w, PORT_BAR_W]);
     }
+}
+
+module _pointed_arch_2d(w, h) {
+    spring_h = h * 0.45;
+    arch_r   = w;
+    square([w, spring_h]);
+    translate([0, spring_h])
+        intersection() {
+            circle(r = arch_r, $fn = 48);
+            translate([w, 0]) circle(r = arch_r, $fn = 48);
+            square([w, h - spring_h]);
+        }
 }
 
 
@@ -1034,10 +879,7 @@ module castle_sword_2d() {
         ]);
 }
 
-module castle_sword_relief_tray() {
-    // Crossed swords on front wall, low in the tray half.
-    // fcz set so the full sword cross (blade top at fcz + ~19 mm) stays
-    // under TRAY_TOP_Z — otherwise the relief is clipped at the seam.
+module castle_sword_relief_bottom() {
     guard_cy = SWORD_GRIP_L + SWORD_GUARD_H / 2;
     fcx = FLANGE_W + OUTER_W / 2;
     fcz = FLOOR + 8.5;
@@ -1053,9 +895,7 @@ module castle_sword_relief_tray() {
                             castle_sword_2d();
 }
 
-module castle_sword_relief_upper() {
-    // Two standing swords on back wall of upper half, flanking the
-    // portcullis vent. Blade pointing up.
+module castle_sword_relief_top() {
     guard_cy = SWORD_GRIP_L + SWORD_GUARD_H / 2;
     bcz = SPLIT_Z + (UPPER_TOP_Z - SPLIT_Z) * 0.3;
 
@@ -1071,14 +911,13 @@ module castle_sword_relief_upper() {
 
 
 // =====================================================
-//   Fan intake arch (ring around fan on left wall)
+//   Fan intake ring (left wall)
 // =====================================================
-module castle_fan_arch_tray() {
-    // Fan is entirely in the upper half, so the tray does not carry
-    // any arch geometry. Empty module kept for symmetry with upper.
+module castle_fan_arch_bottom() {
+    // Fan straddles the seam and the ring decoration is on the top half.
 }
 
-module castle_fan_arch_upper() {
+module castle_fan_arch_top() {
     translate([FLANGE_W - FAN_FRAME_T, FAN_CY, FAN_CZ])
         rotate([0, 90, 0])
             difference() {
@@ -1092,46 +931,304 @@ module castle_fan_arch_upper() {
 
 
 // =====================================================
-//   Lid decoration (top of upper half)
+//   ROOF — solid geometry
 // =====================================================
-module castle_lid_crenellations() {
-    period = MERLON_W + CRENEL_W;
-    lid_z  = UPPER_TOP_Z + LID_THICK;
+module roof_plate() {
+    // Full-area plate matching the case OUTER_W × OUTER_D footprint, plus
+    // circular corner caps that cover the half-tower projecting outside
+    // the rectangle. Bond surface matches pi_case_top_lid_plate so the
+    // solvent weld lands on flat-on-flat material everywhere — including
+    // the tower-top crescents.
+    // Roof prints with bottom (bond) face on the bed; decoration rises
+    // upward from Z = ROOF_PLATE_T.
+    translate([FLANGE_W, 0, 0])
+        cube([OUTER_W, OUTER_D, ROOF_PLATE_T]);
+    for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B])
+        translate([cx, cy, 0])
+            cylinder(d = TOWER_OD, h = ROOF_PLATE_T);
+}
 
-    // front edge (Y=0, along X) — skip corner tower footprint
+module roof_machicolation() {
+    // Corbelled overhang ring just above the plate, four bands tracing
+    // the perimeter only. Projects outward beyond the plate edge by
+    // MACHI_PROJ; the perimeter crenellations land on its outer face.
+    // Centre is left clear so the shield + vent cuts read cleanly.
+    z0 = ROOF_PLATE_T;
+    band_t = OUTER_WALL;
+
+    // Front band
+    translate([FLANGE_W - MACHI_PROJ,
+               -MACHI_PROJ,
+               z0])
+        cube([OUTER_W + 2 * MACHI_PROJ,
+              MACHI_PROJ + band_t,
+              MACHI_BAND_H]);
+    // Back band
+    translate([FLANGE_W - MACHI_PROJ,
+               OUTER_D - band_t,
+               z0])
+        cube([OUTER_W + 2 * MACHI_PROJ,
+              MACHI_PROJ + band_t,
+              MACHI_BAND_H]);
+    // Left band
+    translate([FLANGE_W - MACHI_PROJ,
+               0,
+               z0])
+        cube([MACHI_PROJ + band_t,
+              OUTER_D,
+              MACHI_BAND_H]);
+    // Right band (full edge — drawbridge relief sits on top of it)
+    translate([FLANGE_W + OUTER_W - band_t,
+               0,
+               z0])
+        cube([MACHI_PROJ + band_t,
+              OUTER_D,
+              MACHI_BAND_H]);
+}
+
+module roof_machicolation_holes() {
+    // Murder-hole slots cut down through the corbel band, between the
+    // perimeter merlons. Dropped into the band as small rectangular
+    // slots at MACHI_HOLE_GAP intervals along each wall.
+    z0 = ROOF_PLATE_T - 0.05;
+    h  = MACHI_BAND_H + 0.1;
+    eps = 0.05;
+
+    // Front and back walls (along X)
+    for (i = [3 : floor((OUTER_W - 6) / MACHI_HOLE_GAP)]) {
+        x = FLANGE_W + i * MACHI_HOLE_GAP;
+        // Front
+        translate([x - MACHI_HOLE_W / 2,
+                   -MACHI_PROJ - eps,
+                   z0])
+            cube([MACHI_HOLE_W,
+                  MACHI_PROJ + MACHI_HOLE_D,
+                  h]);
+        // Back
+        translate([x - MACHI_HOLE_W / 2,
+                   OUTER_D + MACHI_PROJ + eps - (MACHI_PROJ + MACHI_HOLE_D),
+                   z0])
+            cube([MACHI_HOLE_W,
+                  MACHI_PROJ + MACHI_HOLE_D,
+                  h]);
+    }
+
+    // Left and right walls (along Y)
+    for (i = [1 : floor((OUTER_D - 6) / MACHI_HOLE_GAP)]) {
+        y = i * MACHI_HOLE_GAP;
+        // Left
+        translate([FLANGE_W - MACHI_PROJ - eps,
+                   y - MACHI_HOLE_W / 2,
+                   z0])
+            cube([MACHI_PROJ + MACHI_HOLE_D,
+                  MACHI_HOLE_W,
+                  h]);
+        // Right (between gate-post stub regions only — keep the
+        // gatehouse-mouth panel solid for the drawbridge relief)
+        if (y > GATE_POST_L + 1 && y < OUTER_D - GATE_POST_L - 1)
+            translate([FLANGE_W + OUTER_W + MACHI_PROJ + eps - (MACHI_PROJ + MACHI_HOLE_D),
+                       y - MACHI_HOLE_W / 2,
+                       z0])
+                cube([MACHI_PROJ + MACHI_HOLE_D,
+                      MACHI_HOLE_W,
+                      h]);
+    }
+}
+
+module roof_perimeter_crenellations() {
+    // Merlons sit on top of the machicolation band, at the perimeter of
+    // the roof. Each merlon has a pyramidal cap rising above. Arrow slits
+    // are subtracted in roof_merlon_arrow_slits().
+    period = MERLON_W + CRENEL_W;
+    z_base = ROOF_PLATE_T + MACHI_BAND_H;
+
+    // Front (Y = 0) — merlons sit just inside the machicolation outer
+    // edge (Y = -MACHI_PROJ), with the merlon body OUTER_WALL deep.
     for (i = [0 : floor((OUTER_W - MERLON_W) / period)]) {
         x = FLANGE_W + i * period;
-        // keep merlons away from where corner towers cap the corners
+        // skip merlons that overlap corner cap footprint
         if (x > TOWER_X_L + TOWER_OD / 2 - 1
             && x + MERLON_W < TOWER_X_R - TOWER_OD / 2 + 1)
-            translate([x, 0, lid_z])
-                cube([MERLON_W, OUTER_WALL, MERLON_H]);
+            translate([x, -MACHI_PROJ, z_base])
+                _merlon_with_cap(MERLON_W, OUTER_WALL);
     }
-    // back edge
+
+    // Back (Y = OUTER_D)
     for (i = [0 : floor((OUTER_W - MERLON_W) / period)]) {
         x = FLANGE_W + i * period;
         if (x > TOWER_X_L + TOWER_OD / 2 - 1
             && x + MERLON_W < TOWER_X_R - TOWER_OD / 2 + 1)
-            translate([x, OUTER_D - OUTER_WALL, lid_z])
-                cube([MERLON_W, OUTER_WALL, MERLON_H]);
+            translate([x,
+                       OUTER_D + MACHI_PROJ - OUTER_WALL,
+                       z_base])
+                _merlon_with_cap(MERLON_W, OUTER_WALL);
     }
-    // left edge (skip corners)
+
+    // Left (X = FLANGE_W)
     for (i = [0 : floor((OUTER_D - 2 * OUTER_WALL - MERLON_W) / period)]) {
         y = OUTER_WALL + i * period;
         if (y > TOWER_OD / 2 - 1
             && y + MERLON_W < OUTER_D - TOWER_OD / 2 + 1)
-            translate([FLANGE_W, y, lid_z])
-                cube([OUTER_WALL, MERLON_W, MERLON_H]);
+            translate([FLANGE_W - MACHI_PROJ, y, z_base])
+                _merlon_with_cap_y(MERLON_W, OUTER_WALL);
     }
-    // right edge — but only across the two gate post stubs; the
-    // open gatehouse mouth is crowned by castle_gate_arch, not
-    // by crenellations.
+
+    // Right (X = FLANGE_W + OUTER_W) — only across gate post stubs to
+    // keep the drawbridge panel uninterrupted.
     for (i = [0 : floor((OUTER_D - 2 * OUTER_WALL - MERLON_W) / period)]) {
         y = OUTER_WALL + i * period;
         if (y + MERLON_W < GATE_POST_L + OUTER_WALL
             || y > OUTER_D - GATE_POST_L - OUTER_WALL)
-            translate([FLANGE_W + OUTER_W - OUTER_WALL, y, lid_z])
-                cube([OUTER_WALL, MERLON_W, MERLON_H]);
+            translate([FLANGE_W + OUTER_W + MACHI_PROJ - OUTER_WALL,
+                       y,
+                       z_base])
+                _merlon_with_cap_y(MERLON_W, OUTER_WALL);
+    }
+}
+
+module _merlon_with_cap(w, d) {
+    // Merlon extruded along X with depth in Y. Pyramidal cap on top.
+    cube([w, d, MERLON_H]);
+    translate([0, 0, MERLON_H])
+        linear_extrude(height = MERLON_CAP_H, scale = 0.05)
+            square([w, d]);
+}
+
+module _merlon_with_cap_y(w, d) {
+    // Merlon for left/right walls — extruded along Y, depth in X.
+    cube([d, w, MERLON_H]);
+    translate([0, 0, MERLON_H])
+        linear_extrude(height = MERLON_CAP_H, scale = 0.05)
+            square([d, w]);
+}
+
+module roof_merlon_arrow_slits() {
+    // Subtract a vertical slit through each perimeter merlon, parallel
+    // to the wall it sits on. The slit pierces the merlon body so light
+    // / air pass through.
+    period = MERLON_W + CRENEL_W;
+    z_base = ROOF_PLATE_T + MACHI_BAND_H;
+    slit_z = z_base + (MERLON_H - MERLON_SLIT_H) / 2;
+    eps = 0.1;
+
+    // Front & back — slit oriented along Y (depth), cut across full
+    // OUTER_WALL of merlon.
+    for (i = [0 : floor((OUTER_W - MERLON_W) / period)]) {
+        x = FLANGE_W + i * period;
+        if (x > TOWER_X_L + TOWER_OD / 2 - 1
+            && x + MERLON_W < TOWER_X_R - TOWER_OD / 2 + 1) {
+            // Front slit
+            translate([x + MERLON_W / 2 - MERLON_SLIT_W / 2,
+                       -MACHI_PROJ - eps,
+                       slit_z])
+                cube([MERLON_SLIT_W, OUTER_WALL + 2 * eps, MERLON_SLIT_H]);
+            // Back slit
+            translate([x + MERLON_W / 2 - MERLON_SLIT_W / 2,
+                       OUTER_D + MACHI_PROJ - OUTER_WALL - eps,
+                       slit_z])
+                cube([MERLON_SLIT_W, OUTER_WALL + 2 * eps, MERLON_SLIT_H]);
+        }
+    }
+
+    // Left & right — slit oriented along X
+    for (i = [0 : floor((OUTER_D - 2 * OUTER_WALL - MERLON_W) / period)]) {
+        y = OUTER_WALL + i * period;
+        // Left
+        if (y > TOWER_OD / 2 - 1
+            && y + MERLON_W < OUTER_D - TOWER_OD / 2 + 1)
+            translate([FLANGE_W - MACHI_PROJ - eps,
+                       y + MERLON_W / 2 - MERLON_SLIT_W / 2,
+                       slit_z])
+                cube([OUTER_WALL + 2 * eps, MERLON_SLIT_W, MERLON_SLIT_H]);
+        // Right (only across gate post stubs)
+        if (y + MERLON_W < GATE_POST_L + OUTER_WALL
+            || y > OUTER_D - GATE_POST_L - OUTER_WALL)
+            translate([FLANGE_W + OUTER_W + MACHI_PROJ - OUTER_WALL - eps,
+                       y + MERLON_W / 2 - MERLON_SLIT_W / 2,
+                       slit_z])
+                cube([OUTER_WALL + 2 * eps, MERLON_SLIT_W, MERLON_SLIT_H]);
+    }
+}
+
+module roof_corner_caps() {
+    // Continue each case-body corner tower upward from the roof plate:
+    //   corbel ring → ring of merlons → conical roof
+    z0 = ROOF_PLATE_T;
+    for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B]) {
+        translate([cx, cy, z0]) {
+            // Corbel ring (slight outward step from tower OD)
+            cylinder(d = TOWER_OD + 2 * TOWER_CAP_CORBEL_PROJ,
+                     h = TOWER_CAP_CORBEL_H);
+            // Battlement merlons
+            translate([0, 0, TOWER_CAP_CORBEL_H])
+                _tower_cap_merlons();
+            // Conical roof
+            translate([0, 0, TOWER_CAP_CORBEL_H + TOWER_CAP_MERLON_H])
+                cylinder(d1 = TOWER_OD,
+                         d2 = TOWER_CAP_CONE_TIP_D,
+                         h  = TOWER_CAP_CONE_H);
+        }
+    }
+}
+
+module _tower_cap_merlons() {
+    r_out = TOWER_OD / 2 + TOWER_CAP_CORBEL_PROJ;
+    r_in  = r_out - TOWER_CAP_MERLON_W;
+    for (i = [0 : TOWER_CAP_MERLON_N - 1]) {
+        a = i * (360 / TOWER_CAP_MERLON_N);
+        rotate([0, 0, a])
+            translate([r_in, -TOWER_CAP_MERLON_W / 2, 0])
+                cube([TOWER_CAP_MERLON_W,
+                      TOWER_CAP_MERLON_W,
+                      TOWER_CAP_MERLON_H]);
+    }
+}
+
+module roof_corner_flag() {
+    // Pennant flag on the back-right tower's cone tip.
+    cx = TOWER_X_R;
+    cy = TOWER_Y_B;
+    cone_top_z = ROOF_PLATE_T
+                 + TOWER_CAP_CORBEL_H
+                 + TOWER_CAP_MERLON_H
+                 + TOWER_CAP_CONE_H;
+
+    // Mast continues up from the cone tip
+    translate([cx, cy, cone_top_z - 0.5])
+        cylinder(d = FLAG_MAST_D, h = FLAG_MAST_H, $fn = 16);
+
+    // Triangular pennant attached to mast, projecting in +X then tapering
+    flag_z0 = cone_top_z + FLAG_MAST_H * 0.3;
+    translate([cx, cy + FLAG_MAST_D / 2, flag_z0])
+        rotate([90, 0, 0])
+            linear_extrude(height = FLAG_T)
+                polygon([[0, 0],
+                         [FLAG_W, FLAG_H / 2],
+                         [0, FLAG_H]]);
+}
+
+module roof_shield() {
+    // Heater shield + chevron sigil at roof centre.
+    cx = FLANGE_W + OUTER_W / 2;
+    cy = OUTER_D / 2;
+    z0 = ROOF_PLATE_T;
+
+    translate([cx, cy - SHIELD_H / 2, z0]) {
+        // Border
+        linear_extrude(SHIELD_RAISE)
+            difference() {
+                castle_shield_2d(SHIELD_W, SHIELD_H);
+                offset(-2) castle_shield_2d(SHIELD_W, SHIELD_H);
+            }
+        // Field (recessed)
+        linear_extrude(SHIELD_RAISE * 0.5)
+            offset(-2) castle_shield_2d(SHIELD_W, SHIELD_H);
+        // Chevron device
+        linear_extrude(SHIELD_RAISE)
+            intersection() {
+                offset(-2) castle_shield_2d(SHIELD_W, SHIELD_H);
+                castle_chevron_2d(SHIELD_W * 0.5, SHIELD_H * 0.15);
+            }
     }
 }
 
@@ -1152,47 +1249,198 @@ module castle_chevron_2d(w, h) {
                  [w / 2, -chev_t], [0, h - chev_t], [-w / 2, -chev_t]]);
 }
 
-module castle_lid_shield() {
+module roof_vent_cuts() {
+    // Cross-shaped ventilation cuts through the roof plate, flanking the
+    // shield. These line up over the TOP's central lid cutout so air
+    // flows interior → top cutout → roof crosses → atmosphere.
     cx = FLANGE_W + OUTER_W / 2;
-    cy = OUTER_D / 2;
-    z0 = UPPER_TOP_Z + LID_THICK;
-
-    translate([cx, cy - SHIELD_H / 2, z0]) {
-        // border
-        linear_extrude(SHIELD_RAISE)
-            difference() {
-                castle_shield_2d(SHIELD_W, SHIELD_H);
-                offset(-2) castle_shield_2d(SHIELD_W, SHIELD_H);
-            }
-        // field (half-height recessed inside the border)
-        linear_extrude(SHIELD_RAISE * 0.5)
-            offset(-2) castle_shield_2d(SHIELD_W, SHIELD_H);
-        // chevron device
-        linear_extrude(SHIELD_RAISE)
-            intersection() {
-                offset(-2) castle_shield_2d(SHIELD_W, SHIELD_H);
-                castle_chevron_2d(SHIELD_W * 0.5, SHIELD_H * 0.15);
-            }
-    }
-}
-
-module castle_arrow_slit_vents() {
-    // Cross-shaped ventilation slits cut through the lid plate,
-    // flanking the shield.
-    cx = FLANGE_W + OUTER_W / 2;
-    slit_w = 1.5;
-    slit_h = 10;
-    cross_w = 5;
-    cross_h = 1.5;
+    slit_w  = 1.5;
+    slit_h  = 10;
     spacing_y = 7;
+    cut_h   = ROOF_PLATE_T + MACHI_BAND_H + 0.4;
 
     for (side = [-1, 1]) {
         x = cx + side * (SHIELD_W / 2 + 8);
         for (j = [0 : 3]) {
             y = OUTER_D / 2 - 1.5 * spacing_y + j * spacing_y;
-            translate([x, y, UPPER_TOP_Z - 0.1])
-                linear_extrude(LID_THICK + MERLON_H + 0.2)
+            translate([x, y, -0.1])
+                linear_extrude(cut_h)
                     _arrow_slit_2d(slit_w, slit_h);
         }
+    }
+}
+
+module roof_drawbridge_relief_solid() {
+    // Solid panel band across the gatehouse edge, between the front- and
+    // back-right corner caps. Raised slightly above the corbel band so
+    // the engraved planks read as relief rather than holes.
+    panel_x = FLANGE_W + OUTER_W + MACHI_PROJ - 0.1;
+    panel_y0 = TOWER_OD / 2;
+    panel_y1 = OUTER_D - TOWER_OD / 2;
+    panel_z0 = ROOF_PLATE_T + MACHI_BAND_H;
+    panel_h  = MERLON_H * 0.45;            // about half the merlon height
+
+    translate([panel_x - BRIDGE_INSET,
+               panel_y0,
+               panel_z0])
+        cube([BRIDGE_INSET + 0.1,
+              panel_y1 - panel_y0,
+              panel_h]);
+}
+
+module roof_drawbridge_grooves() {
+    // Engraved horizontal plank lines across the drawbridge panel.
+    panel_x = FLANGE_W + OUTER_W + MACHI_PROJ;
+    panel_y0 = TOWER_OD / 2;
+    panel_y1 = OUTER_D - TOWER_OD / 2;
+    panel_h  = MERLON_H * 0.45;
+    panel_z0 = ROOF_PLATE_T + MACHI_BAND_H;
+    grooves = floor((panel_y1 - panel_y0) / (BRIDGE_PLANK_W + BRIDGE_PLANK_GAP));
+
+    for (i = [1 : grooves - 1]) {
+        y = panel_y0 + i * (BRIDGE_PLANK_W + BRIDGE_PLANK_GAP);
+        translate([panel_x - BRIDGE_RELIEF,
+                   y - BRIDGE_PLANK_GAP / 2,
+                   panel_z0 - 0.1])
+            cube([BRIDGE_RELIEF + 0.2,
+                  BRIDGE_PLANK_GAP,
+                  panel_h + 0.2]);
+    }
+}
+
+module roof_corner_gargoyles() {
+    // One outward-facing gargoyle per corner cap, projecting from the
+    // corbel ring at 45° (away from case centre). Small rectangular
+    // spout — visible on all four exterior corners. Below 45° overhang
+    // (3 mm long × 1.5 mm wide × 1.5 mm tall), so PETG handles it
+    // without support.
+    z0 = ROOF_PLATE_T + TOWER_CAP_CORBEL_H * 0.4;
+    spout_l = 3.5;
+    spout_w = 1.6;
+    spout_h = 1.6;
+
+    for (corner = [[TOWER_X_L, TOWER_Y_F, 225],
+                   [TOWER_X_R, TOWER_Y_F, 315],
+                   [TOWER_X_L, TOWER_Y_B, 135],
+                   [TOWER_X_R, TOWER_Y_B,  45]])
+    {
+        cx = corner[0];
+        cy = corner[1];
+        a  = corner[2];
+        translate([cx, cy, z0])
+            rotate([0, 0, a])
+                translate([TOWER_OD / 2 + TOWER_CAP_CORBEL_PROJ - 0.4,
+                           -spout_w / 2,
+                           0])
+                    cube([spout_l, spout_w, spout_h]);
+    }
+}
+
+module roof_crenel_gap_slits() {
+    // Optional vent slits dropping through the machicolation band in
+    // each crenel gap (between perimeter merlons). Adds extra vent area
+    // beyond the cross slits flanking the shield.
+    period = MERLON_W + CRENEL_W;
+    slit_w  = 1.0;
+    slit_z0 = ROOF_PLATE_T - 0.05;
+    slit_h  = MACHI_BAND_H + 0.1;
+    eps = 0.05;
+
+    // Front + back (slit oriented along Y, cuts through the band)
+    for (i = [0 : floor((OUTER_W - MERLON_W) / period)]) {
+        x_merlon_end = FLANGE_W + i * period + MERLON_W;
+        x_crenel = x_merlon_end + CRENEL_W / 2 - slit_w / 2;
+        if (x_crenel > TOWER_X_L + TOWER_OD / 2
+            && x_crenel + slit_w < TOWER_X_R - TOWER_OD / 2) {
+            // Front
+            translate([x_crenel,
+                       -MACHI_PROJ - eps,
+                       slit_z0])
+                cube([slit_w,
+                      MACHI_PROJ + OUTER_WALL + 2 * eps,
+                      slit_h]);
+            // Back
+            translate([x_crenel,
+                       OUTER_D - OUTER_WALL - eps,
+                       slit_z0])
+                cube([slit_w,
+                      MACHI_PROJ + OUTER_WALL + 2 * eps,
+                      slit_h]);
+        }
+    }
+
+    // Left + right (slit oriented along X)
+    for (i = [0 : floor((OUTER_D - 2 * OUTER_WALL - MERLON_W) / period)]) {
+        y_merlon_end = OUTER_WALL + i * period + MERLON_W;
+        y_crenel = y_merlon_end + CRENEL_W / 2 - slit_w / 2;
+        // Left
+        if (y_crenel > TOWER_OD / 2
+            && y_crenel + slit_w < OUTER_D - TOWER_OD / 2)
+            translate([FLANGE_W - MACHI_PROJ - eps,
+                       y_crenel,
+                       slit_z0])
+                cube([MACHI_PROJ + OUTER_WALL + 2 * eps,
+                      slit_w,
+                      slit_h]);
+        // Right — only across the gate post stubs (drawbridge panel
+        // covers the middle span).
+        if (y_crenel + slit_w < GATE_POST_L + OUTER_WALL
+            || y_crenel > OUTER_D - GATE_POST_L - OUTER_WALL)
+            translate([FLANGE_W + OUTER_W - OUTER_WALL - eps,
+                       y_crenel,
+                       slit_z0])
+                cube([MACHI_PROJ + OUTER_WALL + 2 * eps,
+                      slit_w,
+                      slit_h]);
+    }
+}
+
+module roof_perimeter_rope_grooves() {
+    // Cord-twist relief engraved on the bottom-perimeter outer face of
+    // the roof plate. When the roof is bonded to the top, this band
+    // sits at the visible seam — a row of short angled grooves reading
+    // as a twisted rope from a few feet away. Cuts only into the outer
+    // face (depth 0.4 mm), so the bond surface and machicolation
+    // overhang are untouched.
+    rope_z = 0.3;          // band centre Z (well below ROOF_PLATE_T = 2)
+    rope_h = 0.8;          // engraving height
+    rope_d = 0.4;          // depth into the outer face
+    rope_w = 1.0;          // groove width
+    rope_pitch = 2.5;      // groove period along the wall
+    eps = 0.1;
+
+    // Front + back (grooves along X). Skip merlon-cap zones at the
+    // corners — the merlon caps are at z = MACHI_BAND_H + MERLON_H + ...
+    // which is well above rope_z, so no actual collision; just visual
+    // alignment of pattern with corner cap circle.
+    for (x = [FLANGE_W + 6 : rope_pitch : FLANGE_W + OUTER_W - 6]) {
+        // Front
+        translate([x - rope_w / 2,
+                   -MACHI_PROJ - eps,
+                   rope_z - rope_h / 2])
+            rotate([0, 30, 0])
+                cube([rope_w, rope_d + eps, rope_h]);
+        // Back
+        translate([x - rope_w / 2,
+                   OUTER_D + MACHI_PROJ - rope_d,
+                   rope_z - rope_h / 2])
+            rotate([0, 30, 0])
+                cube([rope_w, rope_d + eps, rope_h]);
+    }
+
+    // Left + right (grooves along Y)
+    for (y = [6 : rope_pitch : OUTER_D - 6]) {
+        // Left
+        translate([FLANGE_W - MACHI_PROJ - eps,
+                   y - rope_w / 2,
+                   rope_z - rope_h / 2])
+            rotate([0, 0, 30])
+                cube([rope_d + eps, rope_w, rope_h]);
+        // Right
+        translate([FLANGE_W + OUTER_W + MACHI_PROJ - rope_d,
+                   y - rope_w / 2,
+                   rope_z - rope_h / 2])
+            rotate([0, 0, 30])
+                cube([rope_d + eps, rope_w, rope_h]);
     }
 }
