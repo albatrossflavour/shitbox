@@ -124,6 +124,8 @@ class HighRateSampler:
         accel_offset_y: float = 0.0,
         accel_offset_z: float = 0.0,
         on_sample: Optional[Callable[[IMUSample], None]] = None,
+        tca_en_gpio: Optional[int] = None,
+        tca_en_pulse_low_ms: int = 10,
     ):
         """Initialise high-rate sampler.
 
@@ -135,6 +137,11 @@ class HighRateSampler:
             accel_offset_y: Bias correction for ay (g), subtracted after unit conversion.
             accel_offset_z: Bias correction for az (g), subtracted after unit conversion.
             on_sample: Optional callback for each sample.
+            tca_en_gpio: GPIO pin number (BCM) wired to the TCA4307 EN pin.
+                When set, recovery first tries pulsing EN low to clear a
+                protective-isolation latch — the only known software path
+                back from a wedged bus. None = pin not wired (default).
+            tca_en_pulse_low_ms: Width of the EN low pulse in ms.
         """
         self.ring_buffer = ring_buffer
         self.sample_rate_hz = sample_rate_hz
@@ -161,12 +168,21 @@ class HighRateSampler:
         self._consecutive_failures: int = 0
         self._reset_count: int = 0
 
+        # TCA4307 EN-pin recovery (None when not wired)
+        self._tca_en_gpio: Optional[int] = tca_en_gpio
+        self._tca_en_pulse_low_ms: int = tca_en_pulse_low_ms
+        self._tca_en_initialised: bool = False
+
     def setup(self) -> None:
         """Initialise LSM6DSOX for high-rate sampling.
 
         On failure (hardware absent, I2C error), logs sensor_init_failed and
         sets _lsm6dsox = None. Does NOT raise -- graceful degradation (D-24).
         """
+        # Drive the TCA4307 EN pin high before any I2C activity. No-op when
+        # the pin isn't configured. Idempotent; called again on every recovery
+        # pass through setup().
+        self._setup_tca_en()
         try:
             if not _HAS_LSM6DS:
                 raise ImportError("adafruit-circuitpython-lsm6ds not installed")
@@ -422,6 +438,62 @@ class HighRateSampler:
 
             next_sample_time += self.sample_interval
 
+    def _setup_tca_en(self) -> None:
+        """Initialise the TCA4307 EN pin to HIGH (enable). No-op when not wired.
+
+        Called at the top of setup() before any I2C activity. Idempotent —
+        RPi.GPIO.setup() can be called repeatedly. On failure, disables the
+        pin path so future recovery attempts fall through to legacy logic.
+        """
+        if self._tca_en_gpio is None:
+            return
+        try:
+            import RPi.GPIO as GPIO  # type: ignore[import]
+        except ImportError:
+            log.warning("rpi_gpio_unavailable_tca_en_disabled")
+            self._tca_en_gpio = None
+            return
+        try:
+            GPIO.setwarnings(False)
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self._tca_en_gpio, GPIO.OUT, initial=GPIO.HIGH)
+            if not self._tca_en_initialised:
+                log.info("tca_en_pin_initialised", pin=self._tca_en_gpio)
+                self._tca_en_initialised = True
+        except Exception as e:
+            log.error("tca_en_setup_failed", pin=self._tca_en_gpio, error=str(e))
+            self._tca_en_gpio = None
+
+    def _pulse_tca_en(self) -> bool:
+        """Pulse the TCA4307 EN pin low to clear a protective-isolation latch.
+
+        The TCA4307 only releases its latched-isolation state on EN low→high
+        or a real VCC drop. This is the correct recovery for the dominant
+        bus-lockup mode we see in the field; see the open thread.
+
+        Returns True on a successful pulse, False if the pin isn't wired or
+        the GPIO call fails.
+        """
+        if self._tca_en_gpio is None:
+            return False
+        try:
+            import RPi.GPIO as GPIO  # type: ignore[import]
+        except ImportError:
+            return False
+        try:
+            GPIO.output(self._tca_en_gpio, GPIO.LOW)
+            time.sleep(self._tca_en_pulse_low_ms / 1000.0)
+            GPIO.output(self._tca_en_gpio, GPIO.HIGH)
+            log.info(
+                "tca_en_pulsed_low",
+                pin=self._tca_en_gpio,
+                duration_ms=self._tca_en_pulse_low_ms,
+            )
+            return True
+        except Exception as e:
+            log.error("tca_en_pulse_error", pin=self._tca_en_gpio, error=str(e))
+            return False
+
     def _i2c_bus_reset(self) -> bool:
         """Attempt 9-clock bit-bang recovery to release a stuck I2C slave.
 
@@ -434,11 +506,77 @@ class HighRateSampler:
             True if the bus was successfully recovered and the sensor
             reinitialised; False on any failure.
         """
+        # Single entry log for the whole recovery attempt — captures the
+        # context that triggered it (consecutive_failures, reset_count) and
+        # which path will be tried first. Pairs with i2c_recovery_successful
+        # / i2c_recovery_failed at the end.
+        log.info(
+            "i2c_recovery_attempt",
+            consecutive_failures=self._consecutive_failures,
+            reset_count=self._reset_count,
+            tca_en_wired=self._tca_en_gpio is not None,
+            tca_en_pin=self._tca_en_gpio,
+            tca_en_pulse_low_ms=self._tca_en_pulse_low_ms,
+            recovery_delay_seconds=I2C_RECOVERY_DELAY_SECONDS,
+        )
+
+        # First try the TCA4307 EN-pin pulse if the pin is wired. Cheap, fast,
+        # and the correct recovery for the dominant lockup mode (TCA latched
+        # into protective isolation). Fall through to the legacy bit-bang path
+        # only when EN-pulse isn't available or doesn't recover the sensor.
+        if self._tca_en_gpio is not None:
+            log.info(
+                "tca_en_recovery_starting",
+                pin=self._tca_en_gpio,
+                pulse_low_ms=self._tca_en_pulse_low_ms,
+            )
+            pulse_ok = self._pulse_tca_en()
+            log.info(
+                "tca_en_pulse_result",
+                pin=self._tca_en_gpio,
+                pulse_ok=pulse_ok,
+            )
+            if pulse_ok:
+                try:
+                    if self._i2c is not None:
+                        self._i2c.deinit()  # type: ignore[attr-defined]
+                        log.debug("i2c_handle_deinit_post_tca_pulse")
+                except Exception as e:
+                    log.debug("i2c_handle_deinit_error_post_tca_pulse", error=str(e))
+                log.debug(
+                    "tca_en_recovery_settling",
+                    sleep_seconds=I2C_RECOVERY_DELAY_SECONDS,
+                )
+                time.sleep(I2C_RECOVERY_DELAY_SECONDS)
+                self.setup()
+                recovered = self._lsm6dsox is not None
+                log.info(
+                    "tca_en_recovery_setup_result",
+                    pin=self._tca_en_gpio,
+                    recovered=recovered,
+                )
+                if recovered:
+                    log.info("i2c_recovery_via_tca_en_pulse", pin=self._tca_en_gpio)
+                    return True
+                log.warning(
+                    "tca_en_pulse_did_not_recover_falling_through",
+                    pin=self._tca_en_gpio,
+                    next_path="bitbang_9pulse",
+                )
+            else:
+                log.warning(
+                    "tca_en_pulse_failed_falling_through",
+                    pin=self._tca_en_gpio,
+                    next_path="bitbang_9pulse",
+                )
+
         try:
             import RPi.GPIO as GPIO  # type: ignore[import]
         except ImportError:
             log.error("rpi_gpio_not_available", hint="Cannot perform I2C bit-bang recovery")
             return False
+
+        log.info("i2c_bitbang_recovery_starting", scl_pin=SCL_PIN, sda_pin=SDA_PIN)
 
         # Close the existing I2C connection
         try:

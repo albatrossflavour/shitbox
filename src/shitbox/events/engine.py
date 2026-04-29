@@ -96,6 +96,11 @@ class EngineConfig:
     accel_offset_y: float = 0.0
     accel_offset_z: float = 0.0
 
+    # TCA4307 EN pin for software bus-recovery (None = pin not wired).
+    # See sensors.tca4307 in config.yaml and the open thread in the project doc.
+    tca_en_gpio: Optional[int] = None
+    tca_en_pulse_low_ms: int = 10
+
     # Auto-zero (thermal drift compensation) — IMU-05, IMU-06.
     # Field names are authoritative per REQUIREMENTS.md IMU-05.
     auto_zero_enabled: bool = True
@@ -294,6 +299,9 @@ class EngineConfig:
             accel_offset_y=config.sensors.lsm6dsox.accel_offset_y,
             accel_offset_z=config.sensors.lsm6dsox.accel_offset_z,
             imu_sample_rate_hz=config.sensors.lsm6dsox.sample_rate_hz,
+            # TCA4307 EN-pin recovery (None until wired)
+            tca_en_gpio=config.sensors.tca4307.en_gpio,
+            tca_en_pulse_low_ms=config.sensors.tca4307.pulse_low_ms,
             # Auto-zero (IMU-05, IMU-06) — 1:1 pass-through from LSM6DSOXConfig
             auto_zero_enabled=config.sensors.lsm6dsox.auto_zero_enabled,
             auto_zero_stationary_kmh=config.sensors.lsm6dsox.auto_zero_stationary_kmh,
@@ -478,6 +486,8 @@ class UnifiedEngine:
             accel_offset_y=config.accel_offset_y,
             accel_offset_z=config.accel_offset_z,
             on_sample=self._on_imu_sample,
+            tca_en_gpio=config.tca_en_gpio,
+            tca_en_pulse_low_ms=config.tca_en_pulse_low_ms,
         )
 
         # 22-07: detector's rolling-window sizes (e.g. _az_window_size for ROUGH_ROAD)

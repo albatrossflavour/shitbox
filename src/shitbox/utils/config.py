@@ -220,6 +220,21 @@ class EnvironmentConfig:
 
 
 @dataclass
+class Tca4307Config:
+    """TCA4307 I2C bus buffer recovery configuration.
+
+    The TCA4307 latches into protective isolation on stuck-low / undervoltage /
+    contention. The latch only clears on an EN low→high transition or a real
+    VCC drop. When the EN pin is wired to a GPIO, the daemon can pulse it low
+    during bus-recovery to clear the latch without rebooting. Default None
+    means the pin is not wired and the daemon will skip the EN-pulse path.
+    """
+
+    en_gpio: Optional[int] = None
+    pulse_low_ms: int = 10  # datasheet specifies > 1us; 10ms is comfortably above noise
+
+
+@dataclass
 class SensorsConfig:
     """All sensors configuration."""
 
@@ -232,6 +247,7 @@ class SensorsConfig:
     power: PowerConfig = field(default_factory=PowerConfig)
     particulate: ParticulateConfig = field(default_factory=ParticulateConfig)
     environment: EnvironmentConfig = field(default_factory=EnvironmentConfig)
+    tca4307: Tca4307Config = field(default_factory=Tca4307Config)
 
 
 @dataclass
@@ -614,6 +630,9 @@ def load_config(config_path: str | Path | None = None) -> Config:
             ),
             environment=_dict_to_dataclass(
                 EnvironmentConfig, data.get("sensors", {}).get("environment", {})
+            ),
+            tca4307=_dict_to_dataclass(
+                Tca4307Config, data.get("sensors", {}).get("tca4307", {})
             ),
         ),
         storage=_dict_to_dataclass(StorageConfig, data.get("storage", {})),
