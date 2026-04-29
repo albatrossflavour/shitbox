@@ -107,7 +107,12 @@ sensors:
     # systemctl reboot doesn't cycle the rail on Pi 5 (PMIC keeps it alive),
     # so EN is the only software path back from a wedged bus.
     en_gpio: 12
-    pulse_low_ms: 10
+    # Bumped 10 → 100 ms after the 2026-04-29 stress test reproduced a wedge
+    # that the 10 ms pulse couldn't clear. Datasheet says > 1 µs is enough,
+    # but margin is cheap; if 100 ms still doesn't recover we have stronger
+    # evidence the fault isn't actually a TCA latch (slave-state-hang
+    # theory) and the right fix is elsewhere.
+    pulse_low_ms: 100
 
   lsm6dsox: # LSM6DSOX accel+gyro at 0x6A (replaces MPU6050)
     enabled: true
