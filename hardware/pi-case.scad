@@ -69,8 +69,12 @@
 // Castle features on the TOP walls:
 //   - Corner buttress towers (cylinders, top-half height)
 //   - Running-bond mortar grooves on three solid walls
-//   - Sword relief on back wall
-//   - Portcullis vent on back wall
+//   - Sword relief on back wall (flanking the portcullis, inset to
+//     clear the GX12 cutouts)
+//   - Portcullis vent on back wall (decorative, also passes the GPS
+//     antenna coax)
+//   - Two GX12 panel-mount cutouts on the back wall, tucked alongside
+//     the corner towers (button + 1-Wire)
 //   - Tower arrow slits (continued from bottom)
 //
 // Units: mm. $fn = 64 for STL export; reduce for live preview.
@@ -628,20 +632,26 @@ module pi_case_cable_slots_bottom() {
 }
 
 module pi_case_cable_slots_top() {
-    conn_z   = FLOOR + INNER_H * 0.75;
-    centre_x = FLANGE_W + INNER_W / 2;
+    // BACK WALL upper half — two GX12 panel mounts flanking the
+    // portcullis vent, sat 15 mm in from each corner so they tuck
+    // alongside the back-left and back-right corner towers:
+    //   left  : button GX12 (GPIO 17 arcade button)
+    //   right : 1-Wire GX12 (DS18B20 bus → engine bay + exterior)
+    //
+    // GPS antenna coax now exits through the existing portcullis vent
+    // gaps on the back wall — no dedicated SMA hole. The earlier v3
+    // layout put all three holes on the FRONT wall but the print test
+    // showed they aligned directly with the top of the Pi stack
+    // internally, leaving no clean cable-routing path. Moving them to
+    // the back keeps the front wall (HDMI / USB-C cutouts on the
+    // bottom half only) clean.
+    conn_z = FLOOR + INNER_H * 0.75;
 
-    translate([centre_x, -0.1, conn_z])
-        rotate([-90, 0, 0])
-            cylinder(d = SMA_HOLE_D,
-                     h = OUTER_WALL + 0.2,
-                     $fn = 32);
-
-    for (x_off = [-15, 15])
-        translate([centre_x + x_off,
-                   -0.1,
+    for (x_off = [15, OUTER_W - 15])
+        translate([FLANGE_W + x_off,
+                   OUTER_D + 0.1,
                    conn_z])
-            rotate([-90, 0, 0])
+            rotate([90, 0, 0])
                 cylinder(d = GX12_D,
                          h = OUTER_WALL + 0.2,
                          $fn = 48);
@@ -896,10 +906,13 @@ module castle_sword_relief_bottom() {
 }
 
 module castle_sword_relief_top() {
+    // Two standing swords on the back wall, flanking the portcullis,
+    // pushed inward (x_off 27 instead of 14) to leave clear space for
+    // the back-wall GX12 cutouts at x_off 15 — pi_case_cable_slots_top.
     guard_cy = SWORD_GRIP_L + SWORD_GUARD_H / 2;
     bcz = SPLIT_Z + (UPPER_TOP_Z - SPLIT_Z) * 0.3;
 
-    for (x_off = [14, OUTER_W - 14])
+    for (x_off = [27, OUTER_W - 27])
         translate([FLANGE_W + x_off, OUTER_D + 0.01, bcz])
             multmatrix([[1, 0, 0, 0],
                         [0, 0, -1, 0],
