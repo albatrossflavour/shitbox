@@ -1653,6 +1653,14 @@ class UnifiedEngine:
 
             hspeed = tpv.get("speed")
             speed_kmh = hspeed * 3.6 if isinstance(hspeed, (int, float)) else None
+            # Sanity cap: GPS multipath / cold-fix can spit out absurd speeds.
+            # 2026-04-26 bench data hit 252 km/h with the antenna under foliage.
+            # The Laser does not break the sound barrier; drop anything above
+            # 250 km/h or negative as sensor noise rather than letting it
+            # pollute SQLite + Prometheus + the dashboard.
+            if speed_kmh is not None and (speed_kmh > 250.0 or speed_kmh < 0.0):
+                log.warning("gps_speed_implausible_dropped", raw_kmh=round(speed_kmh, 1))
+                speed_kmh = None
 
             satellites: Optional[int] = None
             if sky is not None:

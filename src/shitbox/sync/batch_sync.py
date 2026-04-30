@@ -329,6 +329,19 @@ class BatchSyncService:
             log.warning("summary_metrics_notes_error", error=str(e))
 
         try:
+            # Trip distance gauges. Engine.py persists odometer_km + daily_km
+            # to trip_state every 60s; we read them back here and emit as
+            # gauges so the trip-summary dashboard's Distance tile lights up.
+            odo = self.db.get_trip_state("odometer_km")
+            if odo is not None:
+                metrics.append(("shitbox_trip_distance_km", labels, float(odo), now_ms))
+            daily = self.db.get_trip_state("daily_km")
+            if daily is not None:
+                metrics.append(("shitbox_daily_distance_km", labels, float(daily), now_ms))
+        except Exception as e:
+            log.warning("summary_metrics_trip_distance_error", error=str(e))
+
+        try:
             driver = self.db.get_active_driver_name()
             if driver:
                 driver_labels = dict(labels)

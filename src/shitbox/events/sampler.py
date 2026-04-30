@@ -167,6 +167,13 @@ class HighRateSampler:
         self.samples_total = 0
         self.samples_dropped = 0
         self._last_sample_time = 0.0
+        # Glitch rejection: drop samples whose accel magnitude is physically
+        # impossible (>5g). Real road events stay under 3g; >5g is sensor
+        # noise that would trip HIGH_G (>0.8g for 300ms) on a single bad read
+        # if a series of glitches lined up. Threshold squared here so the
+        # hot path uses a single multiply + compare per sample (no sqrt).
+        self._glitch_drops: int = 0
+        self._glitch_g_squared = 25.0  # 5g squared
 
         # Hardware state role for observational reporting
         self.role = "imu"
@@ -367,6 +374,23 @@ class HighRateSampler:
                 t_read_start = time.perf_counter() if do_timing else 0.0
                 sample = self._read_sample()
                 t_read_done = time.perf_counter() if do_timing else 0.0
+
+                # Sanity cap: drop physically implausible accel magnitudes.
+                # Squared comparison to avoid sqrt on every sample. Threshold
+                # is 5g (25g²); anything above is noise, not driving.
+                mag_squared = sample.ax * sample.ax + sample.ay * sample.ay + sample.az * sample.az
+                if mag_squared > self._glitch_g_squared:
+                    self._glitch_drops += 1
+                    if self._glitch_drops == 1 or self._glitch_drops % 100 == 0:
+                        log.warning(
+                            "imu_sample_implausible_dropped",
+                            magnitude_g=round(mag_squared ** 0.5, 2),
+                            ax=round(sample.ax, 2),
+                            ay=round(sample.ay, 2),
+                            az=round(sample.az, 2),
+                            total_drops_in_session=self._glitch_drops,
+                        )
+                    continue
 
                 self.ring_buffer.append(sample)
                 t_append_done = time.perf_counter() if do_timing else 0.0
