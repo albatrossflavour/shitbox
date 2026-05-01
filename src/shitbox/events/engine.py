@@ -2744,33 +2744,64 @@ class UnifiedEngine:
         except Exception as e:
             log.warning("events_json_boot_generate_error", error=str(e))
 
-        # Boot capture — wait for the ring buffer to accumulate at least one
-        # complete segment before firing, since GPS wait may be short or absent.
+        # Boot capture — wait for the ring buffer to accumulate enough
+        # segments before firing, since ffmpeg needs startup time for
+        # camera detection, audio fallback, and PiP compositor setup.
         if self.video_ring_buffer and self.video_ring_buffer.is_running:
-            def _fire_boot_capture() -> None:
-                deadline = time.monotonic() + self.config.video_buffer_segment_seconds * 3
-                while time.monotonic() < deadline:
-                    if len(self.video_ring_buffer._get_buffer_segments()) >= 2:
-                        break
-                    time.sleep(2.0)
-                boot_now = time.time()
-                boot_event = Event(
-                    event_type=EventType.BOOT,
-                    start_time=boot_now,
-                    end_time=boot_now,
-                    peak_value=0.0,
-                    peak_ax=0.0,
-                    peak_ay=0.0,
-                    peak_az=0.0,
-                )
-                self._on_event(boot_event)
-                log.info("boot_capture_triggered")
-
             threading.Thread(
-                target=_fire_boot_capture, daemon=True, name="boot-capture"
+                target=self._fire_boot_capture, daemon=True, name="boot-capture"
             ).start()
 
         log.info("unified_engine_started")
+
+    def _fire_boot_capture(self) -> None:
+        """Wait for ring buffer segments then fire a BOOT event.
+
+        Runs in a daemon thread. Returns without firing if the deadline
+        expires before enough segments are available on disk.
+        """
+        ring = self.video_ring_buffer
+        assert ring is not None
+        seg_seconds = self.config.video_buffer_segment_seconds
+        deadline_seconds = seg_seconds * 5
+        deadline = time.monotonic() + deadline_seconds
+        log.info(
+            "boot_capture_waiting",
+            deadline_seconds=deadline_seconds,
+            segment_seconds=seg_seconds,
+            buffer_dir=str(ring.buffer_dir),
+        )
+        while time.monotonic() < deadline:
+            segments = ring._get_buffer_segments()
+            if len(segments) >= 2:
+                log.info(
+                    "boot_capture_segments_ready",
+                    segment_count=len(segments),
+                )
+                break
+            time.sleep(2.0)
+        else:
+            segments = ring._get_buffer_segments()
+            log.warning(
+                "boot_capture_skipped",
+                reason="deadline_expired",
+                segment_count=len(segments),
+                deadline_seconds=deadline_seconds,
+            )
+            return
+
+        boot_now = time.time()
+        boot_event = Event(
+            event_type=EventType.BOOT,
+            start_time=boot_now,
+            end_time=boot_now,
+            peak_value=0.0,
+            peak_ax=0.0,
+            peak_ay=0.0,
+            peak_az=0.0,
+        )
+        self._on_event(boot_event)
+        log.info("boot_capture_triggered")
 
     def stop(self) -> None:
         """Stop the unified engine."""

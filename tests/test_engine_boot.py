@@ -7,6 +7,7 @@ Tests verify:
 - Full recovery flow end-to-end using tmp_path
 - HW-05: engine starts with all critical hardware missing (no crash, no block)
 - HW-05 pitfall 5: IMU setup failure does not invoke _force_reboot at boot
+- Boot capture fires when segments are available, skips when deadline expires
 """
 
 import json
@@ -366,3 +367,121 @@ def test_imu_setup_failure_is_nonfatal(minimal_engine_config):
         mock_reboot.assert_not_called()
 
         engine.stop()
+
+
+# ---------------------------------------------------------------------------
+# Boot capture: segment wait and skip logic
+# ---------------------------------------------------------------------------
+
+
+def _make_boot_capture_engine(tmp_path, segment_seconds=10):
+    """Build a minimal UnifiedEngine stub for testing _fire_boot_capture.
+
+    Bypasses __init__ and wires only the fields that _fire_boot_capture
+    and _on_event touch.
+    """
+    from shitbox.events.engine import EngineConfig, UnifiedEngine
+
+    engine = UnifiedEngine.__new__(UnifiedEngine)
+    engine.config = EngineConfig()
+    engine.config.video_buffer_segment_seconds = segment_seconds
+
+    buffer_dir = tmp_path / "video_buffer"
+    buffer_dir.mkdir()
+
+    mock_ring = MagicMock()
+    mock_ring.buffer_dir = buffer_dir
+    mock_ring.is_saving = False
+    engine.video_ring_buffer = mock_ring
+
+    engine._on_event = MagicMock()
+    return engine
+
+
+def test_boot_capture_fires_when_segments_available(tmp_path):
+    """_fire_boot_capture triggers a BOOT event when >= 2 segments exist."""
+    from shitbox.events.detector import EventType
+
+    engine = _make_boot_capture_engine(tmp_path, segment_seconds=1)
+
+    seg_dir = engine.video_ring_buffer.buffer_dir
+    (seg_dir / "seg_000.ts").write_bytes(b"\x00" * 100)
+    (seg_dir / "seg_001.ts").write_bytes(b"\x00" * 100)
+    engine.video_ring_buffer._get_buffer_segments.return_value = [
+        seg_dir / "seg_000.ts",
+        seg_dir / "seg_001.ts",
+    ]
+
+    log_events: list[tuple[str, dict]] = []
+
+    def capture_info(event: str, **kw: object) -> None:
+        log_events.append((event, kw))
+
+    with patch("shitbox.events.engine.log.info", side_effect=capture_info):
+        engine._fire_boot_capture()
+
+    engine._on_event.assert_called_once()
+    boot_event = engine._on_event.call_args[0][0]
+    assert boot_event.event_type == EventType.BOOT
+
+    event_names = [e for e, _ in log_events]
+    assert "boot_capture_waiting" in event_names
+    assert "boot_capture_segments_ready" in event_names
+    assert "boot_capture_triggered" in event_names
+
+
+def test_boot_capture_skipped_when_no_segments(tmp_path):
+    """_fire_boot_capture logs boot_capture_skipped when deadline expires."""
+    engine = _make_boot_capture_engine(tmp_path, segment_seconds=1)
+    engine.video_ring_buffer._get_buffer_segments.return_value = []
+
+    log_events: list[tuple[str, dict]] = []
+    warning_events: list[tuple[str, dict]] = []
+
+    def capture_info(event: str, **kw: object) -> None:
+        log_events.append((event, kw))
+
+    def capture_warning(event: str, **kw: object) -> None:
+        warning_events.append((event, kw))
+
+    with patch("shitbox.events.engine.log.info", side_effect=capture_info), \
+         patch("shitbox.events.engine.log.warning", side_effect=capture_warning), \
+         patch("time.sleep"):
+        engine._fire_boot_capture()
+
+    engine._on_event.assert_not_called()
+
+    skip_events = [e for e, kw in warning_events if e == "boot_capture_skipped"]
+    assert len(skip_events) == 1
+    skip_kw = [kw for e, kw in warning_events if e == "boot_capture_skipped"][0]
+    assert skip_kw["reason"] == "deadline_expired"
+    assert skip_kw["segment_count"] == 0
+
+
+def test_boot_capture_waits_then_fires(tmp_path):
+    """_fire_boot_capture waits through empty polls then fires when segments appear."""
+    from shitbox.events.detector import EventType
+
+    engine = _make_boot_capture_engine(tmp_path, segment_seconds=1)
+
+    seg_dir = engine.video_ring_buffer.buffer_dir
+    seg_files = [seg_dir / "seg_000.ts", seg_dir / "seg_001.ts"]
+
+    call_count = 0
+
+    def delayed_segments():
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 3:
+            return seg_files
+        return []
+
+    engine.video_ring_buffer._get_buffer_segments.side_effect = delayed_segments
+
+    with patch("shitbox.events.engine.log.info"), \
+         patch("time.sleep"):
+        engine._fire_boot_capture()
+
+    engine._on_event.assert_called_once()
+    assert engine._on_event.call_args[0][0].event_type == EventType.BOOT
+    assert call_count >= 3
