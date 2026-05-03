@@ -271,7 +271,7 @@ capture:
     duration_seconds: 60
     resolution: 1280x720
     fps: 30
-    audio_device: ""  # ELP camera has no usable audio device
+    audio_device: "plughw:CARD=Snowball,DEV=0"  # DEFERRED — verify with: arecord -l | grep Snowball
   timelapse:
     enabled: true
     interval_seconds: 30
@@ -301,7 +301,14 @@ capture:
       fps: 15
       position: bottom_right
       scale: 0.85
-      camera_controls: {} # populate after: v4l2-ctl -d /dev/camera-cabin -L
+      camera_controls:
+        # DEFERRED — tune on Pi with: v4l2-ctl -d /dev/camera-cabin -L
+        # Then set controls: v4l2-ctl -d /dev/camera-cabin --set-ctrl <name>=<value>
+        # Defaults below are Brio 100 factory; adjust to fix washed-out/orange cast.
+        white_balance_automatic: 1
+        brightness: 128
+        contrast: 128
+        saturation: 128
   speaker:
     enabled: true
     model_path: /var/lib/shitbox/tts/en_GB-northern_english_male-medium.onnx
@@ -432,6 +439,11 @@ hardware:
       label: UACDemo
       criticality: best_effort
       description: "USB mic for TTS speaker (also playback)"
+    - role: audio_cabin_mic
+      bus: audio
+      label: Snowball
+      criticality: best_effort
+      description: "Blue Snowball USB condenser mic (cabin audio)"
     - role: button
       bus: gpio
       pin: 17

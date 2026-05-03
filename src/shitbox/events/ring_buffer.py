@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import List
 
 
-@dataclass(slots=True)
+@dataclass
 class IMUSample:
     """Single IMU sample at high rate."""
 
