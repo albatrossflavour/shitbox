@@ -680,10 +680,11 @@ class VideoRingBuffer:
                 )
 
             pip_chain = (
-                f"[1:v]scale=iw*{self.pip_scale}:-2,"
-                "pad=iw+4:ih+20:2:18:color=black@0.7,"
+                f"[1:v]eq=brightness=0.06:saturation=1.2,"
+                f"scale=iw*{self.pip_scale}:-2,"
+                "pad=iw+6:ih+28:3:24:color=black@0.7,"
                 "drawtext=text='Cabin':"
-                "fontsize=13:fontcolor=white@0.9:x=6:y=3[pip]"
+                "fontsize=22:fontcolor=white@0.9:x=8:y=4[pip]"
             )
             parts = [p for p in [logo_prep, pip_chain, composite] if p]
             filter_complex = ";".join(parts)
@@ -1497,9 +1498,10 @@ class VideoRingBuffer:
         # equivalent of the slate — the cabin stream stays invisible through
         # both intro and slate, appearing from T=head_offset_s onward.
         pip_chain = (
-            f"[1:v]scale=iw*{self.pip_scale}:-2,"
-            "pad=iw+4:ih+20:2:18:color=black@0.7,"
-            "drawtext=text='Cabin':fontsize=13:fontcolor=white@0.9:x=6:y=3,"
+            f"[1:v]eq=brightness=0.06:saturation=1.2,"
+            f"scale=iw*{self.pip_scale}:-2,"
+            "pad=iw+6:ih+28:3:24:color=black@0.7,"
+            "drawtext=text='Cabin':fontsize=22:fontcolor=white@0.9:x=8:y=4,"
             f"setpts=PTS-STARTPTS+{head_offset_s}/TB[pip]"
         )
         overlay_chain = (

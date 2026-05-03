@@ -297,10 +297,10 @@ capture:
       enabled: true
       device: /dev/camera-cabin # Logitech Brio 100 (cabin-facing, D-14)
       input_format: mjpeg
-      resolution: 640x480
+      resolution: 1280x720
       fps: 15
       position: bottom_right
-      scale: 0.25
+      scale: 0.85
       camera_controls: {} # populate after: v4l2-ctl -d /dev/camera-cabin -L
   speaker:
     enabled: true
