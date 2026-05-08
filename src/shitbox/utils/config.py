@@ -144,13 +144,43 @@ class LightConfig:
 
 
 @dataclass
-class PowerConfig:
-    """INA226 power monitor (D-06, ships disabled)."""
+class PowerRailConfig:
+    """One INA228 power monitor on a named rail.
+
+    `chip` selects the driver. Currently only `ina228` is registered;
+    the slot is kept open in case a future build wires up a second
+    chip on a different rail. Defaults assume an Adafruit breakout
+    with a 15 mΩ shunt.
+
+    `disconnected_threshold_v` gates noise from a chip whose V+/V- pins
+    are floating (rail not yet wired). Readings below this are dropped
+    entirely rather than pushed to the database / Prometheus, so the
+    dashboard shows "no data" instead of microvolt-level ADC noise.
+    Default 1.0 V is well below any real DC rail (12 V, 5 V, 3.3 V) and
+    safely above the noise floor of an unwired chip (~1 mV).
+    """
 
     enabled: bool = False
+    chip: str = "ina228"
     i2c_bus: int = 1
     address: int = 0x40
-    shunt_ohms: float = 0.1
+    shunt_ohms: float = 0.015
+    max_expected_amps: float = 10.0
+    sample_rate_hz: float = 1.0
+    disconnected_threshold_v: float = 1.0
+
+
+@dataclass
+class PMICConfig:
+    """Pi 5 PMIC rail telemetry via `vcgencmd pmic_read_adc`.
+
+    Reports voltage and current on every internal Pi rail (EXT5V input,
+    3V3_SYS, VDD_CORE, DDR_*, HDMI, ...). Replaces the abandoned external
+    INA237-on-5V-rail attempt.
+    """
+
+    enabled: bool = True
+    vcgencmd_path: str = "vcgencmd"
     sample_rate_hz: float = 1.0
 
 
@@ -244,7 +274,12 @@ class SensorsConfig:
     imu_heading: IMUHeadingConfig = field(default_factory=IMUHeadingConfig)
     temperature: TemperatureConfig = field(default_factory=TemperatureConfig)
     light: LightConfig = field(default_factory=LightConfig)
-    power: PowerConfig = field(default_factory=PowerConfig)
+    power_battery: PowerRailConfig = field(
+        default_factory=lambda: PowerRailConfig(
+            chip="ina228", address=0x40, max_expected_amps=10.0
+        )
+    )
+    pmic: PMICConfig = field(default_factory=PMICConfig)
     particulate: ParticulateConfig = field(default_factory=ParticulateConfig)
     environment: EnvironmentConfig = field(default_factory=EnvironmentConfig)
     tca4307: Tca4307Config = field(default_factory=Tca4307Config)
@@ -619,8 +654,12 @@ def load_config(config_path: str | Path | None = None) -> Config:
                 IMUHeadingConfig, data.get("sensors", {}).get("imu_heading", {})
             ),
             temperature=temp_config,
-            power=_dict_to_dataclass(
-                PowerConfig, data.get("sensors", {}).get("power", {})
+            power_battery=_dict_to_dataclass(
+                PowerRailConfig,
+                data.get("sensors", {}).get("power_battery", {}),
+            ),
+            pmic=_dict_to_dataclass(
+                PMICConfig, data.get("sensors", {}).get("pmic", {})
             ),
             particulate=_dict_to_dataclass(
                 ParticulateConfig, data.get("sensors", {}).get("particulate", {})

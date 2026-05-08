@@ -591,17 +591,37 @@ class BatchSyncService:
                     )
 
             elif reading.sensor_type.value == "power":
+                # SI base units in the value, unit in the metric name
+                # (Prometheus convention). `rail` label distinguishes the
+                # battery (INA228) from the Pi (INA237) — falls back to
+                # unlabelled if sensor_id is unset (legacy data).
+                power_labels = dict(labels)
+                if reading.sensor_id:
+                    power_labels["rail"] = reading.sensor_id
                 if reading.bus_voltage_v is not None:
                     metrics.append(
-                        ("shitbox_bus_voltage", labels, reading.bus_voltage_v, timestamp_ms)
+                        ("shitbox_voltage_volts", power_labels,
+                         reading.bus_voltage_v, timestamp_ms)
                     )
                 if reading.current_ma is not None:
+                    # Stored in mA in the DB; export in amps.
                     metrics.append(
-                        ("shitbox_current", labels, reading.current_ma, timestamp_ms)
+                        ("shitbox_current_amps", power_labels,
+                         reading.current_ma / 1000.0, timestamp_ms)
                     )
-                if reading.power_mw is not None:
+                # Derive power if both V and I are present; otherwise fall
+                # back to the (rare) explicit power_mw if it ever gets set.
+                if (reading.bus_voltage_v is not None
+                        and reading.current_ma is not None):
+                    power_w = reading.bus_voltage_v * (reading.current_ma / 1000.0)
                     metrics.append(
-                        ("shitbox_power", labels, reading.power_mw, timestamp_ms)
+                        ("shitbox_power_watts", power_labels,
+                         power_w, timestamp_ms)
+                    )
+                elif reading.power_mw is not None:
+                    metrics.append(
+                        ("shitbox_power_watts", power_labels,
+                         reading.power_mw / 1000.0, timestamp_ms)
                     )
 
             elif reading.sensor_type.value == "environment":

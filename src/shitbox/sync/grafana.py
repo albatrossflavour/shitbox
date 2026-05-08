@@ -50,7 +50,10 @@ class GrafanaAnnotator:
                 relative = video_path.relative_to(self._captures_dir)
                 base = self._config.video_base_url.rstrip("/")
                 url = f"{base}/{relative}"
-                text += f'\n<a href="{url}">Video</a>'
+                # `<br>` because Grafana renders annotation text as HTML —
+                # a literal `\n` collapses to whitespace and runs the link
+                # onto the same line as the headline.
+                text += f'<br><a href="{url}">Video</a>'
             except ValueError:
                 pass
 

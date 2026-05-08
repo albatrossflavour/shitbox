@@ -26,14 +26,18 @@
 //   Display + SD short edge              → case LEFT (-X)
 //
 // Fasteners:
-//   Pi mount     — 4× M2.5 heat-set inserts in floor → brass standoffs
-//                  carry the NVMe HAT, then Pi.
+//   Pi mount     — 4× M2.5 countersunk flat-head screws come UP through
+//                  the floor from underneath, threading into the bottom
+//                  of brass standoffs that sit on the floor. Floor is
+//                  countersunk on the underside so the screw heads sit
+//                  flush and the case lies flat on its mount.
 //   Plywood mnt  — 4× M4 through-hole flanges on left+right exteriors.
 //                  Bolt holes sit between the corner towers, inset
 //                  ~4 mm past each tower edge — clear of the towers
 //                  on both sides without widening the flange tabs.
 //   Top↔Bottom   — 4× N35 magnet pairs in corner buttress towers.
-//   Top↔Roof     — permanent bond (PETG solvent weld, full-area).
+//   Top↔Roof     — 4× N35 magnet pairs, housed in the roof corbel rings
+//                  (turret bases) and the top of each corner tower.
 //
 // v3 changes from v2 (see ~/Brain/projects/shitbox-pi-case-redesign-spec.md):
 //   - Three-piece split: bottom + top + roof.
@@ -130,11 +134,21 @@ FAN_PI_GAP       = 5;
 GX12_D     = 12.5;
 SMA_HOLE_D = 6.7;
 
-// ---- Pi mounting: heat-set inserts in floor ----
+// ---- Pi mounting: M2.5 screws up from underneath into brass standoffs ----
+// v3.1: switched from heat-set inserts (screw down from above) to clearance
+// hole + countersink (screw up from below). Brass standoffs sit directly on
+// the floor; M2.5 countersunk flat-head screws come up through the floor and
+// thread into the bottom of the standoff. Bosses dropped to 0 — they were
+// added to host the inserts and were lifting the whole stack ~3 mm too high
+// relative to the front-wall HDMI/USB-C cutouts.
+PI_SCREW_CLEAR_D = 3.2;       // M2.5 clearance, fat-finger generous
+PI_SCREW_HEAD_D  = 5.0;       // countersink top diameter (M2.5 flat-head ~4.7)
+PI_SCREW_HEAD_H  = 1.6;       // countersink depth (M2.5 head ~1.4)
+BOSS_H_M25       = 0;         // bosses gone — standoff sits on floor
+STANDOFF_BOSS_OD = 7.0;       // retained for any reverted-build geometry
+// Legacy heat-set constants — no longer used after v3.1, kept for ref.
 INSERT_D_M25     = 4.0;
 INSERT_H_M25     = 5.0;
-BOSS_H_M25       = 3.0;
-STANDOFF_BOSS_OD = 7.0;
 
 // ---- Mounting flanges (M4 to plywood panel) ----
 FLANGE_W      = 12;
@@ -151,10 +165,12 @@ FLANGE_Y_EXT     = 0;
 BOLT_TOWER_INSET = 4;     // gap from tower outer edge to bolt centre
 
 // ---- Clamshell closure (4× N35 magnet pairs, 4×2 mm) ----
+// Pocket diameter is generous on purpose — drop-in fit, dab of CA glue.
+// Tight press-fit sized pockets are unfriendly to assemble by hand.
 MAGNET_D        = 4.0;
 MAGNET_H        = 2.0;
-MAGNET_POCKET_D = 4.1;
-MAGNET_POCKET_H = MAGNET_H + 0.1;
+MAGNET_POCKET_D = 4.4;          // 0.4 mm diametral clearance
+MAGNET_POCKET_H = MAGNET_H + 0.2;
 
 // Parked: bolts replaced by magnets.
 CLAM_BOLT_D       = 3.4;
@@ -385,6 +401,7 @@ module pi_case_top() {
         castle_sword_relief_top();
         pi_case_top_lid_vent();          // large central air cutout
         pi_case_shiplap_slot_clearance();
+        pi_case_roof_magnet_holes(piece = "top");
     }
 }
 
@@ -409,6 +426,7 @@ module pi_case_roof() {
         roof_crenel_gap_slits();
         roof_machicolation_holes();
         roof_drawbridge_grooves();
+        pi_case_roof_magnet_holes(piece = "roof");
         // roof_perimeter_rope_grooves(): dropped — ~120 rotated cube
         // subtractions blew the CSG normalization tree past 100k
         // elements and the whole render came back empty. Module
@@ -590,13 +608,22 @@ module pi_case_standoff_bosses() {
 //   Bottom / top cutouts (functional)
 // =====================================================
 module pi_case_standoff_insert_holes() {
-    boss_top_z = FLOOR + BOSS_H_M25;
+    // M2.5 countersunk flat-head screws come UP from underneath.
+    // Clearance hole through the floor; countersink on the underside so
+    // the head sits flush and the case lies flat on its mount.
     for (sx = [0, 1], sy = [0, 1]) {
         x = PI_X0 + PI5_INSET + sx * PI5_HOLE_W;
         y = PI_Y0 + PI5_INSET + sy * PI5_HOLE_D_SPACING;
-        translate([x, y, boss_top_z - INSERT_H_M25])
-            cylinder(d = INSERT_D_M25,
-                     h = INSERT_H_M25 + 0.2);
+        // Through clearance hole (covers FLOOR + any residual boss height)
+        translate([x, y, -0.1])
+            cylinder(d = PI_SCREW_CLEAR_D,
+                     h = FLOOR + BOSS_H_M25 + 0.2);
+        // Countersink cone on the underside — wide opening at z=0,
+        // tapering up to the clearance hole diameter at the head depth.
+        translate([x, y, -0.05])
+            cylinder(d1 = PI_SCREW_HEAD_D,
+                     d2 = PI_SCREW_CLEAR_D,
+                     h  = PI_SCREW_HEAD_H + 0.05);
     }
 }
 
@@ -665,15 +692,18 @@ module pi_case_flange_holes() {
     // BOLT_TOWER_INSET and the back at OUTER_D - TOWER_OD/2 -
     // BOLT_TOWER_INSET. Plenty of flange material around the hole and
     // socket access stays clear of the tower bodies.
+    //
+    // M4 bolts drop in from the TOP — bolt head sits on the upper face
+    // of the flange, shaft passes through, nut underneath (or threads
+    // into a tapped plywood mount). No counterbore on the underside;
+    // full FLANGE_THICK of material sits under each bolt head for shear
+    // and pull-through resistance.
     bolt_y_front = TOWER_OD / 2 + BOLT_TOWER_INSET;
     bolt_y_back  = OUTER_D - TOWER_OD / 2 - BOLT_TOWER_INSET;
     for (x = [FLANGE_MARGIN, TOTAL_W - FLANGE_MARGIN],
          y = [bolt_y_front, bolt_y_back])
-        translate([x, y, -0.1]) {
+        translate([x, y, -0.1])
             cylinder(d = BOLT_D, h = FLANGE_THICK + 0.2);
-            translate([0, 0, -0.1])
-                cylinder(d = BOLT_HEAD_D, h = BOLT_HEAD_H + 0.1);
-        }
 }
 
 module pi_case_clamshell_holes(bottom = true) {
@@ -685,6 +715,36 @@ module pi_case_clamshell_holes(bottom = true) {
     } else {
         for (x = [TOWER_X_L, TOWER_X_R], y = [TOWER_Y_F, TOWER_Y_B])
             translate([x, y, SPLIT_Z - 0.01])
+                cylinder(d = MAGNET_POCKET_D,
+                         h = MAGNET_POCKET_H + 0.01);
+    }
+}
+
+module pi_case_roof_magnet_holes(piece = "top") {
+    // 4× N35 magnet pairs holding the ROOF onto the TOP piece. One
+    // magnet sits in the top of each corner tower (top piece), its
+    // pair sits inside the corbel ring of the matching turret base
+    // (roof piece). Mating faces meet directly — no skin between
+    // them, matching the existing top↔bottom pattern.
+    //
+    // ASSEMBLY NOTE: when seating these magnets, pick polarity so
+    // each top↔roof pair attracts. The bottom↔top pair below it (in
+    // the same corner tower) is ~34 mm of plastic away — far enough
+    // that field interaction is negligible, so polarity within a
+    // single tower can be set independently for each pair.
+    if (piece == "top") {
+        // Pocket cuts DOWN from the top mating surface
+        // (z = UPPER_TOP_Z + LID_THICK) into the corner tower body.
+        for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B])
+            translate([cx, cy,
+                       UPPER_TOP_Z + LID_THICK - MAGNET_POCKET_H])
+                cylinder(d = MAGNET_POCKET_D,
+                         h = MAGNET_POCKET_H + 0.01);
+    } else if (piece == "roof") {
+        // Pocket cuts UP from the bottom mating surface (z = 0 in
+        // the roof's own frame) into the corbel ring directly above.
+        for (cx = [TOWER_X_L, TOWER_X_R], cy = [TOWER_Y_F, TOWER_Y_B])
+            translate([cx, cy, -0.01])
                 cylinder(d = MAGNET_POCKET_D,
                          h = MAGNET_POCKET_H + 0.01);
     }

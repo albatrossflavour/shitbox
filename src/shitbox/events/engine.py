@@ -27,7 +27,8 @@ from shitbox.capture.video import VideoRecorder
 from shitbox.collectors.imu_heading import IMUHeadingCollector
 from shitbox.collectors.light import VEML7700Collector
 from shitbox.collectors.particulate import SEN0460Collector
-from shitbox.collectors.power import INA226Collector
+from shitbox.collectors.pmic import PMICCollector
+from shitbox.collectors.power import INACollector
 from shitbox.collectors.temperature import DS18B20Collector
 from shitbox.dashboard import driver_state, gps_state
 from shitbox.dashboard.server import DashboardServer, build_dashboard_server
@@ -65,7 +66,8 @@ from shitbox.utils.config import (
     LightConfig,
     OLEDConfig,
     ParticulateConfig,
-    PowerConfig,
+    PMICConfig,
+    PowerRailConfig,
     TemperatureConfig,
     load_config,
 )
@@ -121,7 +123,12 @@ class EngineConfig:
     # v2 sensor configs (phase 11)
     temperature: TemperatureConfig = field(default_factory=TemperatureConfig)
     light: LightConfig = field(default_factory=LightConfig)
-    power: PowerConfig = field(default_factory=PowerConfig)
+    power_battery: PowerRailConfig = field(
+        default_factory=lambda: PowerRailConfig(
+            chip="ina228", address=0x40, max_expected_amps=10.0
+        )
+    )
+    pmic: PMICConfig = field(default_factory=PMICConfig)
     particulate: ParticulateConfig = field(default_factory=ParticulateConfig)
     imu_heading: IMUHeadingConfig = field(default_factory=IMUHeadingConfig)
 
@@ -312,7 +319,8 @@ class EngineConfig:
             # v2 sensor configs
             temperature=config.sensors.temperature,
             light=config.sensors.light,
-            power=config.sensors.power,
+            power_battery=config.sensors.power_battery,
+            pmic=config.sensors.pmic,
             particulate=config.sensors.particulate,
             imu_heading=config.sensors.imu_heading,
             # GPS settings
@@ -546,12 +554,19 @@ class UnifiedEngine:
                 callback=self._on_reading,
             )
 
-        self._ina226_collector: Optional[INA226Collector] = None
-        if config.power.enabled:
-            self._ina226_collector = INA226Collector(
-                config=config.power,
+        self._power_battery_collector: Optional[INACollector] = None
+        if config.power_battery.enabled:
+            self._power_battery_collector = INACollector(
+                config=config.power_battery,
                 callback=self._on_reading,
-                role="power",
+                role="battery",
+            )
+
+        self._pmic_collector: Optional[PMICCollector] = None
+        if config.pmic.enabled:
+            self._pmic_collector = PMICCollector(
+                config=config.pmic,
+                callback=self._on_reading,
             )
 
         self._imu_heading_collector: Optional[IMUHeadingCollector] = None
@@ -867,6 +882,11 @@ class UnifiedEngine:
         self._event_json_paths: dict[int, Path] = {}
         self._event_video_paths: dict[int, Path] = {}
         self._event_paths_lock = threading.Lock()
+        # Tracks event_ids whose Grafana annotation has already been posted,
+        # so the post can move from _check_post_captures (EARLY, no video
+        # link yet) into _on_video_complete (LATE, video path known) without
+        # racing or double-posting.
+        self._annotated_event_ids: set[int] = set()
         # Phase 26 gap-closure (plan 26-05): poster PNG paths handed over from
         # the ring-buffer worker via the save callback's third argument. Same
         # lock as _event_video_paths — both arrive on the same callback, so one
@@ -1265,8 +1285,8 @@ class UnifiedEngine:
                     prefix=event.event_type.value,
                     post_seconds=int(self.config.capture_post_seconds),
                     pre_seconds=int(self.config.capture_pre_seconds),
-                    callback=lambda path, _cs, _pp, _eid=eid: self._on_video_complete(
-                        _eid, path, _pp
+                    callback=lambda path, _cs, _pp, _eid=eid, _ev=event: self._on_video_complete(
+                        _eid, path, _pp, _ev
                     ),
                     event=event,
                 )
@@ -1359,12 +1379,17 @@ class UnifiedEngine:
         event_id: int,
         path: Optional[Path],
         poster_path: Optional[Path],
+        event: Optional["Event"] = None,
     ) -> None:
         """Called when a video ring buffer save finishes.
 
         Updates the saved event metadata with the video path and
         regenerates events.json. Also stashes the stable poster PNG
         path so _check_post_captures can rename it into the per-day dir.
+        This is also the right moment to post the Grafana annotation —
+        we now know the final video path (or that the save failed), so
+        the annotation can carry the link instead of being posted blind
+        from _check_post_captures.
 
         Args:
             event_id: id() of the source Event — lookup key for the
@@ -1374,6 +1399,9 @@ class UnifiedEngine:
                          worker (buffer_dir/pending_slates/<save_id>.png),
                          or None when no slate rendered or move to
                          holding failed.
+            event: The source Event (captured in the callback closure so
+                   we keep direct access even after _pending_post_capture
+                   has been popped).
         """
         buzzer.beep_capture_end()
         speaker.speak_capture_end()
@@ -1389,6 +1417,9 @@ class UnifiedEngine:
                         event_id=event_id,
                         poster=str(poster_path),
                     )
+            # Save failed but the event still happened — post a link-less
+            # annotation so the dashboard at least flags the moment.
+            self._post_grafana_annotation(event_id, event, video_path=None)
             return
 
         log.info("capture_complete", path=str(path), event_id=event_id)
@@ -1410,6 +1441,10 @@ class UnifiedEngine:
                         event_id=event_id,
                         poster=str(poster_path),
                     )
+                # Annotate now — _check_post_captures will pick up the
+                # stashed video_path and save the JSON, but it no longer
+                # owns the annotation.
+                self._post_grafana_annotation(event_id, event, video_path=path)
                 return
 
             # LATE branch (G-01): event already saved with poster_path=None.
@@ -1454,6 +1489,35 @@ class UnifiedEngine:
             self.event_storage.generate_events_json()
             if self.capture_sync:
                 self.capture_sync.trigger_sync()
+        # LATE branch: event JSON was already saved by _check_post_captures
+        # without a video link in the annotation; post the annotation here
+        # now that the path is known. The set guard inside the helper
+        # prevents a double-post if _check_post_captures fires later.
+        self._post_grafana_annotation(event_id, event, video_path=path)
+
+    def _post_grafana_annotation(
+        self,
+        event_id: int,
+        event: Optional["Event"],
+        video_path: Optional[Path],
+    ) -> None:
+        """Post the Grafana annotation for an event exactly once.
+
+        Centralised so the EARLY (_check_post_captures) and LATE
+        (_on_video_complete) paths can both call without racing or
+        producing duplicate annotations. The first caller wins; later
+        callers no-op via the _annotated_event_ids set. ``event`` is
+        ``Optional`` so test callers that drive _on_video_complete
+        directly without an Event don't crash — runtime always supplies
+        one through the save-event callback closure.
+        """
+        if not self.grafana or event is None:
+            return
+        with self._event_paths_lock:
+            if event_id in self._annotated_event_ids:
+                return
+            self._annotated_event_ids.add(event_id)
+        self.grafana.annotate_event(event, video_path)
 
     def _check_post_captures(self) -> None:
         """Complete any pending post-event captures."""
@@ -1579,9 +1643,14 @@ class UnifiedEngine:
                         captures_dir=self.config.captures_dir,
                     )
 
-                # Post Grafana annotation
-                if self.grafana:
-                    self.grafana.annotate_event(event, video_path)
+                # Grafana annotation: only post here when we already have
+                # the video path (because _on_video_complete fired first and
+                # stashed it). When video_path is None we let
+                # _on_video_complete own the post so the annotation carries
+                # the link instead of going out blind. The dedup set inside
+                # the helper makes the first caller win.
+                if video_path is not None:
+                    self._post_grafana_annotation(event_id, event, video_path)
 
                 completed.append(event_id)
 
@@ -1898,7 +1967,10 @@ class UnifiedEngine:
             "peak_g": peak_g,
             "imu_ok": self.sampler._running,
             "env_ok": self._environment_collector is not None,
-            "pwr_ok": getattr(self, "_ina226_collector", None) is not None,
+            "pwr_ok": (
+                getattr(self, "_power_battery_collector", None) is not None
+                or getattr(self, "_pmic_collector", None) is not None
+            ),
             "events_captured": self.events_captured,
             "recording": (
                 self.video_ring_buffer is not None
@@ -2075,8 +2147,9 @@ class UnifiedEngine:
         if imu_reading:
             readings.append(imu_reading)
 
-        # Power reading — v2 INA226 runs in its own collector thread (callback-driven);
-        # no polling needed here.
+        # Power readings — INA228 (12 V battery) runs in its own collector
+        # thread; PMIC collector polls vcgencmd for every Pi-internal rail.
+        # Both are callback-driven, no polling needed here.
 
         # Environment reading
         if self._environment_collector:
@@ -2695,9 +2768,15 @@ class UnifiedEngine:
             "light_collector",
             self._light_collector.start if self._light_collector else lambda: None,
         )
-        started["power"] = self._start_service_graceful(
-            "power_collector",
-            self._ina226_collector.start if self._ina226_collector else lambda: None,
+        started["power_battery"] = self._start_service_graceful(
+            "power_battery_collector",
+            self._power_battery_collector.start
+            if self._power_battery_collector
+            else lambda: None,
+        )
+        started["pmic"] = self._start_service_graceful(
+            "pmic_collector",
+            self._pmic_collector.start if self._pmic_collector else lambda: None,
         )
         for collector in (
             self._ds18b20_collector,
@@ -2847,7 +2926,8 @@ class UnifiedEngine:
             self._ds18b20_collector,
             self._light_collector,
             self._particulate_collector,
-            self._ina226_collector,
+            self._power_battery_collector,
+            self._pmic_collector,
             self._imu_heading_collector,
         ):
             if collector is not None:
@@ -2992,8 +3072,17 @@ class UnifiedEngine:
             self._telemetry_thread.start()
             recovered.append("telemetry_thread")
 
-        # 3. Video ring buffer
-        if self.video_ring_buffer and not self.video_ring_buffer.is_running:
+        # 3. Video ring buffer.
+        # Only intervene if the buffer's own internal health-monitor thread
+        # has died. While it's alive, it handles ffmpeg crashes itself
+        # (kill + restart with stall detection). Calling stop()/start()
+        # here in parallel was the source of the recurring
+        # 'NoneType' object has no attribute 'poll' race in _start_ffmpeg.
+        if (
+            self.video_ring_buffer
+            and not self.video_ring_buffer.is_running
+            and not self.video_ring_buffer.is_monitoring
+        ):
             log.error("video_ring_buffer_dead", restarting=True)
             issues.append("video_ring_buffer_dead")
             try:

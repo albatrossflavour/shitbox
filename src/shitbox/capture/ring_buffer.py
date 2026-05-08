@@ -205,6 +205,18 @@ class VideoRingBuffer:
         return self._process.poll() is None
 
     @property
+    def is_monitoring(self) -> bool:
+        """True if the internal health-monitor thread is alive.
+
+        When this is True the ring buffer can self-recover from an ffmpeg
+        crash — the engine-level health check should leave it alone.
+        Stepping in concurrently was the source of the recurring
+        ``'NoneType' object has no attribute 'poll'`` race in
+        ``_start_ffmpeg``.
+        """
+        return self._health_thread is not None and self._health_thread.is_alive()
+
+    @property
     def is_saving(self) -> bool:
         """True while any save-event thread is active (copying segments or concatenating)."""
         with self._lock:
@@ -742,7 +754,12 @@ class VideoRingBuffer:
         # Clear stale segments before every spawn. Without this, segments from
         # a previous ffmpeg run remain on disk with old mtimes and corrupt the
         # cross-camera sync offset calculation after a crash+restart.
-        self._cleanup_buffer()
+        # ``include_saves=False`` because a save worker may be actively
+        # populating a save_N/ directory between pre- and post-event copies;
+        # nuking it here was breaking concats with the cabin_pre_*.ts
+        # ``Impossible to open`` cascade. Stale save dirs from crashed prior
+        # runs are cleaned at full process start() instead.
+        self._cleanup_buffer(include_saves=False)
         self._ffmpeg_started_at = time.time()
 
         if not os.path.exists(self.device):
@@ -778,18 +795,26 @@ class VideoRingBuffer:
             if self.audio_device:
                 # Try with audio
                 cmd = self._build_ffmpeg_cmd(with_audio=True)
-                self._process = subprocess.Popen(
+                proc = subprocess.Popen(
                     cmd,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     preexec_fn=_nice,
                 )
+                self._process = proc
                 self._audio_available = True
 
-                # Check for early crash (audio device not ready)
+                # Check for early crash (audio device not ready). Use a
+                # LOCAL reference (`proc`) for the poll — `self._process`
+                # may be nulled by another thread (notably ``stop()``)
+                # during the 3 s sleep, which used to crash here with
+                # ``'NoneType' object has no attribute 'poll'``. Bail out
+                # quietly if we've been stopped or replaced.
                 time.sleep(3.0)
-                if self._process.poll() is not None:
+                if not self._running or self._process is not proc:
+                    return
+                if proc.poll() is not None:
                     stderr = self._read_stderr()
                     log.warning(
                         "video_ring_buffer_audio_unavailable",
@@ -1770,10 +1795,19 @@ class VideoRingBuffer:
             tmp_mp4.unlink(missing_ok=True)
             return None
 
-    def _cleanup_buffer(self) -> None:
-        """Remove segment files and temporary save dirs from the buffer directory.
+    def _cleanup_buffer(self, include_saves: bool = True) -> None:
+        """Remove segment files (and optionally save dirs) from the buffer.
 
-        Preserves intro.ts so it doesn't need to be re-converted on every restart.
+        Preserves intro.ts so it doesn't need to be re-converted on every
+        restart.
+
+        ``include_saves``: when True (process start), wipe stale ``save_*``
+        directories left behind by a crashed prior run. When False (mid-run
+        ffmpeg restart), leave them alone — a save worker thread may be
+        actively using one. Deleting them mid-flight strands the concat
+        list pointing at vanished pre-event segment copies, which is the
+        cause of the recurring ``concat_failed`` /
+        ``cabin_pre_000.ts: Impossible to open`` cascade.
         """
         if not self.buffer_dir.exists():
             return
@@ -1782,8 +1816,9 @@ class VideoRingBuffer:
                 f.unlink(missing_ok=True)
         combined = self.buffer_dir / "combined.ts"
         combined.unlink(missing_ok=True)
-        for d in self.buffer_dir.glob("save_*"):
-            shutil.rmtree(str(d), ignore_errors=True)
+        if include_saves:
+            for d in self.buffer_dir.glob("save_*"):
+                shutil.rmtree(str(d), ignore_errors=True)
 
     def _cleanup_pending_slates(self) -> None:
         """Sweep pending_slates/ of orphan files from crashed prior runs.

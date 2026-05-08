@@ -18,11 +18,11 @@ _MINIMAL_HARDWARE_YAML = textwrap.dedent("""\
           path: /dev/camera-front
           criticality: critical
           description: "UGREEN USB webcam (front dashcam)"
-        - role: power
+        - role: power_battery
           bus: i2c-1
           address: 0x40
           criticality: important
-          description: "INA226 power monitor"
+          description: "INA228 — 12 V battery rail"
         - role: gps
           bus: usb
           path: /dev/gps0

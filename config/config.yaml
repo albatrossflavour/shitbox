@@ -175,11 +175,31 @@ sensors:
     address: 0x19
     sample_rate_hz: 1.0
 
-  power: # INA226 at 0x40 — shunt not wired, ships disabled (D-06)
+  # 12 V battery rail — INA228 at 0x40, Adafruit breakout with 15 mΩ
+  # shunt (±10 A range). 20-bit precision, has on-chip energy/charge
+  # accumulators we don't currently consume.
+  power_battery:
     enabled: true
+    chip: ina228
     i2c_bus: 1
     address: 0x40
-    shunt_ohms: 0.1
+    shunt_ohms: 0.015
+    max_expected_amps: 10.0
+    sample_rate_hz: 1.0
+    # Drop readings below this — chip is alive on I2C but V+/V- are
+    # currently floating, so the ADC reads its own noise floor (~mV).
+    # 1.0 V is well below any real DC rail (12 V battery seen at ~12 V,
+    # AGM dead at ~10 V) and well above the noise floor.
+    disconnected_threshold_v: 1.0
+
+  # Pi 5 internal rail telemetry via `vcgencmd pmic_read_adc` — covers
+  # EXT5V input, 3V3_SYS, VDD_CORE, DDR_*, HDMI, etc. Replaces the
+  # earlier external INA237-on-5V-rail attempt: putting an inline shunt
+  # in the Pi's 5 V supply path cost too much voltage headroom and
+  # tripped undervoltage warnings under load. The PMIC measures
+  # everything that chip would have, with zero added series resistance.
+  pmic:
+    enabled: true
     sample_rate_hz: 1.0
 
 storage:
@@ -300,7 +320,10 @@ capture:
       resolution: 1280x720
       fps: 15
       position: bottom_right
-      scale: 0.85
+      # 0.35 → ~14% of the 1920×1080 output frame. 0.85 was the previous
+      # value (~32%) and blocked the road. Bigger is busier; a sane corner
+      # thumbnail sits around 0.3–0.4.
+      scale: 0.35
       camera_controls:
         # DEFERRED — tune on Pi with: v4l2-ctl -d /dev/camera-cabin -L
         # Then set controls: v4l2-ctl -d /dev/camera-cabin --set-ctrl <name>=<value>
@@ -387,11 +410,11 @@ hardware:
       description: "ELP 4K IMX317 (front dashcam)"
 
     # ── important ────────────────────────────────────────────────────────
-    - role: power
+    - role: power_battery
       bus: i2c-1
       address: 0x40
       criticality: important
-      description: "INA226 power monitor"
+      description: "INA228 power monitor — 12 V battery rail"
     - role: gps
       bus: usb
       path: /dev/gps0

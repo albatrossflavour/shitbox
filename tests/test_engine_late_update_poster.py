@@ -108,6 +108,10 @@ def _build_engine_skeleton(
     engine._on_video_complete = UnifiedEngine._on_video_complete.__get__(
         engine, SimpleNamespace
     )
+    engine._post_grafana_annotation = UnifiedEngine._post_grafana_annotation.__get__(
+        engine, SimpleNamespace
+    )
+    engine._annotated_event_ids = set()
     engine._check_post_captures = UnifiedEngine._check_post_captures.__get__(
         engine, SimpleNamespace
     )
