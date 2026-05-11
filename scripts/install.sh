@@ -68,7 +68,7 @@ cat > /etc/default/gpsd << 'EOF'
 # Shitbox Rally Telemetry - gpsd configuration
 START_DAEMON="true"
 USBAUTO="false"
-DEVICES="/dev/serial0"
+DEVICES="/dev/ttyAMA0"
 GPSD_OPTIONS="-n"
 EOF
 

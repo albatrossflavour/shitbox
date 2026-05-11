@@ -163,8 +163,9 @@ fi
 # Expected 8 devices: 0x10 0x19 0x1c 0x3c 0x40 0x5c 0x6a 0x77.
 # Empty bus = TCA4307 latched into protective isolation; recovery is either
 # the EN-pin pulse (once GPIO 12 is wired) or a hard power-cycle of the Pi.
-if command -v i2cdetect >/dev/null 2>&1; then
-  output=$(sudo -n i2cdetect -y 1 2>/dev/null || echo "")
+I2CDETECT=$(command -v i2cdetect 2>/dev/null || command -v /usr/sbin/i2cdetect 2>/dev/null || echo "")
+if [ -n "$I2CDETECT" ]; then
+  output=$(sudo -n "$I2CDETECT" -y 1 2>/dev/null || echo "")
   if [ -n "$output" ]; then
     count=$(echo "$output" | awk 'NR>1 && /^[0-9a-f][0-9a-f]?:/ {for(i=2;i<=NF;i++) if($i!="--") n++} END {print n+0}')
     if [ "$count" -ge 8 ]; then

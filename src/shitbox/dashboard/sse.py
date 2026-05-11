@@ -75,6 +75,9 @@ _HARDWARE_LABELS: Dict[str, str] = {
     "audio_mic": "USB Mic",
     "button": "Button",
     "display_hdmi": "HDMI",
+    "tpms_radio": "TPMS Radio",
+    "power_battery": "Battery",
+    "audio_cabin_mic": "Cabin Mic",
 }
 
 
