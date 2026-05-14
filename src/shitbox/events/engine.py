@@ -788,6 +788,7 @@ class UnifiedEngine:
                     resolution=config.video_buffer_resolution,
                     fps=config.video_buffer_fps,
                     audio_device=config.capture_audio_device,
+                    audio_hw_role="audio_cabin_mic",
                     segment_seconds=config.video_buffer_segment_seconds,
                     buffer_segments=config.video_buffer_segments,
                     post_event_seconds=int(config.capture_post_seconds),

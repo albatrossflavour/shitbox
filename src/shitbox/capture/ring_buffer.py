@@ -93,9 +93,11 @@ class VideoRingBuffer:
         camera_controls: Optional[dict[str, int]] = None,
         pip_camera_controls: Optional[dict[str, int]] = None,
         role: str = "camera_front",
+        audio_hw_role: str = "",
     ):
         self.buffer_dir = Path(buffer_dir)
         self.role = role
+        self.audio_hw_role = audio_hw_role
         self.output_dir = Path(output_dir)
         self.device = device
         self.input_format = input_format
@@ -1087,16 +1089,33 @@ class VideoRingBuffer:
                         last_audio_retry = time.time()
                         continue
 
-                # If running without audio, periodically restart to retry
-                # (only when an audio device is configured but wasn't available at last start)
+                # If running without audio, periodically restart to retry —
+                # but only when the hardware supervisor hasn't confirmed the
+                # device absent. If audio_hw_role is set and hw_state shows
+                # MISSING after at least one probe (last_seen > 0), the device
+                # genuinely isn't fitted and we stop retrying.
                 if self.audio_device and not self._audio_available:
-                    now = time.time()
-                    if (now - last_audio_retry) >= self.AUDIO_RETRY_SECONDS:
-                        log.info("video_ring_buffer_retrying_audio")
-                        self._audio_available = True
-                        self._kill_current()
-                        self._start_ffmpeg()
-                        last_audio_retry = time.time()
+                    if self.audio_hw_role:
+                        status = hw_state.get_state(self.audio_hw_role)
+                        if status is not None and status.last_seen == 0.0 and status.consecutive_misses > 0:
+                            # Supervisor has probed at least once and never seen it.
+                            pass  # skip retry — device not present
+                        else:
+                            now = time.time()
+                            if (now - last_audio_retry) >= self.AUDIO_RETRY_SECONDS:
+                                log.info("video_ring_buffer_retrying_audio")
+                                self._audio_available = True
+                                self._kill_current()
+                                self._start_ffmpeg()
+                                last_audio_retry = time.time()
+                    else:
+                        now = time.time()
+                        if (now - last_audio_retry) >= self.AUDIO_RETRY_SECONDS:
+                            log.info("video_ring_buffer_retrying_audio")
+                            self._audio_available = True
+                            self._kill_current()
+                            self._start_ffmpeg()
+                            last_audio_retry = time.time()
 
             except Exception as e:
                 log.error("health_monitor_cycle_error", error=str(e))

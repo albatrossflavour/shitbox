@@ -147,6 +147,11 @@ def report_degraded(role: str) -> Optional[DeviceState]:
     return prev.state
 
 
+def get_state(role: str) -> Optional[DeviceStatus]:
+    """Return the current DeviceStatus for a role, or None if unknown."""
+    return _state.get(role)
+
+
 def snapshot() -> Dict[str, DeviceStatus]:
     """Return current state dict. Do not mutate — DeviceStatus is frozen."""
     return _state
