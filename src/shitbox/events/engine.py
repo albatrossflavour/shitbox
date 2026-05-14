@@ -905,6 +905,11 @@ class UnifiedEngine:
         self._cabin_temp_c: Optional[float] = None
         self._gps_has_fix = False
         self._clock_synced_from_gps = False
+        # Frozen-GPS detection: track when position last changed so we can
+        # reject a receiver that keeps emitting a stale fix with non-zero speed.
+        self._gps_frozen_lat: Optional[float] = None
+        self._gps_frozen_lon: Optional[float] = None
+        self._gps_last_position_change: float = 0.0
 
         # Auto-zero state (IMU-05, IMU-06). Counter ticks at 1 Hz telemetry
         # cadence; window data is pulled from the 100 Hz ring buffer on
@@ -1731,6 +1736,29 @@ class UnifiedEngine:
                 log.warning("gps_speed_implausible_dropped", raw_kmh=round(speed_kmh, 1))
                 speed_kmh = None
 
+            lat = tpv.get("lat")
+            lon = tpv.get("lon")
+
+            # Detect receiver freeze: gpsd can replay an identical cached TPV
+            # indefinitely (position and speed bit-for-bit unchanged) while the
+            # module is stuck. Exact float equality catches the hardware fault;
+            # legitimate slow movement always produces some positional variation.
+            # Only gate on speed > 5 km/h — a parked car is allowed to sit still.
+            if lat is not None and lon is not None and speed_kmh is not None and speed_kmh > 5.0:
+                if lat == self._gps_frozen_lat and lon == self._gps_frozen_lon:
+                    frozen_for = time.monotonic() - self._gps_last_position_change
+                    if frozen_for > 15.0:
+                        log.warning(
+                            "gps_position_frozen",
+                            frozen_seconds=round(frozen_for, 1),
+                            speed_kmh=round(speed_kmh, 1),
+                        )
+                        return None
+                else:
+                    self._gps_frozen_lat = lat
+                    self._gps_frozen_lon = lon
+                    self._gps_last_position_change = time.monotonic()
+
             satellites: Optional[int] = None
             if sky is not None:
                 u = sky.get("uSat")
@@ -1742,8 +1770,8 @@ class UnifiedEngine:
             reading = Reading(
                 timestamp_utc=timestamp,
                 sensor_type=SensorType.GPS,
-                latitude=tpv.get("lat"),
-                longitude=tpv.get("lon"),
+                latitude=lat,
+                longitude=lon,
                 altitude_m=tpv.get("alt") if mode >= 3 else None,
                 speed_kmh=speed_kmh,
                 heading_deg=tpv.get("track"),

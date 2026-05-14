@@ -45,35 +45,35 @@ _cache: dict[str, Path] = {}
 
 # All fixed messages that can be pre-rendered at init time
 _CACHED_MESSAGES: dict[str, str] = {
-    "system_ready": "Good day, Michael. All systems are operational.",
-    "crash_recovery": "I'm back online, Michael. We had a bit of a moment there.",
-    "thermal_warning": "Michael, my core temperature is climbing. Worth keeping an eye on.",
-    "thermal_critical": "Michael, I'm rather warm. We should slow down before something gives.",
-    "thermal_recovered": "Much better, Michael. Temperature back to normal.",
-    "under_voltage": "Michael, the electrical supply is unsteady.",
-    "service_crash": "Michael, I'm afraid one of my subsystems has dropped out.",
-    "service_recovered": "All accounted for again, Michael.",
-    "health_alarm": "Michael, something isn't quite right. I'd appreciate a look.",
-    "i2c_lockup": "Michael, I've lost the sensor bus. I can't see what's happening out there.",
-    "ffmpeg_stall": "Michael, the recording has stalled. I'm working on it.",
-    "capture_failed": "I'm sorry Michael, I couldn't save that one.",
-    "capture_hard_brake": "That was a firm one, Michael.",
-    "capture_big_corner": "Hold on Michael, significant cornering.",
-    "capture_high_g": "Michael, that was a substantial G-force.",
-    "capture_rough_road": "Brace yourself Michael, the road is rough here.",
-    "capture_manual": "Recording now, Michael. As you wish.",
-    "capture_end": "Recording saved, Michael.",
+    "system_ready": "Good day, My Lord. All systems are operational.",
+    "crash_recovery": "I'm back online, My Lord. We had a bit of a moment there.",
+    "thermal_warning": "My Lord, my core temperature is climbing. Worth keeping an eye on.",
+    "thermal_critical": "My Lord, I'm rather warm. We should slow down before something gives.",
+    "thermal_recovered": "Much better, My Lord. Temperature back to normal.",
+    "under_voltage": "My Lord, the electrical supply is unsteady.",
+    "service_crash": "My Lord, I'm afraid one of my subsystems has dropped out.",
+    "service_recovered": "All accounted for again, My Lord.",
+    "health_alarm": "My Lord, something isn't quite right. I'd appreciate a look.",
+    "i2c_lockup": "My Lord, I've lost the sensor bus. I can't see what's happening out there.",
+    "ffmpeg_stall": "My Lord, the recording has stalled. I'm working on it.",
+    "capture_failed": "I'm sorry My Lord, I couldn't save that one.",
+    "capture_hard_brake": "That was a firm one, My Lord.",
+    "capture_big_corner": "Hold on My Lord, significant cornering.",
+    "capture_high_g": "My Lord, that was a substantial G-force.",
+    "capture_rough_road": "Brace yourself My Lord, the road is rough here.",
+    "capture_manual": "Recording now, My Lord. As you wish.",
+    "capture_end": "Recording saved, My Lord.",
     # Hardware presence alerts (HW-03 / HW-04)
-    "hw_imu_missing": "Michael, I've lost the IMU. Event detection is down.",
-    "hw_imu_restored": "IMU back with me, Michael.",
-    "hw_camera_front_missing": "Michael, the front camera is offline. I can't record.",
-    "hw_camera_front_restored": "Front camera restored, Michael.",
-    "hw_power_missing": "Michael, I've lost the power monitor.",
-    "hw_power_restored": "Power monitor back, Michael.",
-    "hw_gps_missing": "Michael, I've lost GPS.",
-    "hw_gps_restored": "GPS fix restored, Michael.",
-    "hw_environment_missing": "Environment sensor isn't responding, Michael.",
-    "hw_environment_restored": "Environment sensor back, Michael.",
+    "hw_imu_missing": "My Lord, I've lost the IMU. Event detection is down.",
+    "hw_imu_restored": "IMU back with me, My Lord.",
+    "hw_camera_front_missing": "My Lord, the front camera is offline. I can't record.",
+    "hw_camera_front_restored": "Front camera restored, My Lord.",
+    "hw_power_missing": "My Lord, I've lost the power monitor.",
+    "hw_power_restored": "Power monitor back, My Lord.",
+    "hw_gps_missing": "My Lord, I've lost GPS.",
+    "hw_gps_restored": "GPS fix restored, My Lord.",
+    "hw_environment_missing": "Environment sensor isn't responding, My Lord.",
+    "hw_environment_restored": "Environment sensor back, My Lord.",
     # Phase 28 TPMS alerts — wheel × alert-type matrix (4 wheels × 3 types)
     "tpms_low_front_driver": "Front driver tyre low pressure.",
     "tpms_low_front_passenger": "Front passenger tyre low pressure.",
@@ -410,9 +410,9 @@ def speak_boot(was_crash: bool = False) -> None:
         was_crash: True if the previous shutdown was an unclean crash.
     """
     if was_crash:
-        _enqueue("I'm back online, Michael. We had a bit of a moment there.")
+        _enqueue("I'm back online, My Lord. We had a bit of a moment there.")
     else:
-        _enqueue("Good day, Michael. All systems are operational.")
+        _enqueue("Good day, My Lord. All systems are operational.")
 
 
 def speak_thermal_warning() -> None:
@@ -422,7 +422,7 @@ def speak_thermal_warning() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Michael, my core temperature is climbing. Worth keeping an eye on.")
+    _enqueue("My Lord, my core temperature is climbing. Worth keeping an eye on.")
 
 
 def speak_thermal_critical() -> None:
@@ -432,7 +432,7 @@ def speak_thermal_critical() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Michael, I'm rather warm. We should slow down before something gives.")
+    _enqueue("My Lord, I'm rather warm. We should slow down before something gives.")
 
 
 def speak_thermal_recovered() -> None:
@@ -442,7 +442,7 @@ def speak_thermal_recovered() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Much better, Michael. Temperature back to normal.")
+    _enqueue("Much better, My Lord. Temperature back to normal.")
 
 
 def speak_under_voltage() -> None:
@@ -452,19 +452,19 @@ def speak_under_voltage() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Michael, the electrical supply is unsteady.")
+    _enqueue("My Lord, the electrical supply is unsteady.")
 
 
 def speak_power_restored() -> None:
     """Announce that an under-voltage condition has cleared.
 
     Suppressed during the boot grace period. Style-matched to
-    speak_thermal_recovered ("Much better, Michael. …") — terse,
+    speak_thermal_recovered ("Much better, My Lord. …") — terse,
     second-person, observational.
     """
     if not _should_alert():
         return
-    _enqueue("Power restored, Michael. We're back to steady.")
+    _enqueue("Power restored, My Lord. We're back to steady.")
 
 
 def speak_tpms_low(position: str) -> None:
@@ -518,7 +518,7 @@ def speak_service_crash() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Michael, I'm afraid one of my subsystems has dropped out.")
+    _enqueue("My Lord, I'm afraid one of my subsystems has dropped out.")
 
 
 def speak_service_recovered() -> None:
@@ -528,7 +528,7 @@ def speak_service_recovered() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("All accounted for again, Michael.")
+    _enqueue("All accounted for again, My Lord.")
 
 
 def speak_health_alarm() -> None:
@@ -538,7 +538,7 @@ def speak_health_alarm() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Michael, something isn't quite right. I'd appreciate a look.")
+    _enqueue("My Lord, something isn't quite right. I'd appreciate a look.")
 
 
 def speak_hardware_missing(role: str, tier: str) -> None:
@@ -552,7 +552,7 @@ def speak_hardware_missing(role: str, tier: str) -> None:
     if tier == "best_effort" and role != "environment":
         return
     key = f"hw_{role}_missing"
-    text = _CACHED_MESSAGES.get(key, f"{role} offline, Michael.")
+    text = _CACHED_MESSAGES.get(key, f"{role} offline, My Lord.")
     _enqueue(text)
 
 
@@ -563,7 +563,7 @@ def speak_hardware_restored(role: str, tier: str) -> None:
     if tier == "best_effort" and role != "environment":
         return
     key = f"hw_{role}_restored"
-    text = _CACHED_MESSAGES.get(key, f"{role} restored, Michael.")
+    text = _CACHED_MESSAGES.get(key, f"{role} restored, My Lord.")
     _enqueue(text)
 
 
@@ -574,7 +574,7 @@ def speak_i2c_lockup() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Michael, I've lost the sensor bus. I can't see what's happening out there.")
+    _enqueue("My Lord, I've lost the sensor bus. I can't see what's happening out there.")
 
 
 def speak_ffmpeg_stall() -> None:
@@ -584,7 +584,7 @@ def speak_ffmpeg_stall() -> None:
     """
     if not _should_alert():
         return
-    _enqueue("Michael, the recording has stalled. I'm working on it.")
+    _enqueue("My Lord, the recording has stalled. I'm working on it.")
 
 
 def speak_capture_failed() -> None:
@@ -596,15 +596,15 @@ def speak_capture_failed() -> None:
         return
     if not _should_alert():
         return
-    _enqueue("I'm sorry Michael, I couldn't save that one.")
+    _enqueue("I'm sorry My Lord, I couldn't save that one.")
 
 
 _EVENT_TYPE_MESSAGES: dict[str, str] = {
-    "hard_brake": "That was a firm one, Michael.",
-    "big_corner": "Hold on Michael, significant cornering.",
-    "high_g": "Michael, that was a substantial G-force.",
-    "rough_road": "Brace yourself Michael, the road is rough here.",
-    "manual_capture": "Recording now, Michael. As you wish.",
+    "hard_brake": "That was a firm one, My Lord.",
+    "big_corner": "Hold on My Lord, significant cornering.",
+    "high_g": "My Lord, that was a substantial G-force.",
+    "rough_road": "Brace yourself My Lord, the road is rough here.",
+    "manual_capture": "Recording now, My Lord. As you wish.",
 }
 
 
@@ -625,7 +625,7 @@ def speak_capture_end() -> None:
 
     Not suppressed by the grace period — captures don't happen at boot.
     """
-    _enqueue("Recording saved, Michael.")
+    _enqueue("Recording saved, My Lord.")
 
 
 def speak_waypoint_reached(name: str, day: int) -> None:
@@ -638,7 +638,7 @@ def speak_waypoint_reached(name: str, day: int) -> None:
         name: Human-readable waypoint name (e.g. "Broken Hill").
         day: Rally day number (e.g. 3).
     """
-    _enqueue(f"Michael, we've reached {name}. Day {day} of our journey.")
+    _enqueue(f"My Lord, we've reached {name}. Day {day} of our journey.")
 
 
 def speak_distance_update(km: int) -> None:
@@ -650,4 +650,4 @@ def speak_distance_update(km: int) -> None:
     Args:
         km: Kilometres driven today (integer).
     """
-    _enqueue(f"We've covered {km} kilometres today, Michael. A good run.")
+    _enqueue(f"We've covered {km} kilometres today, My Lord. A good run.")
