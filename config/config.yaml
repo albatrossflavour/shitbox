@@ -291,7 +291,7 @@ capture:
     duration_seconds: 60
     resolution: 1280x720
     fps: 30
-    audio_device: ""  # Snowball not currently fitted; set device name here when connected
+    audio_device: "plughw:CARD=Snowball,DEV=0"  # Blue Snowball USB mic; hw_state gates retry if not fitted
   timelapse:
     enabled: true
     interval_seconds: 30
