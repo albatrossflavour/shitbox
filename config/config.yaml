@@ -21,6 +21,7 @@ sensors:
     rally_start_lon: 145.4673
     rally_destination_lat: -37.8679
     rally_destination_lon: 144.9743
+    rally_start_date: "2026-07-11"  # Route map shows only today's drive before this date; full rally from this date onward
     route:
       waypoints:
         - name: "Port Douglas"

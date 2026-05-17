@@ -262,6 +262,7 @@ class EngineConfig:
     rally_start_lon: float = 145.467250
     rally_destination_lat: float = -37.819142
     rally_destination_lon: float = 144.960397
+    rally_start_date: str = ""
 
     # OLED display
     oled_enabled: bool = False
@@ -428,6 +429,7 @@ class EngineConfig:
             rally_start_lon=config.sensors.gps.rally_start_lon,
             rally_destination_lat=config.sensors.gps.rally_destination_lat,
             rally_destination_lon=config.sensors.gps.rally_destination_lon,
+            rally_start_date=getattr(config.sensors.gps, "rally_start_date", ""),
             # OLED display
             oled_enabled=config.display.oled.enabled,
             oled_i2c_bus=config.display.oled.i2c_bus,
@@ -748,6 +750,7 @@ class UnifiedEngine:
             home_lat=self.config.home_lat,
             home_lng=self.config.home_lng,
             home_exclusion_radius_m=self.config.home_exclusion_radius_m,
+            rally_start_date=self.config.rally_start_date,
         )
         if self.capture_sync is not None:
             self.capture_sync.register_json_generator(

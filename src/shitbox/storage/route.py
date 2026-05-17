@@ -112,6 +112,7 @@ class RouteStorage:
         home_lat: float = 0.0,
         home_lng: float = 0.0,
         home_exclusion_radius_m: float = 2000.0,
+        rally_start_date: str = "",
     ) -> None:
         self.db = db
         self.tolerance_m = tolerance_m
@@ -119,6 +120,8 @@ class RouteStorage:
         self.home_lng = home_lng
         self.home_exclusion_radius_m = home_exclusion_radius_m
         self._exclude_home = home_lat != 0.0 or home_lng != 0.0
+        self._rally_start_date = rally_start_date  # "YYYY-MM-DD" or ""
+        self._day_cache: Dict[str, List[Tuple[float, float]]] = {}
 
     def generate_route_json(self) -> Dict[str, Any]:
         """Return route payload suitable for route.json.
@@ -137,12 +140,23 @@ class RouteStorage:
         Column list is explicit -- never SELECT * -- to guarantee no future schema
         columns (cost_*, user_id, device_id) can leak into the payload.
         """
+        # Determine the earliest date to include in the route.
+        # Before the rally: only show today so daily driving doesn't accumulate.
+        # From rally_start_date onward: show everything from day 1 of the rally.
+        today_sydney = _sydney_date(datetime.now(timezone.utc).isoformat())
+        if self._rally_start_date and today_sydney >= self._rally_start_date:
+            route_from = self._rally_start_date
+        else:
+            route_from = today_sydney
+
         with self.db.transaction() as conn:
             rows = conn.execute(
                 "SELECT timestamp_utc, latitude, longitude FROM readings "
                 "WHERE sensor_type = 'gps' "
                 "AND latitude IS NOT NULL AND longitude IS NOT NULL "
-                "ORDER BY timestamp_utc ASC"
+                "AND strftime('%Y-%m-%d', datetime(timestamp_utc, '+10 hours')) >= ? "
+                "ORDER BY timestamp_utc ASC",
+                (route_from,),
             ).fetchall()
 
         excluded = 0
@@ -163,7 +177,13 @@ class RouteStorage:
         total_after = 0
         for day, pts in by_day.items():
             total_before += len(pts)
-            simp = douglas_peucker(pts, self.tolerance_m)
+            # Completed days are cached — Douglas-Peucker only re-runs for today.
+            if day < today_sydney and day in self._day_cache:
+                simp = self._day_cache[day]
+            else:
+                simp = douglas_peucker(pts, self.tolerance_m)
+                if day < today_sydney:
+                    self._day_cache[day] = simp
             total_after += len(simp)
             points_rounded = [
                 [round(p[0], _COORD_DECIMALS), round(p[1], _COORD_DECIMALS)]
