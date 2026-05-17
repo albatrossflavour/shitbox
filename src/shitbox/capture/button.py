@@ -119,8 +119,8 @@ class ButtonHandler:
             except Exception as e:
                 log.error("button_read_error", error=str(e))
 
-            # Poll at 100 Hz
-            time.sleep(0.01)
+            # Poll at 10 Hz — sufficient for human button response
+            time.sleep(0.1)
 
     def simulate_press(self) -> None:
         """Simulate a button press (for testing without hardware)."""
