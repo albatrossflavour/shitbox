@@ -1080,7 +1080,11 @@ class UnifiedEngine:
         Returns:
             True if a fix was obtained.
         """
-        log.info("waiting_for_gps_fix", max_wait_seconds=max_wait)
+        log.info(
+            "waiting_for_gps_fix",
+            max_wait_seconds=max_wait,
+            system_utc=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        )
 
         for i in range(max_wait):
             if not self._running:
@@ -1107,7 +1111,9 @@ class UnifiedEngine:
                         wait_seconds=i + 1,
                         lat=round(reading.latitude, 4),
                         lon=round(reading.longitude, 4),
+                        satellites=reading.satellites,
                         clock_synced=self._clock_synced_from_gps,
+                        system_utc=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                     )
                     return True
             except Exception as e:
@@ -1796,15 +1802,23 @@ class UnifiedEngine:
         avoid fighting NTP when it is available.
 
         Uses clock_settime via ctypes — requires CAP_SYS_TIME capability
-        on the systemd service.
+        on the systemd service. After setting the system clock, writes it
+        back to the Pi 5 hardware RTC so subsequent boots start accurate.
         """
         import ctypes
         import ctypes.util
+        import subprocess
 
         try:
-            drift = abs((gps_time - datetime.now(timezone.utc)).total_seconds())
+            system_now = datetime.now(timezone.utc)
+            drift = abs((gps_time - system_now).total_seconds())
             if drift < 30:
-                log.info("clock_already_accurate", drift_seconds=round(drift, 1))
+                log.info(
+                    "clock_already_accurate",
+                    system_utc=system_now.strftime("%Y-%m-%d %H:%M:%S"),
+                    gps_utc=gps_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    drift_seconds=round(drift, 1),
+                )
                 self._clock_synced_from_gps = True
                 return
 
@@ -1828,10 +1842,27 @@ class UnifiedEngine:
             if ret == 0:
                 log.info(
                     "clock_synced_from_gps",
-                    gps_time=gps_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    system_utc_before=system_now.strftime("%Y-%m-%d %H:%M:%S"),
+                    gps_utc=gps_time.strftime("%Y-%m-%d %H:%M:%S"),
                     drift_seconds=round(drift, 1),
                 )
                 self._clock_synced_from_gps = True
+                # Write corrected time back to the Pi 5 hardware RTC so next
+                # boot starts with a sane clock even before GPS fix.
+                try:
+                    result = subprocess.run(
+                        ["hwclock", "--systohc", "--utc"],
+                        capture_output=True,
+                        timeout=5,
+                    )
+                    if result.returncode == 0:
+                        log.info("rtc_updated_from_gps")
+                    else:
+                        log.warning(
+                            "rtc_update_failed", stderr=result.stderr.decode(errors="replace")
+                        )
+                except Exception as rtc_err:
+                    log.warning("rtc_update_error", error=str(rtc_err))
             else:
                 errno = ctypes.get_errno()
                 log.error("clock_sync_failed", errno=errno)
@@ -2693,6 +2724,12 @@ class UnifiedEngine:
                 log.warning("boot_metric_send_failed", error=str(e))
 
         threading.Thread(target=_send_boot_metric, daemon=True, name="boot-metric").start()
+
+        # Log system clock before GPS correction so drift is visible in the journal.
+        log.info(
+            "system_clock_at_startup",
+            utc=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        )
 
         # Initialise GPS and wait for fix (up to 20 seconds)
         if self.config.gps_enabled:

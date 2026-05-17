@@ -1,0 +1,4 @@
+# Grant dialout group read/write access to the hardware RTC.
+# This allows the shitbox-telemetry service (running as tgreen, in the
+# dialout group) to call hwclock --systohc after syncing the clock from GPS.
+KERNEL=="rtc0", GROUP="dialout", MODE="0660"

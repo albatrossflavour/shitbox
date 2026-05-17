@@ -33,15 +33,26 @@ else
     echo "I2C baudrate already configured"
 fi
 
+# Enable 1-Wire bitbang driver for DS18B20 temperature sensors (GPIO 4 default)
+if ! grep -q "w1-gpio" /boot/firmware/config.txt 2>/dev/null; then
+    echo "dtoverlay=w1-gpio" >> /boot/firmware/config.txt
+    echo "1-Wire (w1-gpio) overlay enabled"
+else
+    echo "1-Wire overlay already configured"
+fi
+
 # Add user to required groups
 usermod -aG i2c,gpio,audio,video $ACTUAL_USER
 
 # Install udev rules for stable camera symlinks (/dev/camera-front, /dev/camera-cabin)
+# and RTC group access (allows hwclock --systohc from the telemetry service)
 echo ""
 echo "=== Installing udev rules ==="
 cp "$INSTALL_DIR/udev/99-shitbox-cameras.rules" /etc/udev/rules.d/
+cp "$INSTALL_DIR/systemd/50-rtc.rules" /etc/udev/rules.d/
 udevadm control --reload-rules
 udevadm trigger --subsystem-match=video4linux
+udevadm trigger --subsystem-match=rtc
 echo "Camera udev rules installed. Symlinks:"
 echo "  /dev/camera-front  → UGREEN front camera"
 echo "  /dev/camera-cabin  → Logitech Brio 100 cabin camera"
