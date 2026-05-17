@@ -171,7 +171,7 @@ def _system_conditions_payload() -> List[Dict[str, Any]]:
 
 MAX_CLIENTS: int = 8
 KEEPALIVE_SECONDS: int = 15
-FAST_HZ: float = 10.0
+FAST_HZ: float = 5.0
 SLOW_HZ: float = 1.0
 
 router = APIRouter()
