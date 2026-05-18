@@ -1481,7 +1481,7 @@ class VideoRingBuffer:
             "-movflags", "+faststart",
             str(tmp_mp4),
         ]
-        return cmd, 300
+        return ["nice", "-n", "10"] + cmd, 900
 
     def _build_dual_concat_reencode_cmd(
         self,
@@ -1559,7 +1559,7 @@ class VideoRingBuffer:
                 f"{overlay_chain};"
                 f"[{logo_input_idx}:v]format=rgba,colorchannelmixer=aa=0.4[logo];"
                 f"[base]ass={ass_path}[text];"
-                "[text][logo]overlay=10:10,format=yuv420p[out]"
+                "[text][logo]overlay=10:10:shortest=1,format=yuv420p[out]"
             )
         else:
             filter_complex = (
@@ -1591,7 +1591,7 @@ class VideoRingBuffer:
             "-movflags", "+faststart",
             str(tmp_mp4),
         ]
-        return cmd, 300
+        return ["nice", "-n", "10"] + cmd, 900
 
     def _render_slate(
         self,
