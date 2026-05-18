@@ -451,6 +451,37 @@ class VideoRingBuffer:
             log.warning("probe_duration_failed", path=str(path), error=str(e))
         return 0.0
 
+    @staticmethod
+    def _probe_start_pts(path: Path) -> float:
+        """Return the PTS of the first video packet in seconds, or 0.0 on failure.
+
+        Uses packet-level pts_time rather than stream start_time because
+        MPEG-TS segment files often report start_time=0 in the stream header
+        even when actual packet PTS values are much larger (e.g. after
+        segment_wrap cycling).
+        """
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe", "-v", "error",
+                    "-select_streams", "v:0",
+                    "-show_entries", "packet=pts_time",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    "-read_intervals", "%+#1",
+                    str(path),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                raw = result.stdout.decode().strip()
+                if raw and raw != "N/A":
+                    return float(raw)
+        except (subprocess.TimeoutExpired, ValueError, OSError) as e:
+            log.warning("probe_start_pts_failed", path=str(path), error=str(e))
+        return 0.0
+
     def _prepare_intro(self) -> None:
         """Pre-convert intro video to MPEG-TS matching capture settings.
 
@@ -1489,6 +1520,7 @@ class VideoRingBuffer:
         concat_front: Path,
         concat_cabin: Path,
         tmp_mp4: Path,
+        cabin_pts_offset: float = 0.0,
     ) -> tuple[list[str], int]:
         """Build ffmpeg command for dual-stream concat + PiP composite + HUD.
 
@@ -1512,6 +1544,14 @@ class VideoRingBuffer:
         slate_duration = self._pending_slate_duration
         head_offset_s = intro_duration + slate_duration
 
+        # cabin_pts_offset accounts for the PTS difference between the first
+        # selected front segment and the first selected cabin segment. When
+        # the pre-event window straddles a segment boundary differently for
+        # each stream (e.g. front gets 2 segments, cabin only 1), their
+        # PTS origins diverge. Without correction the cabin PiP appears ahead
+        # of the front footage by the difference.
+        cabin_shift = head_offset_s + cabin_pts_offset
+
         history = ol.get_history(clip_start_wall, clip_end_wall)
         ass_path = concat_front.parent / "overlay.ass"
         ol.generate_ass_overlay(
@@ -1527,6 +1567,8 @@ class VideoRingBuffer:
             intro_s=round(intro_duration, 2),
             slate_s=round(slate_duration, 2),
             head_offset_s=round(head_offset_s, 2),
+            cabin_pts_offset=round(cabin_pts_offset, 3),
+            cabin_shift=round(cabin_shift, 3),
             clip_s=round(clip_end_wall - clip_start_wall, 2),
             mode="dual",
         )
@@ -1537,22 +1579,23 @@ class VideoRingBuffer:
         logo_exists = Path(ol.LOGO_PATH).exists()
 
         # PTS-STARTPTS zero-resets the cabin stream's timeline (it can start
-        # well above zero when segment_wrap has cycled), then +head_offset_s
-        # (intro+slate) shifts it past both on the output timeline. No cabin
-        # equivalent of the slate — the cabin stream stays invisible through
-        # both intro and slate, appearing from T=head_offset_s onward.
+        # well above zero when segment_wrap has cycled), then +cabin_shift
+        # positions it on the output timeline. cabin_shift = head_offset_s
+        # (intro+slate) + cabin_pts_offset (PTS gap between first front and
+        # first cabin segment). This keeps cabin aligned with front regardless
+        # of how many pre-event segments each stream contributed.
         pip_chain = (
             f"[1:v]eq=brightness=0.06:saturation=1.2,"
             f"scale=iw*{self.pip_scale}:-2,"
             "pad=iw+6:ih+28:3:24:color=black@0.7,"
             "drawtext=text='Cabin':fontsize=22:fontcolor=white@0.9:x=8:y=4,"
-            f"setpts=PTS-STARTPTS+{head_offset_s}/TB[pip]"
+            f"setpts=PTS-STARTPTS+{cabin_shift}/TB[pip]"
         )
         overlay_chain = (
-            f"[0:v][pip]overlay={x}:{y}:enable='gte(t,{head_offset_s})'[base]"
+            f"[0:v][pip]overlay={x}:{y}:enable='gte(t,{cabin_shift})'[base]"
         )
 
-        audio_delay_ms = int(head_offset_s * 1000)
+        audio_delay_ms = int(cabin_shift * 1000)
         audio_chain = f"[1:a]adelay={audio_delay_ms}:all=1,highpass=f=200[a]"
 
         if logo_exists:
@@ -1754,8 +1797,22 @@ class VideoRingBuffer:
         tmp_mp4 = segments[0].parent / f".tmp_{output_path.name}"
 
         if use_cabin and cabin_concat is not None and self.overlay_path:
+            cabin_pts_offset = 0.0
+            if segments and cabin_segments:
+                front_start = self._probe_start_pts(segments[0])
+                cabin_start = self._probe_start_pts(cabin_segments[0])
+                cabin_pts_offset = cabin_start - front_start
+                log.info(
+                    "cabin_pts_sync",
+                    front_seg=segments[0].name,
+                    cabin_seg=cabin_segments[0].name,
+                    front_start=round(front_start, 3),
+                    cabin_start=round(cabin_start, 3),
+                    cabin_pts_offset=round(cabin_pts_offset, 3),
+                )
             cmd, timeout = self._build_dual_concat_reencode_cmd(
                 segments, concat_list, cabin_concat, tmp_mp4,
+                cabin_pts_offset=cabin_pts_offset,
             )
         elif self.input_format == "h264" and self.overlay_path:
             # H264 passthrough stored raw segments; burn in HUD + logo now.
