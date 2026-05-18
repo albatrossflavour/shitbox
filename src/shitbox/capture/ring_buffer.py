@@ -1598,8 +1598,24 @@ class VideoRingBuffer:
             f"[0:v][pip]overlay={x}:{y}:enable='gte(t,{pip_enable_t})'[base]"
         )
 
-        audio_delay_ms = int(cabin_shift * 1000)
-        audio_chain = f"[1:a]adelay={audio_delay_ms}:all=1,highpass=f=200[a]"
+        # Audio must start at pip_enable_t (same moment the PiP video appears) so
+        # the user doesn't hear cabin audio before they can see the cabin PiP.
+        # When cabin_shift < head_offset_s (cabin started earlier than front),
+        # pip_enable_t > cabin_shift and audio would otherwise be audible during
+        # the slate. Fix: trim the audio start by the gap, then delay by
+        # pip_enable_t. This keeps cabin audio/video in sync while eliminating
+        # the early-audio window.
+        audio_trim = pip_enable_t - cabin_shift  # >= 0 always
+        audio_delay_ms = int(pip_enable_t * 1000)
+        if audio_trim > 0.01:
+            audio_chain = (
+                f"[1:a]atrim=start={audio_trim:.6f},"
+                f"asetpts=PTS-STARTPTS,"
+                f"adelay={audio_delay_ms}:all=1,"
+                f"highpass=f=200[a]"
+            )
+        else:
+            audio_chain = f"[1:a]adelay={audio_delay_ms}:all=1,highpass=f=200[a]"
 
         if logo_exists:
             logo_input_idx = 2  # 0 = front concat, 1 = cabin concat, 2 = logo
