@@ -1591,8 +1591,11 @@ class VideoRingBuffer:
             "drawtext=text='Cabin':fontsize=22:fontcolor=white@0.9:x=8:y=4,"
             f"setpts=PTS-STARTPTS+{cabin_shift}/TB[pip]"
         )
+        # Clamp PiP appearance to head_offset_s so it never overlaps the slate,
+        # even when cabin_shift < head_offset_s (cabin started earlier than front).
+        pip_enable_t = max(cabin_shift, head_offset_s)
         overlay_chain = (
-            f"[0:v][pip]overlay={x}:{y}:enable='gte(t,{cabin_shift})'[base]"
+            f"[0:v][pip]overlay={x}:{y}:enable='gte(t,{pip_enable_t})'[base]"
         )
 
         audio_delay_ms = int(cabin_shift * 1000)
