@@ -3,6 +3,10 @@ Description=Kiosk
 After=network.target graphical.target
 
 [Service]
+# Wait for X to be accepting connections before launching Chromium.
+# graphical.target is reached when lightdm starts, not when X is ready —
+# without this, Chromium crashes immediately and thrashes in restart loops.
+ExecStartPre=/bin/sh -c 'i=0; while ! DISPLAY=:0.0 xset q >/dev/null 2>&1; do i=$((i+1)); [ $i -ge 60 ] && exit 1; sleep 1; done'
 ExecStart=/home/tgreen/kiosk/kiosk.sh
 Restart=always
 User=tgreen
