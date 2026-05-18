@@ -115,32 +115,32 @@ def build_drawtext_filter() -> str:
         # Speed — bottom-left
         (
             f"drawtext=textfile='{SPEED_FILE}':reload=1"
-            f":{mono}:fontsize=22:fontcolor=white"
-            f":{box}:x=20:y=h-50"
+            f":{mono}:fontsize=28:fontcolor=white"
+            f":{box}:x=20:y=h-100"
         ),
-        # G-force — right side, above PiP inset
+        # G-force — bottom-left, below speed
         (
             f"drawtext=textfile='{GFORCE_FILE}':reload=1"
-            f":{mono}:fontsize=22:fontcolor=white"
-            f":{box}:x=w-tw-20:y=h-200"
+            f":{mono}:fontsize=28:fontcolor=white"
+            f":{box}:x=20:y=h-55"
         ),
         # Location name — top-right, prominent
         (
             f"drawtext=textfile='{LOCATION_FILE}':reload=1"
-            f":{font}:fontsize=28:fontcolor=white"
-            f":{box}:x=w-tw-20:y=16"
+            f":{font}:fontsize=34:fontcolor=white"
+            f":{box}:x=w-tw-20:y=12"
         ),
         # GPS time — top-right, below location
         (
             f"drawtext=textfile='{GPS_TIME_FILE}':reload=1"
-            f":{mono}:fontsize=22:fontcolor=white@0.8"
-            f":{box}:x=w-tw-20:y=56"
+            f":{mono}:fontsize=28:fontcolor=white@0.8"
+            f":{box}:x=w-tw-20:y=66"
         ),
         # Distance to destination — top-right, below time
         (
             f"drawtext=textfile='{DIST_DEST_FILE}':reload=1"
-            f":{mono}:fontsize=22:fontcolor=white@0.8"
-            f":{box}:x=w-tw-20:y=94"
+            f":{mono}:fontsize=28:fontcolor=white@0.8"
+            f":{box}:x=w-tw-20:y=108"
         ),
         # URL — bottom-centre, static
         (
@@ -168,7 +168,7 @@ def build_filter_complex(logo_input_idx: int) -> str:
     # Scale (no-op at 80px) + apply 40% opacity
     logo_prep = (
         f"[{logo_input_idx}:v]"
-        "format=rgba,colorchannelmixer=aa=0.4"
+        "format=rgba,colorchannelmixer=aa=0.65"
         "[logo]"
     )
 
@@ -278,11 +278,11 @@ _ASS_HEADER = (
     "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
     "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
     "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-    "Style: Mono22,DejaVu Sans Mono,22,&H00FFFFFF,&H00FFFFFF,"
+    "Style: Mono28,DejaVu Sans Mono,28,&H00FFFFFF,&H00FFFFFF,"
     "&H00000000,&H66000000,0,0,0,0,100,100,0,0,3,8,0,7,0,0,0,1\n"
-    "Style: Mono22Faded,DejaVu Sans Mono,22,&H33FFFFFF,&H33FFFFFF,"
+    "Style: Mono28Faded,DejaVu Sans Mono,28,&H33FFFFFF,&H33FFFFFF,"
     "&H00000000,&H66000000,0,0,0,0,100,100,0,0,3,8,0,7,0,0,0,1\n"
-    "Style: Sans28,DejaVu Sans,28,&H00FFFFFF,&H00FFFFFF,"
+    "Style: Sans34,DejaVu Sans,34,&H00FFFFFF,&H00FFFFFF,"
     "&H00000000,&H66000000,0,0,0,0,100,100,0,0,3,8,0,7,0,0,0,1\n"
     "Style: URL,DejaVu Sans,28,&H66FFFFFF,&H66FFFFFF,"
     "&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1\n"
@@ -346,25 +346,25 @@ def generate_ass_overlay(
             continue
 
         lines.append(_dialogue(
-            video_start, video_end, "Mono22",
-            r"\an7\pos(20,1030)", entry.speed,
+            video_start, video_end, "Mono28",
+            r"\an7\pos(20,970)", entry.speed,
         ))
         lines.append(_dialogue(
-            video_start, video_end, "Mono22",
-            r"\an9\pos(1900,880)", entry.gforce,
+            video_start, video_end, "Mono28",
+            r"\an7\pos(20,1022)", entry.gforce,
         ))
         if entry.location:
             lines.append(_dialogue(
-                video_start, video_end, "Sans28",
-                r"\an9\pos(1900,16)", entry.location,
+                video_start, video_end, "Sans34",
+                r"\an9\pos(1900,12)", entry.location,
             ))
         lines.append(_dialogue(
-            video_start, video_end, "Mono22Faded",
-            r"\an9\pos(1900,56)", entry.gps_time,
+            video_start, video_end, "Mono28Faded",
+            r"\an9\pos(1900,66)", entry.gps_time,
         ))
         lines.append(_dialogue(
-            video_start, video_end, "Mono22Faded",
-            r"\an9\pos(1900,94)", entry.dist_dest,
+            video_start, video_end, "Mono28Faded",
+            r"\an9\pos(1900,108)", entry.dist_dest,
         ))
 
     output_path.write_text("".join(lines), encoding="utf-8")
