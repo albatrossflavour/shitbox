@@ -1552,6 +1552,9 @@ class VideoRingBuffer:
             f"[0:v][pip]overlay={x}:{y}:enable='gte(t,{head_offset_s})'[base]"
         )
 
+        audio_delay_ms = int(head_offset_s * 1000)
+        audio_chain = f"[1:a]adelay={audio_delay_ms}:all=1,highpass=f=200[a]"
+
         if logo_exists:
             logo_input_idx = 2  # 0 = front concat, 1 = cabin concat, 2 = logo
             filter_complex = (
@@ -1559,13 +1562,15 @@ class VideoRingBuffer:
                 f"{overlay_chain};"
                 f"[{logo_input_idx}:v]format=rgba,colorchannelmixer=aa=0.4[logo];"
                 f"[base]ass={ass_path}[text];"
-                "[text][logo]overlay=10:10:shortest=1,format=yuv420p[out]"
+                "[text][logo]overlay=10:10:shortest=1,format=yuv420p[out];"
+                f"{audio_chain}"
             )
         else:
             filter_complex = (
                 f"{pip_chain};"
                 f"{overlay_chain};"
-                f"[base]ass={ass_path},format=yuv420p[out]"
+                f"[base]ass={ass_path},format=yuv420p[out];"
+                f"{audio_chain}"
             )
 
         cmd = [
@@ -1584,9 +1589,9 @@ class VideoRingBuffer:
         cmd += [
             "-filter_complex", filter_complex,
             "-map", "[out]",
-            "-map", "1:a?",
+            "-map", "[a]",
             "-c:v", "libx264", "-preset", "ultrafast",
-            "-c:a", "copy",
+            "-c:a", "aac", "-b:a", "128k",
             "-r", str(self.fps),
             "-movflags", "+faststart",
             str(tmp_mp4),
