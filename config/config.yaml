@@ -318,7 +318,7 @@ capture:
       enabled: true
       device: /dev/camera-cabin # Logitech Brio 100 (cabin-facing, D-14)
       input_format: mjpeg
-      resolution: 1280x720
+      resolution: 640x480
       fps: 15
       position: bottom_right
       # 0.35 → ~14% of the 1920×1080 output frame. 0.85 was the previous
