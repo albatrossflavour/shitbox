@@ -43,6 +43,7 @@ def build_app(
     drivers: Optional[List[str]] = None,
     captures_path: Optional[Path] = None,
     sync_trigger: Optional[Callable[[], None]] = None,
+    capture_trigger: Optional[Callable[[], None]] = None,
 ) -> FastAPI:
     """Construct the dashboard FastAPI app.
 
@@ -90,6 +91,15 @@ def build_app(
                     rel = jpegs[0].relative_to(captures_path)
                     return JSONResponse({"url": f"/captures/{rel}"})
             return JSONResponse({"url": None})
+
+    if capture_trigger is not None:
+        @app.post("/api/capture")
+        def trigger_capture() -> JSONResponse:
+            try:
+                capture_trigger()
+                return JSONResponse({"ok": True})
+            except Exception as exc:
+                return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -173,6 +183,7 @@ def build_dashboard_server(
     drivers: Optional[List[str]] = None,
     captures_path: Optional[Path] = None,
     sync_trigger: Optional[Callable[[], None]] = None,
+    capture_trigger: Optional[Callable[[], None]] = None,
 ) -> DashboardServer:
     """Convenience factory used by UnifiedEngine wiring."""
     app = build_app(
@@ -183,5 +194,6 @@ def build_dashboard_server(
         drivers=drivers,
         captures_path=captures_path,
         sync_trigger=sync_trigger,
+        capture_trigger=capture_trigger,
     )
     return DashboardServer(host=host, port=port, app=app)

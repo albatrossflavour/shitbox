@@ -109,6 +109,10 @@
 
     <!-- Col 3: Action buttons (33%) -->
     <div style="flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+      <button @click="triggerCapture()"
+              style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
+                     color: #f85149; font-size: 28px; font-weight: 700;
+                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">&#9679;</button>
       <button @click="openMap()"
               style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
                      color: #58a6ff; font-size: 28px; font-weight: 700;
@@ -866,6 +870,13 @@
           const h = Math.floor(seconds / 3600);
           const m = Math.floor((seconds % 3600) / 60);
           return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        },
+        async triggerCapture() {
+          try {
+            const r = await fetch('/api/capture', { method: 'POST' });
+            if (!r.ok) throw new Error('failed');
+            this.flashSuccess('Capture triggered');
+          } catch { this.errorMsg = 'Capture failed'; }
         },
         flashSuccess(msg) {
           this.successMsg = msg;

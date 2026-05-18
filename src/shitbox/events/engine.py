@@ -873,6 +873,7 @@ class UnifiedEngine:
                     drivers=config.drivers or [],
                     captures_path=Path(config.captures_dir) if config.captures_dir else None,
                     sync_trigger=self.capture_sync.trigger_sync if self.capture_sync else None,
+                    capture_trigger=self.trigger_manual_capture,
                 )
             except Exception as exc:
                 log.error("dashboard_init_failed", error=str(exc))
