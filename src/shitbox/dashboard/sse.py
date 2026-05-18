@@ -72,7 +72,7 @@ _HARDWARE_LABELS: Dict[str, str] = {
     "temp_exterior": "Exterior Probe",
     "temp_engine_bay": "Engine Bay Probe",
     "camera_cabin": "Cabin Cam",
-    "audio_mic": "USB Mic",
+    "tts_speaker": "TTS Speaker",
     "button": "Button",
     "display_hdmi": "HDMI",
     "tpms_radio": "TPMS Radio",

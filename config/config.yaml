@@ -292,7 +292,7 @@ capture:
     duration_seconds: 60
     resolution: 1280x720
     fps: 30
-    audio_device: "plughw:CARD=Snowball,DEV=0"  # Blue Snowball USB mic; hw_state gates retry if not fitted
+    audio_device: "plughw:CARD=B100,DEV=0"  # Brio 100 built-in mic (cabin camera)
   timelapse:
     enabled: true
     interval_seconds: 30
@@ -458,16 +458,16 @@ hardware:
       path: /dev/camera-cabin
       criticality: best_effort
       description: "Logitech Brio 100 (cabin)"
-    - role: audio_mic
+    - role: tts_speaker
       bus: audio
       label: UACDemo
       criticality: best_effort
-      description: "USB mic for TTS speaker (also playback)"
+      description: "Jieli UACDemoV1.0 USB speaker (TTS output)"
     - role: audio_cabin_mic
       bus: audio
-      label: Snowball
+      label: B100
       criticality: best_effort
-      description: "Blue Snowball USB condenser mic (cabin audio)"
+      description: "Logitech Brio 100 built-in mic (cabin audio)"
     - role: button
       bus: gpio
       pin: 17
