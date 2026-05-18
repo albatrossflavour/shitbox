@@ -584,15 +584,9 @@ class VideoRingBuffer:
             if with_audio:
                 cmd += ["-f", "alsa", "-i", self.audio_device]
 
-            # Output A: front camera (H264 passthrough, carries audio).
-            cmd += ["-map", "0:v", "-c:v", "copy"]
-            if with_audio:
-                audio_idx = 2 if has_cabin else 1
-                cmd += [
-                    "-map", f"{audio_idx}:a",
-                    "-c:a", "aac", "-b:a", "128k",
-                ]
+            # Output A: front camera (H264 passthrough, video-only).
             cmd += [
+                "-map", "0:v", "-c:v", "copy",
                 "-f", "segment",
                 "-segment_time", str(self.segment_seconds),
                 "-segment_wrap", str(self.buffer_segments),
@@ -600,9 +594,10 @@ class VideoRingBuffer:
                 segment_pattern,
             ]
 
-            # Output B: cabin camera (libx264 ultrafast, video-only). Matching
-            # -segment_wrap on both outputs means same index → same wall-clock
-            # window by construction, which is what save-time pairing relies on.
+            # Output B: cabin camera (libx264 ultrafast) + Brio mic audio.
+            # Audio lives here — cabin mic belongs with the cabin stream, and
+            # the front segments stay pure H264 passthrough with no intro-audio
+            # mismatch at save time.
             if has_cabin:
                 cabin_pattern = str(self.buffer_dir / "cabin_%03d.ts")
                 cabin_gop = max(1, self.pip_fps * self.segment_seconds)
@@ -611,6 +606,11 @@ class VideoRingBuffer:
                     "-c:v", "libx264", "-preset", "ultrafast",
                     "-g", str(cabin_gop),
                     "-pix_fmt", "yuv420p",
+                ]
+                if with_audio:
+                    audio_idx = 2 if has_cabin else 1
+                    cmd += ["-map", f"{audio_idx}:a", "-c:a", "aac", "-b:a", "128k"]
+                cmd += [
                     "-f", "segment",
                     "-segment_time", str(self.segment_seconds),
                     "-segment_wrap", str(self.buffer_segments),
@@ -1580,11 +1580,11 @@ class VideoRingBuffer:
             "-i", str(concat_cabin),
         ]
         if logo_exists:
-            cmd += ["-i", ol.LOGO_PATH]
+            cmd += ["-loop", "1", "-i", ol.LOGO_PATH]
         cmd += [
             "-filter_complex", filter_complex,
             "-map", "[out]",
-            "-map", "0:a?",
+            "-map", "1:a?",
             "-c:v", "libx264", "-preset", "ultrafast",
             "-c:a", "copy",
             "-r", str(self.fps),
