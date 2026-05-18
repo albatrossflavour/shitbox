@@ -41,6 +41,15 @@ else
     echo "1-Wire overlay already configured"
 fi
 
+# Force HDMI hotplug so the Pi boots cleanly without a powered display
+# (display is car-powered and may not be on at boot time)
+if ! grep -q "hdmi_force_hotplug" /boot/firmware/config.txt 2>/dev/null; then
+    echo "hdmi_force_hotplug=1" >> /boot/firmware/config.txt
+    echo "HDMI force hotplug enabled"
+else
+    echo "HDMI force hotplug already configured"
+fi
+
 # Add user to required groups
 usermod -aG i2c,gpio,audio,video $ACTUAL_USER
 
