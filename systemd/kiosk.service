@@ -1,0 +1,12 @@
+[Unit]
+Description=Kiosk
+After=network.target graphical.target
+
+[Service]
+ExecStart=/home/tgreen/kiosk/kiosk.sh
+Restart=always
+User=tgreen
+Group=tgreen
+
+[Install]
+WantedBy=graphical.target
