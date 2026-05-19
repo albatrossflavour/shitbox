@@ -2144,6 +2144,7 @@ class UnifiedEngine:
                 readings.append(gps_reading)
                 if gps_reading.speed_kmh is not None:
                     speed = gps_reading.speed_kmh if gps_reading.speed_kmh >= 3.0 else 0.0
+                    gps_reading.speed_kmh = speed
                     self._current_speed_kmh = speed
                 self._current_lat = gps_reading.latitude
                 self._current_lon = gps_reading.longitude

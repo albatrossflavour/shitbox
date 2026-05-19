@@ -1,8 +1,14 @@
 """DS18B20 1-Wire temperature collector.
 
-Reads two DS18B20 probes by sensor ID, mapped to semantic roles
+Reads DS18B20 probes by sensor ID, mapped to semantic roles
 (exterior, engine_bay) per config. IDs are discovered on the Pi 5
 during phase 11 wave 0 and recorded in HARDWARE_IDS.md.
+
+Reads directly from the kernel sysfs temperature file
+(/sys/bus/w1/devices/28-{id}/temperature) rather than via w1thermsensor.
+The w1_slave interface (which w1thermsensor uses) returns empty on the Pi 5
+kernel, causing persistent SensorNotReadyError. The temperature file returns
+millidegrees cleanly with no CRC overhead.
 
 Graceful degradation: missing or unready probes log and skip the sample
 without taking the engine down (D-24).
@@ -10,27 +16,16 @@ without taking the engine down (D-24).
 
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from shitbox.collectors.base import BaseCollector
 from shitbox.storage.models import Reading
 from shitbox.utils.logging import get_logger
 
-_SENSOR_NOT_READY_RETRY_SECONDS = 0.15  # DS18B20 needs up to 750ms to convert; retry after 150ms
+_W1_BASE = Path("/sys/bus/w1/devices")
 
 log = get_logger(__name__)
-
-# Module-level names — patched in tests via:
-#   patch("shitbox.collectors.temperature.W1ThermSensor")
-#   patch("shitbox.collectors.temperature.NoSensorFoundError", ...)
-try:
-    from w1thermsensor import NoSensorFoundError, SensorNotReadyError, W1ThermSensor
-    _HAS_W1 = True
-except ImportError:
-    W1ThermSensor = None  # type: ignore[assignment, misc]
-    NoSensorFoundError = Exception  # type: ignore[assignment, misc]
-    SensorNotReadyError = Exception  # type: ignore[assignment, misc]
-    _HAS_W1 = False
 
 
 @dataclass
@@ -60,47 +55,33 @@ class DS18B20Collector(BaseCollector["DS18B20Reading"]):
             callback=callback,
         )
         self._roles: Dict[str, str] = dict(getattr(config, "sensor_ids", {}))
-        self._sensors: Dict[str, object] = {}
-        self._disabled: bool = False
+        # Maps role -> sysfs temperature Path (None if not found at setup)
+        self._paths: Dict[str, Optional[Path]] = {}
 
     def setup(self) -> None:
-        """Initialise DS18B20 sensors by sensor ID.
-
-        Sets self._disabled=True if the w1thermsensor library is unavailable
-        (covers both real import failure and test-time sys.modules patching).
-        """
-        if W1ThermSensor is None:
-            log.warning("ds18b20_lib_missing")
-            self._disabled = True
-            return
-
+        """Resolve sysfs paths for each configured sensor ID."""
         for role, sensor_id in self._roles.items():
-            try:
-                self._sensors[role] = W1ThermSensor(sensor_id=sensor_id)
+            path = _W1_BASE / f"28-{sensor_id}" / "temperature"
+            if path.exists():
+                self._paths[role] = path
                 log.info("ds18b20_sensor_init", role=role, sensor_id=sensor_id)
-            except NoSensorFoundError:
+            else:
+                self._paths[role] = None
                 log.warning("ds18b20_sensor_not_found", role=role, sensor_id=sensor_id)
-                self._sensors[role] = None
 
     def collect(self) -> Optional[List["DS18B20Reading"]]:
         """Read temperature from each configured probe."""
-        if self._disabled:
-            return None
-
         readings: List[DS18B20Reading] = []
-        for role, sensor in self._sensors.items():
-            if sensor is None:
+        for role, path in self._paths.items():
+            if path is None:
                 continue
             try:
-                temp_c = sensor.get_temperature()
+                raw = path.read_text().strip()
+                if not raw:
+                    time.sleep(0.2)
+                    raw = path.read_text().strip()
+                temp_c = int(raw) / 1000.0
                 readings.append(DS18B20Reading(temp_celsius=temp_c, role=role))
-            except SensorNotReadyError:
-                time.sleep(_SENSOR_NOT_READY_RETRY_SECONDS)
-                try:
-                    temp_c = sensor.get_temperature()
-                    readings.append(DS18B20Reading(temp_celsius=temp_c, role=role))
-                except SensorNotReadyError as e:
-                    log.warning("ds18b20_read_error", role=role, error=str(e))
             except Exception as e:
                 log.warning("ds18b20_read_error", role=role, error=str(e))
         return readings if readings else None
