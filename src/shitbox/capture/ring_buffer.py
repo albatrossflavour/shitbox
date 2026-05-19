@@ -1550,10 +1550,10 @@ class VideoRingBuffer:
         # each stream (e.g. front gets 2 segments, cabin only 1), their
         # PTS origins diverge. Without correction the cabin PiP appears ahead
         # of the front footage by the difference.
-        # Brio 100 V4L2 timestamps lead actual frame capture by ~2.5s due to
+        # Brio 100 V4L2 timestamps lead actual frame capture by ~0.5s due to
         # USB transfer + MJPEG pipeline latency. ELP (H264 stream copy) has
         # near-zero pipeline delay. Subtract empirically measured constant.
-        BRIO_PIPELINE_LATENCY_S = 2.5
+        BRIO_PIPELINE_LATENCY_S = 0.5
         cabin_shift = head_offset_s + cabin_pts_offset - BRIO_PIPELINE_LATENCY_S
 
         history = ol.get_history(clip_start_wall, clip_end_wall)
