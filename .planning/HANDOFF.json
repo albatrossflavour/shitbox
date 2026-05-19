@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-18T23:58:17Z",
+  "timestamp": "2026-05-19T01:42:07Z",
   "phase": null,
   "phase_name": "out-of-band: cabin/front camera sync debugging",
   "phase_dir": null,
@@ -11,34 +11,35 @@
   "completed_tasks": [
     {"id": 1, "name": "Explain leading-silence audio confusion", "status": "done", "note": "Not a bug — AAC silence padding from T=0 to T=10.97s. Players skip to first non-silence frame on first play. No code change."},
     {"id": 2, "name": "Fix cabin audio starting before video (audio-before-video gap)", "status": "done", "commit": "ac4f6f6", "note": "atrim cabin audio to pip_enable_t so audio and video both appear at same output time"},
-    {"id": 3, "name": "Fix setpts STARTPTS bug causing 1.93s cabin video offset", "status": "done", "commit": "76755ab", "note": "Switched from setpts=PTS-STARTPTS+offset/TB in filter graph to -itsoffset on cabin concat input. STARTPTS is set to first PTS seen by the filter when overlay enable defers, which is non-zero (~1.932) — making the shift wrong by that amount."},
-    {"id": 4, "name": "Fix Brio 100 pipeline latency (cabin 0.5s behind)", "status": "done", "commit": "ead6912", "note": "Added BRIO_PIPELINE_LATENCY_S = 0.5, subtracted from cabin_shift. Brio V4L2 timestamps lead actual capture by ~0.5s; ELP stream-copy has near-zero lag. Deployed via rsync, shitbox-telemetry restarted."}
+    {"id": 3, "name": "Fix setpts STARTPTS bug causing 1.93s cabin video offset", "status": "done", "commit": "76755ab", "note": "Switched from setpts=PTS-STARTPTS+offset/TB to -itsoffset on cabin concat input."},
+    {"id": 4, "name": "Fix -itsoffset shifting audio stream — 9s cabin lag", "status": "done", "commit": "2abb3ef", "note": "-itsoffset shifts [1:a] as well as [1:v]. With itsoffset=8.529, atrim start=2.441 becomes a no-op (all audio already past trim point). asetpts resets from 8.529→0, causing cabin audio at raw PTS=0 instead of 2.441s in. Fix: remove -itsoffset, use setpts=PTS+cabin_shift/TB on [1:v] only inside pip_chain."},
+    {"id": 5, "name": "Increase BRIO_PIPELINE_LATENCY_S 0.5 → 2.5 (2s residual cabin lag)", "status": "done", "commit": "7e49f3c", "note": "After setpts fix confirmed working, 2s residual cabin-behind remained. Stepped latency constant from 0.5 to 2.5. Deployed to Pi."}
   ],
   "remaining_tasks": [
     {
-      "id": 5,
-      "name": "Test ead6912 on a real render",
+      "id": 6,
+      "name": "Test 7e49f3c on a real render",
       "status": "not_started",
-      "note": "Trigger manual capture on Pi, watch rendered event clip. Confirm cabin PiP video and audio are now in sync. If still off by a fixed delta, adjust BRIO_PIPELINE_LATENCY_S in ring_buffer.py _build_dual_concat_reencode_cmd()."
+      "note": "Trigger manual capture on Pi, watch rendered event clip. Confirm cabin PiP video and audio are now in sync. If still off by N seconds, set BRIO_PIPELINE_LATENCY_S = 2.5 + N in ring_buffer.py ~line 1556."
     }
   ],
   "blockers": [],
   "human_actions_pending": [
     {
       "action": "Trigger a manual capture on the Pi and review the rendered clip",
-      "context": "ead6912 (BRIO_PIPELINE_LATENCY_S=0.5) is deployed but untested. User's last observation was 'cabin 0.5s behind' after itsoffset switch. This fix should close that gap.",
+      "context": "7e49f3c (BRIO_PIPELINE_LATENCY_S=2.5) is deployed. Prior render had cabin 2s behind front after the setpts fix. This should close the gap.",
       "blocking": true
     }
   ],
   "decisions": [
     {
-      "decision": "Use -itsoffset on cabin concat input instead of setpts filter",
-      "rationale": "setpts STARTPTS is the first PTS seen by the filter. When overlay enable defers cabin frames, that PTS is ~1.932, not 0 — so the formula undershoots by ~1.932s. -itsoffset operates at demuxer level, is unambiguous.",
+      "decision": "setpts=PTS+cabin_shift/TB in pip_chain (video only), not -itsoffset",
+      "rationale": "-itsoffset operates at demuxer level and shifts all streams including audio. The audio atrim chain depends on [1:a] starting at raw PTS=0 from the concat demuxer. Using setpts on [1:v] only inside the filter graph is the correct approach.",
       "phase": "out-of-band"
     },
     {
-      "decision": "BRIO_PIPELINE_LATENCY_S = 0.5",
-      "rationale": "Brio 100 V4L2 timestamps lead actual frame capture by ~0.5s (USB transfer + MJPEG encode pipeline). ELP H264 stream copy has near-zero latency. Subtracting 0.5 from cabin_shift aligns wall-clock capture times.",
+      "decision": "BRIO_PIPELINE_LATENCY_S = 2.5",
+      "rationale": "Empirically derived. After the setpts fix, 2s residual cabin lag remained. Constant stepped from 0.5 to 2.5 to compensate.",
       "phase": "out-of-band"
     },
     {
@@ -51,6 +52,6 @@
     "src/shitbox/dashboard/sse.py — IMU Y-axis negation fix (gy = -snap['g_y'], unrelated to video sync)",
     ".planning/STATE.md — session timestamp update"
   ],
-  "next_action": "User triggers manual capture, watches rendered clip, confirms sync. If good, done. If still off, adjust BRIO_PIPELINE_LATENCY_S in src/shitbox/capture/ring_buffer.py around line 1553.",
-  "context_notes": "Four sessions of progressively isolating sync errors. 18-21s desync fixed by PTS probe (prev session). This session: 2s early = stacked setpts bug (1.93s) + Brio latency (0.5s). itsoffset switch revealed the hidden Brio offset. Now a single constant corrects it. Should be within one Brio frame (~33ms at 15fps) after ead6912."
+  "next_action": "User triggers manual capture, watches rendered clip, confirms sync. If good, done. If still off by N seconds, set BRIO_PIPELINE_LATENCY_S = 2.5 + N in src/shitbox/capture/ring_buffer.py ~line 1556.",
+  "context_notes": "Five sessions of progressively isolating sync errors. itsoffset was introduced to fix the setpts STARTPTS bug, but had to be replaced because itsoffset shifts audio too, breaking the atrim chain. setpts in the video filter only is the correct approach. BRIO_PIPELINE_LATENCY_S is now 2.5 — an empirical constant that may need further tuning."
 }
