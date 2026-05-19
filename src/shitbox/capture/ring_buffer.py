@@ -452,8 +452,8 @@ class VideoRingBuffer:
         return 0.0
 
     @staticmethod
-    def _probe_start_pts(path: Path) -> float:
-        """Return the PTS of the first video packet in seconds, or 0.0 on failure.
+    def _probe_start_pts(path: Path, select_streams: str = "v:0") -> float:
+        """Return the PTS of the first packet in the given stream, in seconds.
 
         Uses packet-level pts_time rather than stream start_time because
         MPEG-TS segment files often report start_time=0 in the stream header
@@ -464,7 +464,7 @@ class VideoRingBuffer:
             result = subprocess.run(
                 [
                     "ffprobe", "-v", "error",
-                    "-select_streams", "v:0",
+                    "-select_streams", select_streams,
                     "-show_entries", "packet=pts_time",
                     "-of", "default=noprint_wrappers=1:nokey=1",
                     "-read_intervals", "%+#1",
@@ -1826,13 +1826,29 @@ class VideoRingBuffer:
             cabin_pts_offset = 0.0
             if segments and cabin_segments:
                 front_start = self._probe_start_pts(segments[0])
-                cabin_start = self._probe_start_pts(cabin_segments[0])
+                cabin_video_start = self._probe_start_pts(cabin_segments[0])
+                cabin_audio_start = self._probe_start_pts(cabin_segments[0], select_streams="a:0")
+                # The concat demuxer normalises each file by subtracting the
+                # container's format.start_time, which is the MINIMUM first-packet
+                # PTS across all streams (video + audio). When cabin has fewer
+                # pre-event segments than front, the cabin video segment starts
+                # later in V4L2 time, but ALSA may carry an earlier timestamp
+                # from the recording session start — making audio the minimum.
+                # Using min(video, audio) here matches the concat normalisation
+                # so cabin_pts_offset correctly represents the actual PTS origin
+                # the filter graph will see.
+                if cabin_audio_start > 0:
+                    cabin_start = min(cabin_video_start, cabin_audio_start)
+                else:
+                    cabin_start = cabin_video_start
                 cabin_pts_offset = cabin_start - front_start
                 log.info(
                     "cabin_pts_sync",
                     front_seg=segments[0].name,
                     cabin_seg=cabin_segments[0].name,
                     front_start=round(front_start, 3),
+                    cabin_video_start=round(cabin_video_start, 3),
+                    cabin_audio_start=round(cabin_audio_start, 3),
                     cabin_start=round(cabin_start, 3),
                     cabin_pts_offset=round(cabin_pts_offset, 3),
                 )
