@@ -1,41 +1,56 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-24T08:42:35.950Z",
-  "phase": "15",
-  "phase_name": "undervoltage-and-monitoring",
-  "phase_dir": ".planning/phases/15-undervoltage-and-monitoring",
-  "branch": "gsd/phase-15-undervoltage-and-monitoring",
-  "plan": "15-05",
-  "task": 0,
-  "total_tasks": 5,
-  "status": "in_progress",
-  "stage": "wave-1-complete",
+  "timestamp": "2026-05-18T23:58:17Z",
+  "phase": null,
+  "phase_name": "out-of-band: cabin/front camera sync debugging",
+  "phase_dir": null,
+  "plan": null,
+  "task": null,
+  "total_tasks": 1,
+  "status": "paused",
   "completed_tasks": [
-    {"id": "15-01", "name": "alerts.py helper + speak_power_restored + 10 tests", "status": "done", "wave": 0, "commits": "9dfc9d3..6033ffb"},
-    {"id": "15-02", "name": "PWR-01/02 thermal_monitor sticky-bit fix + 6 regression tests", "status": "done", "wave": 1, "commits": "05bcfdf..1656bb5"},
-    {"id": "15-03", "name": "MON-03 ring_buffer capture-failure wiring + 4 tests", "status": "done", "wave": 1, "commits": "7891304..91836ef"},
-    {"id": "15-04", "name": "MON-01/02 paperwork + home-ops shitbox-mqtt-exporter delete (PUSHED)", "status": "done", "wave": 1, "commits": "shitbox: 6439200, 9dcc34e | home-ops: 0b3dadd1"}
+    {"id": 1, "name": "Explain leading-silence audio confusion", "status": "done", "note": "Not a bug — AAC silence padding from T=0 to T=10.97s. Players skip to first non-silence frame on first play. No code change."},
+    {"id": 2, "name": "Fix cabin audio starting before video (audio-before-video gap)", "status": "done", "commit": "ac4f6f6", "note": "atrim cabin audio to pip_enable_t so audio and video both appear at same output time"},
+    {"id": 3, "name": "Fix setpts STARTPTS bug causing 1.93s cabin video offset", "status": "done", "commit": "76755ab", "note": "Switched from setpts=PTS-STARTPTS+offset/TB in filter graph to -itsoffset on cabin concat input. STARTPTS is set to first PTS seen by the filter when overlay enable defers, which is non-zero (~1.932) — making the shift wrong by that amount."},
+    {"id": 4, "name": "Fix Brio 100 pipeline latency (cabin 0.5s behind)", "status": "done", "commit": "ead6912", "note": "Added BRIO_PIPELINE_LATENCY_S = 0.5, subtracted from cabin_shift. Brio V4L2 timestamps lead actual capture by ~0.5s; ELP stream-copy has near-zero lag. Deployed via rsync, shitbox-telemetry restarted."}
   ],
   "remaining_tasks": [
-    {"id": "15-05", "name": "D-13 Health page (sse.py _system_conditions_payload + index.html Alpine x-for + green-overlay routing)", "wave": 2, "autonomous": false, "depends_on": ["15-01", "15-02", "15-03"], "status": "not_started", "checkpoint": "Non-autonomous — has UI work that warrants review before commit"}
+    {
+      "id": 5,
+      "name": "Test ead6912 on a real render",
+      "status": "not_started",
+      "note": "Trigger manual capture on Pi, watch rendered event clip. Confirm cabin PiP video and audio are now in sync. If still off by a fixed delta, adjust BRIO_PIPELINE_LATENCY_S in ring_buffer.py _build_dual_concat_reencode_cmd()."
+    }
   ],
   "blockers": [],
   "human_actions_pending": [
-    {"action": "On-Pi UAT: force undervoltage (briefly unplug PSU), confirm overlay + TTS + Health page sticky state", "context": "PWR-02 manual verification per 15-VALIDATION.md", "blocking": false},
-    {"action": "Phase verification + ROADMAP/STATE updates after 15-05 completes (run gsd-verifier)", "context": "execute-phase post-wave gates", "blocking": false}
+    {
+      "action": "Trigger a manual capture on the Pi and review the rendered clip",
+      "context": "ead6912 (BRIO_PIPELINE_LATENCY_S=0.5) is deployed but untested. User's last observation was 'cabin 0.5s behind' after itsoffset switch. This fix should close that gap.",
+      "blocking": true
+    }
   ],
-  "decisions_carried_forward": [
-    "AlertStatus shape: two sustain counters (active + clear), not one — required for sticky-bit recovery",
-    "SSE payload exactly 5 scalar fields: role, label, tier, state, since_ms",
-    "Frontend uses Alpine x-for, mirroring sortedHardware() at index.html:396-404",
-    "Hardware modal renamed Health; SYSTEM section above HARDWARE list",
-    "Green overlay branch: subtype endsWith('_CLEARED'|'_RESTORED') → green #238636 3000ms; else red #da3633 10000ms"
+  "decisions": [
+    {
+      "decision": "Use -itsoffset on cabin concat input instead of setpts filter",
+      "rationale": "setpts STARTPTS is the first PTS seen by the filter. When overlay enable defers cabin frames, that PTS is ~1.932, not 0 — so the formula undershoots by ~1.932s. -itsoffset operates at demuxer level, is unambiguous.",
+      "phase": "out-of-band"
+    },
+    {
+      "decision": "BRIO_PIPELINE_LATENCY_S = 0.5",
+      "rationale": "Brio 100 V4L2 timestamps lead actual frame capture by ~0.5s (USB transfer + MJPEG encode pipeline). ELP H264 stream copy has near-zero latency. Subtracting 0.5 from cabin_shift aligns wall-clock capture times.",
+      "phase": "out-of-band"
+    },
+    {
+      "decision": "cabin_pts_offset probed at render time from actual first-packet PTS in segments",
+      "rationale": "Brio at 15fps produces slightly more segments than ELP at 30fps over time (~-1.93s after 6-8 mins, ~0.021s at startup). Probing at render time corrects this drift automatically.",
+      "phase": "out-of-band"
+    }
   ],
-  "test_state": {
-    "tests_added": "20 (10 alerts + 6 thermal + 4 ffmpeg)",
-    "post_merge_status": "39/39 pass on phase branch",
-    "pre_existing_ruff_issue": "tests/test_thermal_monitor.py:203 line >100 (Phase 17 commit f45a345d, not 15-02 work)"
-  },
-  "next_action": "/clear then /gsd-execute-phase 15 — only 15-05 remains. After 15-05 lands, run gsd-verifier for phase completion + on-Pi UAT.",
-  "context_notes": "Wave 1 had a quota mid-flight: agents 15-02/15-03 ran out of usage after committing Task 1 code, before tests + SUMMARY. Both finished inline in main context. home-ops cleanup pushed to main (5 file deletions, 1 line removed in kustomization.yaml). 15-05 should run as gsd-executor when usage resets, OR inline if quota is tight."
+  "uncommitted_files": [
+    "src/shitbox/dashboard/sse.py — IMU Y-axis negation fix (gy = -snap['g_y'], unrelated to video sync)",
+    ".planning/STATE.md — session timestamp update"
+  ],
+  "next_action": "User triggers manual capture, watches rendered clip, confirms sync. If good, done. If still off, adjust BRIO_PIPELINE_LATENCY_S in src/shitbox/capture/ring_buffer.py around line 1553.",
+  "context_notes": "Four sessions of progressively isolating sync errors. 18-21s desync fixed by PTS probe (prev session). This session: 2s early = stacked setpts bug (1.93s) + Brio latency (0.5s). itsoffset switch revealed the hidden Brio offset. Now a single constant corrects it. Should be within one Brio frame (~33ms at 15fps) after ead6912."
 }
