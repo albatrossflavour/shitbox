@@ -1588,10 +1588,12 @@ class VideoRingBuffer:
         # (intro+slate) + cabin_pts_offset (PTS gap between first front and
         # first cabin segment). This keeps cabin aligned with front regardless
         # of how many pre-event segments each stream contributed.
-        # cabin timing is applied via -itsoffset on the input (see cmd below),
-        # which is unambiguous and avoids STARTPTS/TB filter-graph subtleties.
+        # cabin timing is applied via setpts in the pip_chain (video only).
+        # Using -itsoffset would also shift [1:a], breaking the audio atrim
+        # logic which expects [1:a] to start at raw PTS=0 from the concat.
         pip_chain = (
-            f"[1:v]eq=brightness=0.06:saturation=1.2,"
+            f"[1:v]setpts=PTS+{cabin_shift}/TB,"
+            f"eq=brightness=0.06:saturation=1.2,"
             f"scale=iw*{self.pip_scale}:-2,"
             "pad=iw+6:ih+28:3:24:color=black@0.7,"
             "drawtext=text='Cabin':fontsize=22:fontcolor=white@0.9:x=8:y=4[pip]"
@@ -1646,7 +1648,6 @@ class VideoRingBuffer:
             "-analyzeduration", "20000000",
             "-probesize", "20000000",
             "-i", str(concat_front),
-            "-itsoffset", str(cabin_shift),
             "-f", "concat", "-safe", "0",
             "-analyzeduration", "20000000",
             "-probesize", "20000000",
