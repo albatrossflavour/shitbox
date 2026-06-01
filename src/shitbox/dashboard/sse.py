@@ -311,7 +311,7 @@ async def sse_fast(request: Request) -> Response:
                             "ts": snap["ts"],
                             "speed": snap["speed_kmh"],
                             "gx": snap["g_x"],
-                            "gy": snap["g_y"],
+                            "gy": -snap["g_y"],  # IMU Y+ points rearward; negate so brake=down, accel=up
                             "gz": snap["g_z"],
                             "heading": snap["heading_deg"],
                         },

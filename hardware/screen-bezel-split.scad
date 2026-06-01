@@ -11,13 +11,26 @@
 // walk. Previous stub-based design relied on a 1.5 mm lip overhang
 // with 0.5 mm pocket slop, which was not enough.
 //
+// RAM Mount attachment:
+//   Xiuganpo / RAM-compatible 1" B-size AMPS square plate bolts to the
+//   back of the shell. M4 flat-head screws go in from INSIDE the case
+//   (heads countersunk flush with the interior backplate face), shafts
+//   exit through the 7 mm backplate, AMPS plate slides onto the shafts,
+//   M4 washer + nyloc nut clamps it tight from outside.
+//   AMPS hole pattern: 38.1 mm × 19.05 mm CTC (standard B-size).
+//   Verify against your plate before printing — measure CTC, not plate edge.
+//
 // Assembly:
 //   1. Press 4× M3 heat-set inserts into the top face of the back-shell
 //      walls (top-left, top-right, bottom-left, bottom-right).
 //   2. Drop screen into pocket. Left side is open for HDMI/USB/audio.
-//   3. Place front bezel over the screen; lip overhangs the screen's
+//   3. Thread 4× M4 flat-head screws from inside the case through the
+//      backplate. Heads sit flush with the interior floor.
+//   4. Slide AMPS plate onto the four protruding shafts. Add washers,
+//      run M4 nyloc nuts finger-tight, then torque evenly.
+//   5. Place front bezel over the screen; lip overhangs the screen's
 //      black bezel (not the glass).
-//   4. 4× M3 countersunk screws from the front face thread down into
+//   6. 4× M3 countersunk screws from the front face thread down into
 //      the wall-top inserts. Heads are visible on the front face — fine
 //      for a rally car.
 //
@@ -51,37 +64,34 @@ BEZEL_L = 20; BEZEL_R = 20; BEZEL_T = 15; BEZEL_B = 15;
 FRONT_LIP_T    = 3.0;         // front face plate thickness (houses countersink + screw head)
 FRONT_LIP_IN   = 1.5;         // lip overhang onto black bezel
 BEZEL_TOL      = 0.2;         // snug pocket — walls grip the screen
-BACKPLATE_T    = 4.0;         // back shell floor
-SHELL_WALL     = 6.0;         // wall thickness: 4.2 insert OD + 0.9 wall each side
-FRONT_Y_PAD    = 1.0;         // extra Y padding on front bezel only (top + bottom).
-                              // Original SHELL_WALL/2 = 3 mm puts the countersink
-                              // edge exactly on the outer edge — any tolerance and
-                              // it breaks out. Front grows ±1 mm in Y, screws stay
-                              // aligned with the (already-printed) back's inserts.
+BACKPLATE_T    = 7.0;         // back shell floor — thick for M4 CSK + 4 mm solid beyond
+SHELL_WALL     = 10.0;        // wall thickness: 4.2 insert OD + 2.9 mm wall each side
+FRONT_Y_PAD    = 1.0;         // extra Y padding on front bezel only (top + bottom)
 
-OUTER_W        = SCREEN_W + 2 * SHELL_WALL + BEZEL_TOL;   // 202.2
-OUTER_H        = SCREEN_H + 2 * SHELL_WALL + BEZEL_TOL;   // 127.2
+OUTER_W        = SCREEN_W + 2 * SHELL_WALL + BEZEL_TOL;   // 210.2
+OUTER_H        = SCREEN_H + 2 * SHELL_WALL + BEZEL_TOL;   // 135.2
 
 // =====================================================
-//   Fasteners (M3 heat-set insert in wall, screw from front)
+//   Fasteners — front bezel (M3 heat-set insert in wall, screw from front)
 // =====================================================
 INSERT_D       = 4.2;         // heat-set insert OD (M3xL4xD4.2 stock)
 INSERT_DEPTH   = 4.2;         // insert length + headroom
 M3_CLEARANCE_D = 3.4;         // M3 clearance bore through front bezel
-M3_CSK_D       = 6.0;         // M3 countersink head diameter (90° head)
+M3_CSK_D       = 6.0;         // M3 countersink head diameter (90°)
 M3_CSK_DEPTH   = 1.7;         // M3 countersink depth
 
 // Screw layout: 4 screws on the top and bottom walls, inset from corners
 SCREW_X_SPREAD = 150;         // horizontal distance between left/right screws
 
 // =====================================================
-//   Dash bracket (same pattern as screen-bezel.scad)
+//   Fasteners — RAM Mount AMPS plate (M4 flat-head from inside)
 // =====================================================
-BRACKET_HOLE_D   = 4.5;
-BRACKET_CB_D     = 8.0;
-BRACKET_CB_DEPTH = 2.0;
-BRACKET_SPREAD_W = 140;
-BRACKET_SPREAD_H = 75;
+// Standard B-size AMPS hole pattern. Verify CTC against your plate before printing.
+AMPS_SPREAD_W  = 38.1;        // horizontal hole CTC (mm)
+AMPS_SPREAD_H  = 19.05;       // vertical hole CTC (mm)
+M4_CLEAR_D     = 4.5;         // M4 clearance bore
+M4_CSK_D       = 8.5;         // M4 flat-head CSK diameter (head ~8 mm + tolerance)
+M4_CSK_DEPTH   = 3.2;         // M4 flat-head CSK depth (leaves ~3.8 mm solid beyond)
 
 // =====================================================
 //   Derived
@@ -159,8 +169,8 @@ module back_shell() {
             translate([0, 0, TOTAL_D - INSERT_DEPTH])
                 cylinder(d = INSERT_D, h = INSERT_DEPTH + 0.1);
 
-        // Dash bracket holes through backplate
-        bracket_holes();
+        // RAM Mount AMPS plate holes through backplate
+        amps_holes();
     }
 }
 
@@ -189,17 +199,21 @@ module glass_window() {
               FRONT_LIP_T + 0.2]);
 }
 
-module bracket_holes() {
+module amps_holes() {
+    // 4× M4 flat-head screws from inside the case — heads countersunk
+    // flush with the interior backplate face (z = BACKPLATE_T), shafts
+    // exit at z = 0 where the AMPS plate sits. Nut + washer on outside.
     cx = OUTER_W / 2;
     cy = OUTER_H / 2;
     for (sx = [-1, 1], sy = [-1, 1]) {
-        translate([cx + sx * BRACKET_SPREAD_W / 2,
-                   cy + sy * BRACKET_SPREAD_H / 2,
-                   -0.1])
-            cylinder(d = BRACKET_HOLE_D, h = BACKPLATE_T + 0.2);
-        translate([cx + sx * BRACKET_SPREAD_W / 2,
-                   cy + sy * BRACKET_SPREAD_H / 2,
-                   -0.1])
-            cylinder(d = BRACKET_CB_D, h = BRACKET_CB_DEPTH + 0.1);
+        x = cx + sx * AMPS_SPREAD_W / 2;
+        y = cy + sy * AMPS_SPREAD_H / 2;
+        // Clearance bore through backplate (exits at z = 0)
+        translate([x, y, -0.1])
+            cylinder(d = M4_CLEAR_D, h = BACKPLATE_T - M4_CSK_DEPTH + 0.2);
+        // Countersink opens on inside face (z = BACKPLATE_T), tapers to bore
+        translate([x, y, BACKPLATE_T - M4_CSK_DEPTH])
+            cylinder(d1 = M4_CLEAR_D, d2 = M4_CSK_D,
+                     h = M4_CSK_DEPTH + 0.1);
     }
 }

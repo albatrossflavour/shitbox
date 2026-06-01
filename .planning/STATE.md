@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: executing
-stopped_at: context exhaustion at 92% (2026-05-11)
-last_updated: "2026-05-11T01:32:42.619Z"
-last_activity: 2026-04-28
+stopped_at: context exhaustion at 99% (2026-05-31)
+last_updated: "2026-05-31T01:48:46.367Z"
+last_activity: 2026-05-19
 progress:
   total_phases: 13
   completed_phases: 9
@@ -87,7 +87,7 @@ Next: Pi case v2 design conversation — GX12 connectors arrived, case needs rew
 
   TPMS spike (CC1101 RF sniff/decode) is a parallel track — does not block the case work.
 
-Last activity: 2026-04-28
+Last activity: 2026-05-19
 
 Progress: 12/16 phases complete (v2.0 milestone); v1.0 [██████████] 100%
 
@@ -160,8 +160,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-11T01:32:42.612Z
-Stopped at: context exhaustion at 92% (2026-05-11)
+Last session: 2026-05-31T01:48:46.361Z
+Stopped at: context exhaustion at 99% (2026-05-31)
 Resume file: None
 Next action: physical world — print Pi case (see Brain `project_pi_case_v2.md`), assemble, mount in car. Then return for Phase 24 OpenSCAD review + boot verify, after which Phases 14, 16, 25 unblock in sequence.
 

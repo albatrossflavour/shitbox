@@ -150,23 +150,26 @@ def probe_gpio_pin(pin: int) -> bool:  # noqa: ARG001
 
 
 def probe_i2c_bus_is_bitbang(bus: int) -> bool:
-    """Return True if the I2C adapter is the bit-bang (i2c-gpio) driver.
+    """Return True if the I2C adapter is a known-good driver.
 
-    Reads /sys/class/i2c-adapter/i2c-{bus}/name and checks it starts with
-    'i2c-gpio'. Logs critical when it does not — this is the same failure mode
-    that caused a 3-day diagnosis in April 2026 (STATE.md out-of-band note).
+    Accepts i2c-gpio (bit-bang) and Synopsys DesignWare (Pi 5 hardware I2C).
+    Logs critical for anything else — unexpected driver is the failure mode that
+    caused a 3-day diagnosis in April 2026 (STATE.md out-of-band note).
+
+    Sysfs path: /sys/bus/i2c/devices/i2c-{bus}/name (not /sys/class/i2c-adapter
+    which does not exist on Pi 5 kernels).
     """
     name: Optional[str] = None
     try:
-        name = Path(f"/sys/class/i2c-adapter/i2c-{bus}/name").read_text().strip()
-        if name.startswith("i2c-gpio"):
+        name = Path(f"/sys/bus/i2c/devices/i2c-{bus}/name").read_text().strip()
+        if name.startswith("i2c-gpio") or name.startswith("Synopsys DesignWare"):
             return True
     except OSError:
         pass
     log.critical(
         "hw_manifest_bus_check_failed",
         bus=bus,
-        expected="i2c-gpio",
+        expected="i2c-gpio or Synopsys DesignWare",
         got=name or "",
     )
     return False
