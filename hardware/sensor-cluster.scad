@@ -52,7 +52,7 @@ LID_BOSS_HOLE = 2.1;
 
 // ── Lid cell features ───────────────────────────────────────────
 DISP_WINDOW = [22, 12];
-LIGHT_HOLE  = 4;
+LIGHT_HOLE  = 20;
 VENT_SLOT   = [6, 1.5];
 VENT_COUNT  = 4;
 GRILLE_DIA  = 3;
@@ -107,11 +107,20 @@ BOSS_XY = [
 ];
 
 // WAGO saddle centres on lid outer face.
-// Positioned near back edge (Y≈OUTER_WALL), above INA228 (col 1) and col 0.
-_wago_back_cy = WAGO_D / 2 + WAGO_WALL + OUTER_WALL;
+// INA pair: back edge, col 1 — directly above INA228.
+// SEN0460: front edge, col 1 — adjacent to Buzzer; saddle opens toward tray interior (-Y).
+// INA V+ and V- are adjacent; offset = half-saddle-width + 1 mm gap.
+_wago_back_cy  = WAGO_D / 2 + WAGO_WALL + OUTER_WALL;
+_wago_front_cy = OUTER_D - WAGO_D / 2 - WAGO_WALL - OUTER_WALL;
+_col1_cx       = GRID_X0 + CELL_W + CELL_W / 2;            // col 1 X centre (INA228 / Buzzer)
+_col2_cx       = GRID_X0 + 2 * CELL_W + CELL_W / 2;        // col 2 X centre (empty cell)
+_ina_pair_off  = (WAGO_W + WAGO_TOL) / 2 + WAGO_WALL + 1; // half-saddle + 1 mm gap ≈ 9.75 mm
 WAGO_POS = [
-    [GRID_X0 + CELL_W / 2,           _wago_back_cy],  // SEN0460 5V (col 0)
-    [GRID_X0 + CELL_W + CELL_W / 2,  _wago_back_cy],  // INA228 V+/V- (col 1)
+    [_col1_cx - _ina_pair_off,  _wago_back_cy],  // INA228 V+  (col 1, left  — back edge)
+    [_col1_cx + _ina_pair_off,  _wago_back_cy],  // INA228 V-  (col 1, right — back edge)
+];
+WAGO_POS_FRONT = [
+    [_col2_cx, _wago_front_cy],  // SEN0460 5V (col 2 — front edge, over empty cell)
 ];
 
 // ── Cell descriptors: [col, row, pcb, lid_feature] ───────────────
@@ -145,6 +154,7 @@ module tray() {
             _pcb_posts();
         }
         _cable_entries();
+        _qwiic_exit();
         _flange_holes();
         _pcb_post_holes();
         _lid_boss_holes();
@@ -238,6 +248,14 @@ module _cable_entries() {
         cube([OUTER_WALL + 0.2, 8, 4]);
 }
 
+// SEN0460 Qwiic cable exits through the front wall (Y = OUTER_D face) near Buzzer (col 1).
+// Separate from the SEN0460 5V WAGO saddle on the lid — this is the data cable only.
+module _qwiic_exit() {
+    buzz_cx = GRID_X0 + CELL_W + CELL_W / 2;  // col 1 X centre
+    translate([buzz_cx - 4, OUTER_D - OUTER_WALL - 0.1, FLOOR + 2])
+        cube([8, OUTER_WALL + 0.2, 4]);
+}
+
 module _flange_holes() {
     margin = 6;
     for (x = [margin, TOTAL_W - margin], y = [margin, OUTER_D - margin])
@@ -312,6 +330,8 @@ module _lid_screw_holes() {
 module _wago_saddles() {
     for (wp = WAGO_POS)
         _wago_saddle(wp[0], wp[1]);
+    for (wp = WAGO_POS_FRONT)
+        _wago_saddle_front(wp[0], wp[1]);
 }
 
 module _wago_saddle(cx, cy) {
@@ -332,9 +352,28 @@ module _wago_saddle(cx, cy) {
     }
 }
 
+// Front saddle: closed end at high-Y (against tray front wall), opens toward -Y (tray interior).
+module _wago_saddle_front(cx, cy) {
+    pw = WAGO_D + WAGO_TOL;
+    pd = WAGO_W + WAGO_TOL;
+    ph = WAGO_H;
+    ox = cx - pd / 2 - WAGO_WALL;
+    oy = cy - pw / 2 - WAGO_WALL;
+    translate([ox, oy, LID_THICK]) {
+        // Left wall
+        cube([WAGO_WALL, pw + 2 * WAGO_WALL, ph]);
+        // Right wall
+        translate([pd + WAGO_WALL, 0, 0])
+            cube([WAGO_WALL, pw + 2 * WAGO_WALL, ph]);
+        // Closed end at high-Y — WAGO slides in from tray interior (-Y)
+        translate([0, pw + WAGO_WALL, 0])
+            cube([pd + 2 * WAGO_WALL, WAGO_WALL, ph]);
+    }
+}
+
 // Cable slots through lid, centred under each WAGO body.
 module _wago_slots() {
-    for (wp = WAGO_POS)
+    for (wp = concat(WAGO_POS, WAGO_POS_FRONT))
         translate([wp[0] - WAGO_SLOT_W / 2, wp[1] - WAGO_SLOT_D / 2, -(LID_LIP_DEPTH + 0.1)])
             cube([WAGO_SLOT_W, WAGO_SLOT_D, LID_THICK + LID_LIP_DEPTH + 0.2]);
 }
@@ -351,6 +390,13 @@ function _boss_overlap(px, py) =
              abs(py - bxy[1]) < BATT_W / 2 + LID_BOSS_D / 2 + 0.5) 1
     ]) > 0;
 
+// Skip battlement blocks that would land over a WAGO saddle cavity.
+function _wago_clear(px, py) =
+    len([for (wp = concat(WAGO_POS, WAGO_POS_FRONT))
+         if (abs(px - wp[0]) < BATT_W / 2 + (WAGO_W + WAGO_TOL) / 2 + WAGO_WALL &&
+             abs(py - wp[1]) < BATT_W / 2 + (WAGO_D + WAGO_TOL) / 2 + WAGO_WALL) 1
+    ]) > 0;
+
 module _battlements() {
     top_z = LID_THICK;
     // Long walls (X direction), front and back edges
@@ -358,7 +404,7 @@ module _battlements() {
         for (y_pos = [0, OUTER_D - BATT_W]) {
             bx = x + BATT_W / 2;
             by = y_pos + BATT_W / 2;
-            if (!_boss_overlap(bx, by))
+            if (!_boss_overlap(bx, by) && !_wago_clear(bx, by))
                 translate([x, y_pos, top_z])
                     cube([BATT_W, BATT_W, BATT_H]);
         }
@@ -367,7 +413,7 @@ module _battlements() {
         for (x_pos = [FLANGE_W, FLANGE_W + OUTER_W - BATT_W]) {
             bx = x_pos + BATT_W / 2;
             by = y + BATT_W / 2;
-            if (!_boss_overlap(bx, by))
+            if (!_boss_overlap(bx, by) && !_wago_clear(bx, by))
                 translate([x_pos, y, top_z])
                     cube([BATT_W, BATT_W, BATT_H]);
         }
