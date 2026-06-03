@@ -130,6 +130,9 @@ class HighRateSampler:
         accel_offset_x: float = 0.0,
         accel_offset_y: float = 0.0,
         accel_offset_z: float = 0.0,
+        accel_scale_x: float = 1.0,
+        accel_scale_y: float = 1.0,
+        accel_scale_z: float = 1.0,
         on_sample: Optional[Callable[[IMUSample], None]] = None,
         tca_en_gpio: Optional[int] = None,
         tca_en_pulse_low_ms: int = 10,
@@ -143,6 +146,9 @@ class HighRateSampler:
             accel_offset_x: Bias correction for ax (g), subtracted after unit conversion.
             accel_offset_y: Bias correction for ay (g), subtracted after unit conversion.
             accel_offset_z: Bias correction for az (g), subtracted after unit conversion.
+            accel_scale_x: Axis multiplier applied after offset; use -1.0 to flip direction.
+            accel_scale_y: Axis multiplier applied after offset; use -1.0 to flip direction.
+            accel_scale_z: Axis multiplier applied after offset; use -1.0 to flip direction.
             on_sample: Optional callback for each sample.
             tca_en_gpio: GPIO pin number (BCM) wired to the TCA4307 EN pin.
                 When set, recovery first tries pulsing EN low to clear a
@@ -157,6 +163,9 @@ class HighRateSampler:
         self._accel_offset_x = accel_offset_x
         self._accel_offset_y = accel_offset_y
         self._accel_offset_z = accel_offset_z
+        self._accel_scale_x = accel_scale_x
+        self._accel_scale_y = accel_scale_y
+        self._accel_scale_z = accel_scale_z
 
         self._lsm6dsox: Optional[object] = None
         self._i2c: Optional[object] = None
@@ -734,9 +743,9 @@ class HighRateSampler:
         # UNIT CONVERSION -- m/s² -> g, rad/s -> deg/s.
         # The event detector thresholds are in g and deg/s; getting this wrong
         # silently breaks HARD_BRAKE / HIGH_G / BIG_CORNER / ROUGH_ROAD.
-        ax = ax_ms2 / MS2_PER_G - self._accel_offset_x
-        ay = ay_ms2 / MS2_PER_G - self._accel_offset_y
-        az = az_ms2 / MS2_PER_G - self._accel_offset_z
+        ax = (ax_ms2 / MS2_PER_G - self._accel_offset_x) * self._accel_scale_x
+        ay = (ay_ms2 / MS2_PER_G - self._accel_offset_y) * self._accel_scale_y
+        az = (az_ms2 / MS2_PER_G - self._accel_offset_z) * self._accel_scale_z
         gx = gx_rads * DEG_PER_RAD
         gy = gy_rads * DEG_PER_RAD
         gz = gz_rads * DEG_PER_RAD

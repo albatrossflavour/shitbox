@@ -55,6 +55,9 @@ class LSM6DSOXConfig:
     accel_offset_x: float = 0.0   # g, subtracted after unit conversion
     accel_offset_y: float = 0.0
     accel_offset_z: float = 0.0
+    accel_scale_x: float = 1.0    # axis flip: set to -1.0 to invert, applied after offset
+    accel_scale_y: float = 1.0
+    accel_scale_z: float = 1.0
     # Phase 22 auto-zero (IMU-05, IMU-06) — canonical field names
     auto_zero_enabled: bool = True
     auto_zero_stationary_kmh: float = 1.0

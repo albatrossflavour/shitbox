@@ -96,6 +96,9 @@ class EngineConfig:
     accel_offset_x: float = 0.0
     accel_offset_y: float = 0.0
     accel_offset_z: float = 0.0
+    accel_scale_x: float = 1.0
+    accel_scale_y: float = 1.0
+    accel_scale_z: float = 1.0
 
     # TCA4307 EN pin for software bus-recovery (None = pin not wired).
     # See sensors.tca4307 in config.yaml and the open thread in the project doc.
@@ -305,6 +308,9 @@ class EngineConfig:
             accel_offset_x=config.sensors.lsm6dsox.accel_offset_x,
             accel_offset_y=config.sensors.lsm6dsox.accel_offset_y,
             accel_offset_z=config.sensors.lsm6dsox.accel_offset_z,
+            accel_scale_x=config.sensors.lsm6dsox.accel_scale_x,
+            accel_scale_y=config.sensors.lsm6dsox.accel_scale_y,
+            accel_scale_z=config.sensors.lsm6dsox.accel_scale_z,
             imu_sample_rate_hz=config.sensors.lsm6dsox.sample_rate_hz,
             # TCA4307 EN-pin recovery (None until wired)
             tca_en_gpio=config.sensors.tca4307.en_gpio,
@@ -494,6 +500,9 @@ class UnifiedEngine:
             accel_offset_x=config.accel_offset_x,
             accel_offset_y=config.accel_offset_y,
             accel_offset_z=config.accel_offset_z,
+            accel_scale_x=config.accel_scale_x,
+            accel_scale_y=config.accel_scale_y,
+            accel_scale_z=config.accel_scale_z,
             on_sample=self._on_imu_sample,
             tca_en_gpio=config.tca_en_gpio,
             tca_en_pulse_low_ms=config.tca_en_pulse_low_ms,

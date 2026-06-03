@@ -129,6 +129,9 @@ sensors:
     accel_offset_x: 0.0          # seed; auto-zero overwrites via trip_state
     accel_offset_y: 0.0
     accel_offset_z: 0.0
+    accel_scale_x: -1.0          # chip mounted 180° around Z (back-to-front); flip X and Y
+    accel_scale_y: -1.0
+    accel_scale_z: 1.0
     # Phase 22 auto-zero (IMU-05, IMU-06)
     auto_zero_enabled: true
     auto_zero_stationary_kmh: 1.0
