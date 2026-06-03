@@ -69,8 +69,14 @@ class BatchSyncService:
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._cursor_name = "prometheus"
-        self._too_old_failures: int = 0
-        self._too_old_cursor: int = -1
+        self._tpms_cursor_name = "prometheus_tpms"
+        # Per-cursor too-old tracking — both _sync_batch and
+        # _sync_tpms_batch share the same retry-then-advance behaviour
+        # via _handle_too_old / _reset_too_old. Without per-cursor
+        # state, a stalled TPMS batch would reset the main batch's
+        # retry counter and vice versa.
+        self._too_old_failures: Dict[str, int] = {}
+        self._too_old_cursor: Dict[str, Optional[int]] = {}
 
         # Cumulative stats for sync state logging
         self._total_synced: int = 0
@@ -180,7 +186,10 @@ class BatchSyncService:
                 total_failed=self._total_failed,
                 total_skipped=self._total_skipped,
                 consecutive_errors=self._consecutive_errors,
-                too_old_failures=self._too_old_failures,
+                too_old_failures=self._too_old_failures.get(self._cursor_name, 0),
+                tpms_too_old_failures=self._too_old_failures.get(
+                    self._tpms_cursor_name, 0
+                ),
                 last_success=self._last_success_time,
                 last_error=self._last_error,
                 endpoint=self.config.remote_write_url,
@@ -188,6 +197,66 @@ class BatchSyncService:
             )
         except Exception as e:
             log.warning("sync_state_log_error", error=str(e))
+
+    def _reset_too_old(self, cursor_name: str) -> None:
+        """Clear too-old failure tracking for a cursor after a clean send."""
+        self._too_old_failures[cursor_name] = 0
+        self._too_old_cursor[cursor_name] = -1
+
+    def _handle_too_old(
+        self,
+        cursor_name: str,
+        first_id: Optional[int],
+        last_id: Optional[int],
+        count: int,
+        oldest: str,
+        newest: str,
+    ) -> bool:
+        """Track consecutive too-old rejections at the same cursor position.
+
+        Returns True if the caller should advance the cursor past the bad
+        batch (retry budget exhausted), False if it should retry next cycle.
+        Mirrors the original main-batch behaviour but shares state across
+        both the readings cursor and the TPMS cursor — without this, a
+        stuck TPMS batch would tie up the upload progress in exactly the
+        way the main batch already avoids.
+        """
+        if self._too_old_cursor.get(cursor_name, -1) != first_id:
+            self._too_old_cursor[cursor_name] = first_id
+            self._too_old_failures[cursor_name] = 1
+        else:
+            self._too_old_failures[cursor_name] = (
+                self._too_old_failures.get(cursor_name, 0) + 1
+            )
+        attempts = self._too_old_failures[cursor_name]
+
+        if attempts < self.MAX_TOO_OLD_RETRIES:
+            log.warning(
+                "batch_sync_too_old_retrying",
+                cursor=cursor_name,
+                count=count,
+                first_id=first_id,
+                last_id=last_id,
+                oldest=oldest,
+                newest=newest,
+                attempt=attempts,
+                max_retries=self.MAX_TOO_OLD_RETRIES,
+            )
+            return False
+
+        log.error(
+            "batch_sync_too_old_abandoned",
+            cursor=cursor_name,
+            count=count,
+            first_id=first_id,
+            last_id=last_id,
+            oldest=oldest,
+            newest=newest,
+            attempts=attempts,
+            hint="Data remains in SQLite for manual recovery",
+        )
+        self._reset_too_old(cursor_name)
+        return True
 
     def _sync_batch(self) -> None:
         """Sync a single batch of readings.
@@ -233,8 +302,7 @@ class BatchSyncService:
             self._send_to_prometheus(readings)
 
             # Success — reset failure tracking and advance cursor
-            self._too_old_failures = 0
-            self._too_old_cursor = -1
+            self._reset_too_old(self._cursor_name)
             self._total_synced += len(readings)
             self._consecutive_errors = 0
             self._last_success_time = datetime.now(timezone.utc).isoformat()
@@ -250,45 +318,15 @@ class BatchSyncService:
                 last_id=last_id,
                 hint="Data already synced via another path",
             )
-            self._too_old_failures = 0
-            self._too_old_cursor = -1
+            self._reset_too_old(self._cursor_name)
             self._total_skipped += len(readings)
             self._consecutive_errors = 0
             self.db.update_sync_cursor(self._cursor_name, last_id)
 
         except TooOldSampleError:
-            # Track consecutive failures at the same cursor position
-            if self._too_old_cursor != first_id:
-                self._too_old_cursor = first_id
-                self._too_old_failures = 1
-            else:
-                self._too_old_failures += 1
-
-            if self._too_old_failures < self.MAX_TOO_OLD_RETRIES:
-                log.warning(
-                    "batch_sync_too_old_retrying",
-                    count=len(readings),
-                    first_id=first_id,
-                    last_id=last_id,
-                    oldest=oldest,
-                    newest=newest,
-                    attempt=self._too_old_failures,
-                    max_retries=self.MAX_TOO_OLD_RETRIES,
-                )
-                # Do NOT advance cursor — will retry next cycle
-            else:
-                log.error(
-                    "batch_sync_too_old_abandoned",
-                    count=len(readings),
-                    first_id=first_id,
-                    last_id=last_id,
-                    oldest=oldest,
-                    newest=newest,
-                    attempts=self._too_old_failures,
-                    hint="Data remains in SQLite for manual recovery",
-                )
-                self._too_old_failures = 0
-                self._too_old_cursor = -1
+            if self._handle_too_old(
+                self._cursor_name, first_id, last_id, len(readings), oldest, newest
+            ):
                 self._total_skipped += len(readings)
                 self.db.update_sync_cursor(self._cursor_name, last_id)
 
@@ -412,6 +450,9 @@ class BatchSyncService:
         this helper covers the tuple-shape case (TPMS rows + summary
         gauges) without duplicating the snappy/protobuf encode + POST.
         Mirrors the network shape of _sync_summary.
+
+        Raises DuplicateDataError / TooOldSampleError so callers can
+        share the retry-then-advance behaviour with _send_to_prometheus.
         """
         if not metrics:
             return
@@ -426,11 +467,23 @@ class BatchSyncService:
             },
             timeout=30,
         )
-        if response.status_code not in (200, 204):
-            response_text = response.text[:500] if response.text else ""
-            raise RuntimeError(
-                f"Prometheus write failed: {response.status_code} {response_text}"
-            )
+        if response.status_code in (200, 204):
+            return
+
+        response_text = response.text[:500] if response.text else ""
+        if (
+            response.status_code == 400
+            and "duplicate sample" in response_text.lower()
+        ):
+            raise DuplicateDataError(response_text)
+        if (
+            response.status_code == 400
+            and "too old sample" in response_text.lower()
+        ):
+            raise TooOldSampleError(response_text)
+        raise RuntimeError(
+            f"Prometheus write failed: {response.status_code} {response_text}"
+        )
 
     def _sync_tpms_batch(self) -> None:
         """Phase 28 (SPEC-5): sync tpms_readings on the prometheus_tpms cursor.
@@ -449,7 +502,10 @@ class BatchSyncService:
             log.debug("tpms_batch_sync_no_data")
             return
 
+        first_id = rows[0]["id"]
         last_id = rows[-1]["id"]
+        oldest = rows[0]["timestamp_utc"] or ""
+        newest = rows[-1]["timestamp_utc"] or ""
         metrics: List[Tuple[str, dict, float, int]] = []
         for row in rows:
             ts_iso = row["timestamp_utc"]
@@ -474,11 +530,40 @@ class BatchSyncService:
 
         try:
             self._send_metric_tuples(metrics)
+        except DuplicateDataError:
+            # Already in Prometheus — safe to skip and advance the cursor.
+            log.warning(
+                "tpms_batch_sync_duplicate_skipped",
+                count=len(rows),
+                first_id=first_id,
+                last_id=last_id,
+            )
+            self._reset_too_old(self._tpms_cursor_name)
+            self.db.update_sync_cursor(self._tpms_cursor_name, last_id)
+            return
+        except TooOldSampleError:
+            # Same retry-then-advance contract as _sync_batch — without
+            # this the TPMS cursor stalls forever on rows whose
+            # timestamps fall outside Prometheus' acceptance window
+            # (e.g. captured before a GPS-driven clock correction).
+            if self._handle_too_old(
+                self._tpms_cursor_name,
+                first_id,
+                last_id,
+                len(rows),
+                oldest,
+                newest,
+            ):
+                self.db.update_sync_cursor(self._tpms_cursor_name, last_id)
+            return
         except Exception as e:
-            log.warning("tpms_batch_sync_send_failed", error=str(e), row_count=len(rows))
+            log.warning(
+                "tpms_batch_sync_send_failed", error=str(e), row_count=len(rows)
+            )
             return
 
-        self.db.update_sync_cursor("prometheus_tpms", last_id)
+        self._reset_too_old(self._tpms_cursor_name)
+        self.db.update_sync_cursor(self._tpms_cursor_name, last_id)
         log.info(
             "tpms_batch_sync_ok",
             row_count=len(rows),
