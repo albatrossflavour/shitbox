@@ -309,21 +309,21 @@ class EventDetector:
         return event
 
     def _check_hard_brake(self, sample: IMUSample) -> Optional[Event]:
-        """Check for hard braking (strong negative ax)."""
+        """Check for hard braking (strong positive ay; Y+ is rearward so braking = +ay)."""
         event_type = EventType.HARD_BRAKE
         threshold = self.config.hard_brake_threshold_g
 
-        if sample.ax < threshold:
+        if -sample.ay < threshold:
             if event_type not in self._active_events:
-                self._start_event(event_type, sample, sample.ax)
+                self._start_event(event_type, sample, -sample.ay)
             else:
-                self._update_event(event_type, sample, sample.ax)
+                self._update_event(event_type, sample, -sample.ay)
             return None
         else:
             return self._end_event(event_type, sample)
 
     def _check_big_corner(self, sample: IMUSample) -> Optional[Event]:
-        """Check for big corner (strong lateral ay OR sustained yaw rate gz).
+        """Check for big corner (strong lateral ax OR sustained yaw rate gz).
 
         Phase 22 / IMU-04. Lateral-g alone misses slow tight turns (lateral g
         is speed^2 / radius). Adding gz captures yaw as a cleaner signature of
@@ -334,11 +334,11 @@ class EventDetector:
         event_type = EventType.BIG_CORNER
         g_threshold = self.config.big_corner_threshold_g
         yaw_threshold = self.config.big_corner_yaw_dps
-        ay_ratio = abs(sample.ay) / g_threshold if g_threshold > 0 else 0.0
+        ax_ratio = abs(sample.ax) / g_threshold if g_threshold > 0 else 0.0
         gz_ratio = abs(sample.gz) / yaw_threshold if yaw_threshold > 0 else 0.0
-        triggered = ay_ratio > 1.0 or gz_ratio > 1.0
+        triggered = ax_ratio > 1.0 or gz_ratio > 1.0
         if triggered:
-            trigger_value = sample.ay if ay_ratio >= gz_ratio else sample.gz
+            trigger_value = sample.ax if ax_ratio >= gz_ratio else sample.gz
             if event_type not in self._active_events:
                 self._start_event(event_type, sample, trigger_value)
             else:

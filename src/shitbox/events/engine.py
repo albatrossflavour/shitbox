@@ -2534,8 +2534,8 @@ class UnifiedEngine:
         samples = self.ring_buffer.get_latest(1)
         if samples:
             s = samples[0]
-            g_lat = s.ay  # lateral (left/right cornering)
-            g_lon = s.ax  # longitudinal (braking/acceleration)
+            g_lat = s.ax    # lateral (positive = car right)
+            g_lon = -s.ay   # longitudinal (negative = braking; Y+ is rearward)
 
         overlay.update(
             speed=self._current_speed_kmh if self._current_speed_kmh else None,
