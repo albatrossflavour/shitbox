@@ -103,9 +103,9 @@ class DetectorConfig:
     hard_brake_threshold_g: float = -0.35
     hard_brake_min_duration_ms: int = 200
 
-    # Big corner: |ay| > threshold for duration
-    big_corner_threshold_g: float = 0.45
-    big_corner_yaw_dps: float = 60.0  # OR-trigger: sustained yaw rate (Phase 22 / IMU-04)
+    # Big corner: |ax| > threshold for duration
+    big_corner_threshold_g: float = 0.6
+    big_corner_yaw_dps: float = 80.0  # OR-trigger: sustained yaw rate (Phase 22 / IMU-04)
     big_corner_min_duration_ms: int = 300
 
     # Rough road: stddev of az over window > threshold
