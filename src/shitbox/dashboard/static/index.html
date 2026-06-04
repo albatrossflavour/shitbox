@@ -505,7 +505,7 @@
         netBadge: 'NET OFFLINE', netBadgeClass: 'bg-red-700',
         recBadge: 'NO REC', recBadgeClass: 'bg-gray-700',
         events: [],
-        gx: 0, gy: 0, peakG: 1.0, peakGAt: 0,
+        gx: 0, gy: 0, peakG: 0.5, peakGAt: 0,
         map: null, marker: null, breadcrumb: null, lastInteract: 0,
         activeDriver: null,
         showDriverModal: false,
@@ -624,7 +624,7 @@
             if (mag > this.peakG) { this.peakG = mag; this.peakGAt = Date.now(); }
             // Decay the auto-range over ~45s back toward 1.0g (D-14)
             const age = (Date.now() - this.peakGAt) / 1000;
-            if (age > 5) this.peakG = Math.max(1.0, this.peakG * 0.995);
+            if (age > 5) this.peakG = Math.max(0.5, this.peakG * 0.995);
             this.drawGauge();
           });
         },
