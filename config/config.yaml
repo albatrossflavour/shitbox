@@ -126,9 +126,9 @@ sensors:
     # 25 Hz leaves margin for detector sustain gates
     # (ROLLOVER 150 ms = 3-4 samples, BIG_CORNER 300 ms = 7-8, HARD_BRAKE 200 ms = 5).
     sample_rate_hz: 25.0
-    accel_offset_x: 0.0          # seed; auto-zero overwrites via trip_state
-    accel_offset_y: 0.0
-    accel_offset_z: 0.0
+    accel_offset_x: 0.0263        # seed; auto-zero overwrites via trip_state
+    accel_offset_y: 0.0463
+    accel_offset_z: -0.0066
     accel_scale_x: -1.0          # chip mounted 180° around Z (back-to-front); flip X and Y
     accel_scale_y: -1.0
     accel_scale_z: 1.0

@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: — Rally Ready
 status: executing
-stopped_at: context exhaustion at 99% (2026-05-31)
-last_updated: "2026-05-31T01:48:46.367Z"
+stopped_at: context exhaustion at 96% (2026-06-02)
+last_updated: "2026-06-02T03:32:30.624Z"
 last_activity: 2026-05-19
 progress:
   total_phases: 13
@@ -160,8 +160,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-31T01:48:46.361Z
-Stopped at: context exhaustion at 99% (2026-05-31)
+Last session: 2026-06-02T03:32:30.615Z
+Stopped at: context exhaustion at 96% (2026-06-02)
 Resume file: None
 Next action: physical world — print Pi case (see Brain `project_pi_case_v2.md`), assemble, mount in car. Then return for Phase 24 OpenSCAD review + boot verify, after which Phases 14, 16, 25 unblock in sequence.
 
