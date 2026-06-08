@@ -129,7 +129,11 @@ sensors:
     accel_offset_x: 0.0263        # seed; auto-zero overwrites via trip_state
     accel_offset_y: 0.0463
     accel_offset_z: -0.0066
-    accel_scale_x: -1.0          # chip mounted 180° around Z (back-to-front); flip X and Y
+    # Mount orientation (verified empirically 2026-06-08 from dashboard G-ball):
+    #   raw chip X+ matches car X+ (right), so no flip
+    #   raw chip Y+ points rearward, so flip to make sample.ay+ = car forward
+    # Convention downstream: sample.ax+ = car right, sample.ay+ = car forward.
+    accel_scale_x: 1.0
     accel_scale_y: -1.0
     accel_scale_z: 1.0
     # Phase 22 auto-zero (IMU-05, IMU-06)

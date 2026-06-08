@@ -309,11 +309,17 @@ class EventDetector:
         return event
 
     def _check_hard_brake(self, sample: IMUSample) -> Optional[Event]:
-        """Check for hard braking (strong positive ay; Y+ is rearward so braking = +ay)."""
+        """Check for hard braking.
+
+        Convention: sample.ay+ = car forward, so braking is sample.ay < 0.
+        Threshold is configured as a negative g value (e.g. -0.35).
+        Peak value stored is the positive magnitude of deceleration so
+        downstream histograms read in physical units.
+        """
         event_type = EventType.HARD_BRAKE
         threshold = self.config.hard_brake_threshold_g
 
-        if -sample.ay < threshold:
+        if sample.ay < threshold:
             if event_type not in self._active_events:
                 self._start_event(event_type, sample, -sample.ay)
             else:

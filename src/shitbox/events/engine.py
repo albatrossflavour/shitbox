@@ -1906,7 +1906,7 @@ class UnifiedEngine:
             timestamp_utc=datetime.fromtimestamp(sample.timestamp, tz=timezone.utc),
             sensor_type=SensorType.IMU,
             accel_x=sample.ax,   # lateral: positive = car right
-            accel_y=-sample.ay,  # longitudinal: positive = forward (Y+ is rearward)
+            accel_y=sample.ay,   # longitudinal: positive = forward
             accel_z=sample.az,
             gyro_x=sample.gx,
             gyro_y=sample.gy,
