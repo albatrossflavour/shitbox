@@ -143,12 +143,12 @@ class HighRateSampler:
             ring_buffer: Buffer to store samples.
             sample_rate_hz: Target application poll rate in Hz (sensor ODR
                 is configured to 208 Hz; the poll-loop decimates to this rate).
-            accel_offset_x: Bias correction for ax (g), subtracted after unit conversion.
-            accel_offset_y: Bias correction for ay (g), subtracted after unit conversion.
-            accel_offset_z: Bias correction for az (g), subtracted after unit conversion.
-            accel_scale_x: Axis multiplier applied after offset; use -1.0 to flip direction.
-            accel_scale_y: Axis multiplier applied after offset; use -1.0 to flip direction.
-            accel_scale_z: Axis multiplier applied after offset; use -1.0 to flip direction.
+            accel_offset_x: Post-scale bias (g) subtracted after axis scaling.
+            accel_offset_y: Post-scale bias (g) subtracted after axis scaling.
+            accel_offset_z: Post-scale bias (g) subtracted after axis scaling.
+            accel_scale_x: Axis multiplier applied before offset; use -1.0 to flip direction.
+            accel_scale_y: Axis multiplier applied before offset; use -1.0 to flip direction.
+            accel_scale_z: Axis multiplier applied before offset; use -1.0 to flip direction.
             on_sample: Optional callback for each sample.
             tca_en_gpio: GPIO pin number (BCM) wired to the TCA4307 EN pin.
                 When set, recovery first tries pulsing EN low to clear a
@@ -743,9 +743,13 @@ class HighRateSampler:
         # UNIT CONVERSION -- m/s² -> g, rad/s -> deg/s.
         # The event detector thresholds are in g and deg/s; getting this wrong
         # silently breaks HARD_BRAKE / HIGH_G / BIG_CORNER / ROUGH_ROAD.
-        ax = (ax_ms2 / MS2_PER_G - self._accel_offset_x) * self._accel_scale_x
-        ay = (ay_ms2 / MS2_PER_G - self._accel_offset_y) * self._accel_scale_y
-        az = (az_ms2 / MS2_PER_G - self._accel_offset_z) * self._accel_scale_z
+        # Scale BEFORE offset so the offset lives in post-scale (car-frame) space.
+        # Auto-zero measures means in this same space and writes them straight back;
+        # if scale were applied after, a negative scale would flip the sign and
+        # each auto-zero pass would push the bias further out instead of zeroing it.
+        ax = (ax_ms2 / MS2_PER_G) * self._accel_scale_x - self._accel_offset_x
+        ay = (ay_ms2 / MS2_PER_G) * self._accel_scale_y - self._accel_offset_y
+        az = (az_ms2 / MS2_PER_G) * self._accel_scale_z - self._accel_offset_z
         gx = gx_rads * DEG_PER_RAD
         gy = gy_rads * DEG_PER_RAD
         gz = gz_rads * DEG_PER_RAD
