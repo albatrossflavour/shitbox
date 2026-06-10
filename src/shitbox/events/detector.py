@@ -100,7 +100,7 @@ class DetectorConfig:
     """Configuration for event detection thresholds."""
 
     # Hard braking: ax < threshold for duration
-    hard_brake_threshold_g: float = -0.35
+    hard_brake_threshold_g: float = -0.50
     hard_brake_min_duration_ms: int = 200
 
     # Big corner: |ax| > threshold for duration

@@ -137,7 +137,7 @@ sensors:
     accel_scale_y: -1.0
     accel_scale_z: 1.0
     # Phase 22 auto-zero (IMU-05, IMU-06)
-    auto_zero_enabled: true
+    auto_zero_enabled: false
     auto_zero_stationary_kmh: 1.0
     auto_zero_window_seconds: 30.0
     auto_zero_tolerance_g: 0.05
