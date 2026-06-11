@@ -194,6 +194,7 @@ def test_sse_slow_other_fields_unchanged(mbtiles_fixture):
         "ts", "lat", "lng", "fix_mode", "sats", "hdop",
         "imu_temp", "soc_temp", "sync_connected", "sync_backlog",
         "event_count", "active_driver", "recording_active",
+        "recording_ends_at",
     )
     missing = [f for f in required_fields if f not in payload]
     assert not missing, f"Fields missing from /sse/slow payload: {missing}"

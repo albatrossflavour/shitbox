@@ -893,6 +893,12 @@ class UnifiedEngine:
         self._telemetry_thread: Optional[threading.Thread] = None
         self._pending_post_capture: dict = {}
         self._pending_lock = threading.Lock()
+        # Monotonic deadline when the active capture's post-event footage window
+        # ends. Set when a save is triggered, read by the dashboard snapshot to
+        # drive the kiosk countdown. None when no capture is in flight. Written
+        # and read on the sampler thread (event callback + snapshot push), so no
+        # lock is needed — a plain float assignment is GIL-atomic.
+        self._capture_footage_until: Optional[float] = None
         self._event_json_paths: dict[int, Path] = {}
         self._event_video_paths: dict[int, Path] = {}
         self._event_paths_lock = threading.Lock()
@@ -1170,6 +1176,24 @@ class UnifiedEngine:
                     backlog = 0
                     if self.batch_sync is not None:
                         backlog = getattr(self.batch_sync, "pending_count", 0) or 0
+                    recording_active = self._has_pending_captures() or (
+                        self.video_ring_buffer is not None
+                        and self.video_ring_buffer.is_saving
+                    ) or (
+                        self.video_recorder is not None
+                        and self.video_recorder.is_recording
+                    )
+                    # Convert the monotonic footage deadline to a wall-clock
+                    # epoch-ms the browser can count down to. Only while still
+                    # recording AND the window hasn't elapsed — once past, the UI
+                    # falls back to "Saving…" off recording_active alone.
+                    recording_ends_at = None
+                    if recording_active and self._capture_footage_until is not None:
+                        remaining = self._capture_footage_until - time.monotonic()
+                        if remaining > 0:
+                            recording_ends_at = int(
+                                (time.time() + remaining) * 1000
+                            )
                     update_snapshot({
                         "ts": sample.timestamp,
                         "speed_kmh": self._current_speed_kmh or 0.0,
@@ -1188,15 +1212,8 @@ class UnifiedEngine:
                         "sync_backlog": backlog,
                         "event_count_today": self.events_captured,
                         "active_driver": driver_state.get_active_driver(),
-                        "recording_active": self._has_pending_captures()
-                            or (
-                                self.video_ring_buffer is not None
-                                and self.video_ring_buffer.is_saving
-                            )
-                            or (
-                                self.video_recorder is not None
-                                and self.video_recorder.is_recording
-                            ),
+                        "recording_active": recording_active,
+                        "recording_ends_at": recording_ends_at,
                     })
                 except Exception as exc:
                     log.warning("dashboard_snapshot_update_failed", error=str(exc))
@@ -1305,6 +1322,12 @@ class UnifiedEngine:
             if self.video_ring_buffer and self.video_ring_buffer.is_running:
                 buzzer.beep_capture_start()
                 speaker.speak_capture_start(event.event_type.value)
+                # Footage runs for capture_post_seconds from now (pre-roll is
+                # already buffered). Drives the kiosk countdown; once past, the
+                # clip is concatenating and the UI shows "Saving…".
+                self._capture_footage_until = (
+                    time.monotonic() + self.config.capture_post_seconds
+                )
                 eid = id(event)
                 self.video_ring_buffer.save_event(
                     prefix=event.event_type.value,
@@ -1320,6 +1343,9 @@ class UnifiedEngine:
                     event_type=event.event_type.value,
                 )
             elif self.video_recorder and not self.video_recorder.is_recording:
+                self._capture_footage_until = (
+                    time.monotonic() + self.config.capture_video_duration
+                )
                 video_path = self.video_recorder.start_recording(
                     duration_seconds=self.config.capture_video_duration,
                     filename_prefix=event.event_type.value,

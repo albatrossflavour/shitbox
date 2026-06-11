@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-# 17-key default contract. Any field the UI may read MUST be present here so
+# 19-key default contract. Any field the UI may read MUST be present here so
 # consumers never hit KeyError during boot before the first writer tick.
 _snapshot: Dict[str, Any] = {
     "ts": 0.0,
@@ -41,6 +41,12 @@ _snapshot: Dict[str, Any] = {
     "event_count_today": 0,
     "active_driver": None,
     "recording_active": False,
+    # Wall-clock epoch-ms when the current capture's post-event footage window
+    # ends, or None when idle / already past it. The kiosk counts down to this;
+    # once recording_active is still True but this is None/past, footage is done
+    # and the clip is concatenating ("Saving…"). Reflects the fixed footage
+    # window only — it does NOT track the concat tail (unknown duration).
+    "recording_ends_at": None,
 }
 
 

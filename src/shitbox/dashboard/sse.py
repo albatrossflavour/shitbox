@@ -350,6 +350,7 @@ async def sse_slow(request: Request) -> Response:
                             "event_count": snap["event_count_today"],
                             "active_driver": snap.get("active_driver"),
                             "recording_active": snap.get("recording_active", False),
+                            "recording_ends_at": snap.get("recording_ends_at"),
                             "hardware": _hardware_payload(),
                             "system_conditions": _system_conditions_payload(),
                             "tpms": _tpms_payload(),

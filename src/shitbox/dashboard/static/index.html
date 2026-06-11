@@ -503,7 +503,26 @@
         gpsBadge: 'NO FIX', gpsBadgeClass: 'bg-red-700',
         syncBadge: 'SYNC OFFLINE', syncBadgeClass: 'bg-red-700',
         netBadge: 'NET OFFLINE', netBadgeClass: 'bg-red-700',
-        recBadge: 'NO REC', recBadgeClass: 'bg-gray-700',
+        recordingActive: false, recordingEndsAt: null,
+        // Countdown badge. Getters re-evaluate each second because they touch
+        // this.now (ticked by the 1s setInterval). Three states: idle, counting
+        // down the footage window, then "SAVING…" while the clip concatenates.
+        get recBadge() {
+          if (!this.recordingActive) return 'NO REC';
+          if (this.recordingEndsAt) {
+            const left = Math.ceil((this.recordingEndsAt - this.now) / 1000);
+            if (left > 0) {
+              const m = Math.floor(left / 60), s = left % 60;
+              return `REC ${m}:${String(s).padStart(2, '0')}`;
+            }
+          }
+          return 'SAVING…';
+        },
+        get recBadgeClass() {
+          if (!this.recordingActive) return 'bg-gray-700';
+          if (this.recordingEndsAt && this.recordingEndsAt - this.now > 0) return 'bg-red-700';
+          return 'bg-yellow-600';
+        },
         events: [],
         gx: 0, gy: 0, peakG: 0.5, peakGAt: 0,
         map: null, marker: null, breadcrumb: null, lastInteract: 0,
@@ -649,8 +668,8 @@
             } else {
               this.syncBadge = 'SYNC —'; this.syncBadgeClass = 'bg-gray-700';
             }
-            this.recBadge = d.recording_active ? 'REC' : 'NO REC';
-            this.recBadgeClass = d.recording_active ? 'bg-red-700' : 'bg-gray-700';
+            this.recordingActive = d.recording_active;
+            this.recordingEndsAt = d.recording_ends_at || null;
             this.activeDriver = d.active_driver;
             this.hardware = d.hardware || [];
             this.systemConditions = d.system_conditions || [];
