@@ -1256,6 +1256,28 @@ class VideoRingBuffer:
             # 2. Wait for post-event footage
             time.sleep(post_seconds)
 
+            # Re-snapshot the ring at post-copy time. The pre-copy snapshot
+            # cannot reveal eviction during the wait — this one shows how old
+            # the surviving segments are when we actually copy, so we can see
+            # whether the event segment (written at the trigger, ~post_seconds
+            # ago by now) is still in the ring or was recycled before we reached
+            # it. If the oldest age here approaches buffer_capacity_seconds, the
+            # ring is too shallow for post_seconds and the trigger segment is at
+            # risk of being dropped. See Brain log 2026-06-11.
+            now_post = time.time()
+            post_buffer_segments = self._get_buffer_segments()
+            post_ages = [
+                round(now_post - s.stat().st_mtime, 1) for s in post_buffer_segments
+            ]
+            log.info(
+                "video_save_buffer_state_post",
+                save_id=save_id,
+                segment_count=len(post_buffer_segments),
+                segment_ages_seconds=post_ages,
+                post_wait_seconds=post_seconds,
+                buffer_capacity_seconds=self.buffer_segments * self.segment_seconds,
+            )
+
             # 3. Copy segments written AFTER the pre-copy (avoids duplicates)
             post_segments = self._copy_complete_segments(
                 tmp_dir, "post", min_mtime=pre_cutoff,

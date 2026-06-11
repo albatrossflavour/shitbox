@@ -8,6 +8,10 @@
 # USB ID: 32e4:2210 (reported as "HD USB Camera") — MJPEG 1920x1080@30
 SUBSYSTEM=="video4linux", ATTRS{idVendor}=="32e4", ATTRS{idProduct}=="2210", ATTR{index}=="0", SYMLINK+="camera-front"
 
-# Shitbox cabin camera: Logitech Brio 100 (D-14, unchanged from v1)
-# USB ID: 046d:094c — confirm on Pi with: lsusb | grep -i brio
+# Shitbox cabin camera: UGREEN CM678 (D-14) — wider 85° FOV, replaces Brio
+# USB ID: 0c45:2283 (Microdia, reports as "UGREEN Camera") — MJPEG 640x480@30
+SUBSYSTEM=="video4linux", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="2283", ATTR{index}=="0", SYMLINK+="camera-cabin"
+
+# Fallback: Logitech Brio 100 (046d:094c) — only matches if UGREEN unplugged.
+# Kept so the Brio still works if the UGREEN dies in the field.
 SUBSYSTEM=="video4linux", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="094c", ATTR{index}=="0", SYMLINK+="camera-cabin"

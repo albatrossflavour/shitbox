@@ -299,7 +299,7 @@ capture:
     duration_seconds: 60
     resolution: 1280x720
     fps: 30
-    audio_device: "plughw:CARD=B100,DEV=0"  # Brio 100 built-in mic (cabin camera)
+    audio_device: "plughw:CARD=Camera,DEV=0"  # UGREEN CM678 built-in mic (cabin camera)
   timelapse:
     enabled: true
     interval_seconds: 30
@@ -312,34 +312,48 @@ capture:
     fps: 30
     buffer_dir: /var/lib/shitbox/video_buffer
     segment_seconds: 10
-    buffer_segments: 5
+    # 12 × 10s = 120s ring. MUST stay well above capture_post_seconds (45s):
+    # the post-event copy runs ~post_seconds after the trigger, and the segment
+    # being written AT the trigger (the one containing the event) has to survive
+    # in the ring until that copy. At the old value of 5 (50s ring) the event
+    # segment was evicted ~1s before the 46s-late post copy, silently dropping
+    # the footage of the exact moment the capture triggered on. See Brain log
+    # 2026-06-11. Rule of thumb: buffer_segments × segment_seconds ≥ ~2.5×
+    # capture_post_seconds.
+    buffer_segments: 12
     overlay_enabled: true
     intro_video: "/var/lib/shitbox/intro.mp4"
     camera_controls:
-      # ELP 4K IMX317 controls — retuned from UGREEN (D-13)
+      # HD USB Camera 32e4:2210 (D-13) — H.264 UVC, 1920x1080@30
+      # Shutter Priority caps exposure so backlit sky can't blow highlights;
+      # exposure_time_absolute=100 is ~10 ms (1/100s), sane for daylight driving.
+      # Drop to 80 if highlights still blow on the road; raise to 150 if overcast
+      # frames go too dark. backlight_compensation kept at 0 — it interacts badly
+      # with this camera's AE under direct sun.
       brightness: 0
       contrast: 32
       saturation: 60
-      exposure_auto: 3
+      gamma: 230
+      auto_exposure: 2
+      exposure_time_absolute: 100
     pip:
       enabled: true
-      device: /dev/camera-cabin # Logitech Brio 100 (cabin-facing, D-14)
+      device: /dev/camera-cabin # UGREEN CM678 (cabin-facing, D-14, 85° FOV)
       input_format: mjpeg
       resolution: 640x480
       fps: 15
       position: bottom_right
-      # 0.35 → ~14% of the 1920×1080 output frame. 0.85 was the previous
-      # value (~32%) and blocked the road. Bigger is busier; a sane corner
-      # thumbnail sits around 0.3–0.4.
-      scale: 0.35
+      # Bumped 0.35 → 0.42 to compensate for the UGREEN's wider FOV — same PiP
+      # scale meant faces ended up smaller than on the narrower Brio.
+      scale: 0.42
       camera_controls:
-        # DEFERRED — tune on Pi with: v4l2-ctl -d /dev/camera-cabin -L
-        # Then set controls: v4l2-ctl -d /dev/camera-cabin --set-ctrl <name>=<value>
-        # Defaults below are Brio 100 factory; adjust to fix washed-out/orange cast.
+        # UGREEN CM678 (Microdia 0c45:2283) — ranges differ from the Brio:
+        # brightness ±64, contrast 0-64, saturation 0-128, gamma 72-500,
+        # backlight_compensation 0-6, sharpness 0-6.
         white_balance_automatic: 1
-        brightness: 128
-        contrast: 128
-        saturation: 128
+        brightness: 0
+        contrast: 36
+        saturation: 80
   speaker:
     enabled: true
     model_path: /var/lib/shitbox/tts/en_GB-northern_english_male-medium.onnx
