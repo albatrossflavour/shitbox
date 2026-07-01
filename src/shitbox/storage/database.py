@@ -61,7 +61,7 @@ def _systemd_watchdog_keepalive(stop: threading.Event, interval_seconds: float) 
         _send_systemd_notify("WATCHDOG=1")
 
 # Database schema version for migrations
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS readings (
     humidity_pct REAL,
     env_temp_celsius REAL,
     gas_resistance_ohms REAL,
+    air_quality_score REAL,
 
     -- Light fields (VEML7700)
     lux REAL,
@@ -272,6 +273,9 @@ class Database:
         if current_version < 12:
             self._migrate_to_v12(conn)
 
+        if current_version < 13:
+            self._migrate_to_v13(conn)
+
         if current_version < SCHEMA_VERSION:
             conn.execute(
                 "INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
@@ -439,6 +443,20 @@ class Database:
         conn.commit()
         log.info("migrated_to_v10", columns=["pm25_ug_m3"])
 
+    def _migrate_to_v13(self, conn: sqlite3.Connection) -> None:
+        """Add air_quality_score column for the BME680 0-100 IAQ score.
+
+        A plain nullable ADD COLUMN — metadata-only in SQLite, effectively
+        instant regardless of table size (unlike the v12 index build, which
+        scanned every row). Existing rows read back NULL for this column.
+        """
+        try:
+            conn.execute("ALTER TABLE readings ADD COLUMN air_quality_score REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        conn.commit()
+        log.info("migrated_to_v13", columns=["air_quality_score"])
+
     def _migrate_to_v11(self, conn: sqlite3.Connection) -> None:
         """Add tpms_readings table for Phase 28 TPMS integration.
 
@@ -569,12 +587,13 @@ class Database:
                     bus_voltage_v, current_ma, power_mw,
                     pressure_hpa, humidity_pct, env_temp_celsius,
                     gas_resistance_ohms,
+                    air_quality_score,
                     lux,
                     pm25_ug_m3,
                     cpu_temp_celsius, cpu_percent, disk_percent, sync_backlog, throttle_flags
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 (
@@ -602,6 +621,7 @@ class Database:
                     reading.humidity_pct,
                     reading.env_temp_celsius,
                     reading.gas_resistance_ohms,
+                    reading.air_quality_score,
                     reading.lux,
                     reading.pm25_ug_m3,
                     reading.cpu_temp_celsius,
@@ -701,13 +721,14 @@ class Database:
                             bus_voltage_v, current_ma, power_mw,
                             pressure_hpa, humidity_pct, env_temp_celsius,
                             gas_resistance_ohms,
+                            air_quality_score,
                             lux,
                             pm25_ug_m3,
                             cpu_temp_celsius, cpu_percent, disk_percent,
                             sync_backlog, throttle_flags
                         ) VALUES (
                             ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
                         """,
                         (
@@ -735,6 +756,7 @@ class Database:
                             reading.humidity_pct,
                             reading.env_temp_celsius,
                             reading.gas_resistance_ohms,
+                            reading.air_quality_score,
                             reading.lux,
                             reading.pm25_ug_m3,
                             reading.cpu_temp_celsius,
@@ -1015,6 +1037,9 @@ class Database:
             env_temp_celsius=row["env_temp_celsius"] if "env_temp_celsius" in keys else None,
             gas_resistance_ohms=(
                 row["gas_resistance_ohms"] if "gas_resistance_ohms" in keys else None
+            ),
+            air_quality_score=(
+                row["air_quality_score"] if "air_quality_score" in keys else None
             ),
             cpu_temp_celsius=row["cpu_temp_celsius"] if "cpu_temp_celsius" in keys else None,
             cpu_percent=row["cpu_percent"] if "cpu_percent" in keys else None,

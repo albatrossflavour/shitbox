@@ -435,6 +435,13 @@ class VideoBufferConfig:
     overlay_enabled: bool = True
     intro_video: str = ""
     camera_controls: dict[str, int] = field(default_factory=dict)
+    # Save-time tone grade for the front camera, expressed as ffmpeg
+    # `curves` master control points ("in/out in/out ..."). Lifts crushed
+    # foreground shadows while pinning white so a bright sky can't blow.
+    # Applied only to live footage (timeline-gated past intro+slate), front
+    # stream only — the cabin PiP is untouched. Empty string disables.
+    # Tune in the field by editing the points and restarting the service.
+    front_grade: str = "0/0 0.15/0.36 0.35/0.58 0.7/0.83 1/1"
     pip: PipConfig = field(default_factory=PipConfig)
 
 

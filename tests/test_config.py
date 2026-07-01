@@ -13,14 +13,17 @@ def test_load_config_drivers_list(tmp_path):
 
 
 def test_full_config_roundtrip_includes_hardware():
-    """Production config/config.yaml loads 16 hardware devices correctly (HW-01).
+    """Production config/config.yaml loads 13 hardware devices correctly (HW-01).
 
     Phase 28 added tpms_radio; S02 added audio_cabin_mic (Blue Snowball);
     v2 power swap replaced the single INA226 with the INA228 on the 12 V
     battery rail (Pi-side power telemetry now via PMIC, not on the I2C bus).
+    Rally 2026: INA228 battery monitor and both DS18B20 1-Wire probes pulled
+    from monitoring (collectors disabled, registry entries commented out),
+    dropping the count from 16 to 13.
     """
     cfg = load_config("config/config.yaml")
-    assert len(cfg.hardware.devices) == 16
+    assert len(cfg.hardware.devices) == 13
 
     # Spot-check: IMU must be critical with the correct I2C address
     imu_devices = [d for d in cfg.hardware.devices if d.role == "imu"]

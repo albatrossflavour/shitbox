@@ -212,6 +212,7 @@ class EngineConfig:
     video_buffer_camera_controls: dict[str, int] = field(
         default_factory=dict,
     )
+    video_buffer_front_grade: str = ""
 
     # Video ring buffer (PIP / cabin cam)
     video_buffer_pip_enabled: bool = False
@@ -391,6 +392,7 @@ class EngineConfig:
             overlay_enabled=config.capture.video_buffer.overlay_enabled,
             video_buffer_intro_video=config.capture.video_buffer.intro_video,
             video_buffer_camera_controls=config.capture.video_buffer.camera_controls,
+            video_buffer_front_grade=config.capture.video_buffer.front_grade,
             # Video ring buffer (PIP / cabin cam)
             video_buffer_pip_enabled=config.capture.video_buffer.pip.enabled,
             video_buffer_pip_device=config.capture.video_buffer.pip.device,
@@ -816,6 +818,7 @@ class UnifiedEngine:
                     pip_scale=config.video_buffer_pip_scale,
                     camera_controls=config.video_buffer_camera_controls,
                     pip_camera_controls=config.video_buffer_pip_camera_controls,
+                    front_grade=config.video_buffer_front_grade,
                     role="camera_front",
                 )
             else:

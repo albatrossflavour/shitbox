@@ -163,7 +163,9 @@ sensors:
     sample_rate_hz: 1.0
 
   temperature: # DS18B20 1-Wire, 2 probes (IDs from HARDWARE_IDS.md)
-    enabled: true
+    # Disabled for rally 2026 — 1-Wire bus unreliable, probes pulled from
+    # monitoring. Re-enable here + restore the hardware-registry entries below.
+    enabled: false
     sample_rate_hz: 0.1  # every 10s — 1Hz races the Pi 5 kernel conversion
     probes:
       - role: exterior
@@ -187,7 +189,10 @@ sensors:
   # shunt (±10 A range). 20-bit precision, has on-chip energy/charge
   # accumulators we don't currently consume.
   power_battery:
-    enabled: true
+    # Disabled for rally 2026 — INA228 V+/V- floating (reads noise floor),
+    # battery monitoring not in use. Pi rail telemetry via PMIC stays on.
+    # Re-enable here + restore the hardware-registry entry below.
+    enabled: false
     chip: ina228
     i2c_bus: 1
     address: 0x40
@@ -324,18 +329,35 @@ capture:
     overlay_enabled: true
     intro_video: "/var/lib/shitbox/intro.mp4"
     camera_controls:
-      # HD USB Camera 32e4:2210 (D-13) — H.264 UVC, 1920x1080@30
-      # Shutter Priority caps exposure so backlit sky can't blow highlights;
-      # exposure_time_absolute=100 is ~10 ms (1/100s), sane for daylight driving.
-      # Drop to 80 if highlights still blow on the road; raise to 150 if overcast
-      # frames go too dark. backlight_compensation kept at 0 — it interacts badly
-      # with this camera's AE under direct sun.
+      # ELP IMX317 (D-13) — H.264 UVC, 1920x1080@30.
+      # Verified 2026-06-15 from `v4l2-ctl -L`: auto_exposure is a 2-entry menu,
+      # 1=Manual, 3=Aperture Priority. There is NO shutter-priority mode. The
+      # previous `auto_exposure: 2` was invalid, silently rejected, and left the
+      # camera in Aperture Priority (full auto). exposure_time_absolute only
+      # activates under auto_exposure: 1, so the 1/100s cap never applied.
+      # Kept in auto deliberately — it adapts across the rally's bright-sun-to-
+      # dusk range; a fixed manual shutter would be black by evening.
+      # Verified control ranges (this camera): brightness +-64, contrast 0-64,
+      # saturation 0-128, gamma 72-500, backlight_compensation 0-6.
+      # Foreground-dark fix is the save-time `front_grade` curve below. Camera-
+      # side levers to try on the 9th (both adapt with the AE): raise
+      # backlight_compensation (designed for bright-sky backlit scenes) and/or
+      # apply a positive brightness bias.
       brightness: 0
       contrast: 32
       saturation: 60
       gamma: 230
-      auto_exposure: 2
+      auto_exposure: 3
+      # Inactive unless auto_exposure is set to 1 (Manual); kept for reference.
       exposure_time_absolute: 100
+    # Save-time tone grade (ffmpeg curves master points: "in/out in/out ...").
+    # Lifts the crushed foreground that the camera's sky-weighted metering
+    # leaves dark, while pinning white so a bright sky can't blow. Front stream
+    # only; cabin PiP untouched; intro/slate excluded (timeline-gated). Empty
+    # string disables. Validated 2026-06-15 against overcast Leumeah footage:
+    # road luma 64 -> 94, sky 204 -> 217, sky max 244 -> 235 (white protected).
+    # Retune in the field by editing these points and restarting the service.
+    front_grade: "0/0 0.15/0.36 0.35/0.58 0.7/0.83 1/1"
     pip:
       enabled: true
       device: /dev/camera-cabin # UGREEN CM678 (cabin-facing, D-14, 85° FOV)
@@ -432,11 +454,14 @@ hardware:
       description: "ELP 4K IMX317 (front dashcam)"
 
     # ── important ────────────────────────────────────────────────────────
-    - role: power_battery
-      bus: i2c-1
-      address: 0x40
-      criticality: important
-      description: "INA228 power monitor — 12 V battery rail"
+    # Disabled for rally 2026 (collector off) — keep out of the registry so the
+    # supervisor doesn't flag this 'important' sensor as missing. Restore to
+    # re-enable battery monitoring.
+    # - role: power_battery
+    #   bus: i2c-1
+    #   address: 0x40
+    #   criticality: important
+    #   description: "INA228 power monitor — 12 V battery rail"
     - role: gps
       bus: usb
       path: /dev/gps0
@@ -464,16 +489,18 @@ hardware:
       address: 0x3c
       criticality: best_effort
       description: "SSD1306 128x64 status display"
-    - role: temp_exterior
-      bus: 1-wire
-      sensor_id: "28-00000024263a"
-      criticality: best_effort
-      description: "DS18B20 exterior probe"
-    - role: temp_engine_bay
-      bus: 1-wire
-      sensor_id: "28-0000002405b1"
-      criticality: best_effort
-      description: "DS18B20 engine bay probe"
+    # Disabled for rally 2026 (collector off) — 1-Wire bus unreliable, probes
+    # pulled from monitoring. Restore both entries to re-enable.
+    # - role: temp_exterior
+    #   bus: 1-wire
+    #   sensor_id: "28-00000024263a"
+    #   criticality: best_effort
+    #   description: "DS18B20 exterior probe"
+    # - role: temp_engine_bay
+    #   bus: 1-wire
+    #   sensor_id: "28-0000002405b1"
+    #   criticality: best_effort
+    #   description: "DS18B20 engine bay probe"
     - role: camera_cabin
       bus: usb
       path: /dev/camera-cabin

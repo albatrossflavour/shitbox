@@ -89,6 +89,9 @@ class EnvironmentReading:
     humidity_pct: float
     env_temp_celsius: float
     gas_resistance_ohms: Optional[float] = None
+    # Relative indoor-air-quality score, 0-100 (higher = cleaner). Derived in
+    # the collector from gas resistance vs a rolling baseline plus humidity.
+    air_quality_score: Optional[float] = None
 
 
 @dataclass
@@ -133,6 +136,7 @@ class Reading:
     humidity_pct: Optional[float] = None
     env_temp_celsius: Optional[float] = None
     gas_resistance_ohms: Optional[float] = None
+    air_quality_score: Optional[float] = None
 
     # Light fields (VEML7700)
     lux: Optional[float] = None
@@ -210,6 +214,7 @@ class Reading:
             humidity_pct=reading.humidity_pct,
             env_temp_celsius=reading.env_temp_celsius,
             gas_resistance_ohms=reading.gas_resistance_ohms,
+            air_quality_score=reading.air_quality_score,
         )
 
     @classmethod
@@ -275,6 +280,7 @@ class Reading:
                 "hum": self.humidity_pct,
                 "env_temp": self.env_temp_celsius,
                 "gas_ohms": self.gas_resistance_ohms,
+                "air_quality": self.air_quality_score,
             }
         elif self.sensor_type == SensorType.PM25:
             return {

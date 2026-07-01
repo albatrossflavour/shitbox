@@ -92,6 +92,7 @@ class VideoRingBuffer:
         pip_scale: float = 0.25,
         camera_controls: Optional[dict[str, int]] = None,
         pip_camera_controls: Optional[dict[str, int]] = None,
+        front_grade: str = "",
         role: str = "camera_front",
         audio_hw_role: str = "",
     ):
@@ -117,6 +118,7 @@ class VideoRingBuffer:
         self.pip_scale = pip_scale
         self.camera_controls = camera_controls or {}
         self.pip_camera_controls = pip_camera_controls or {}
+        self.front_grade = front_grade or ""
 
         self._process: Optional[subprocess.Popen] = None
         self._health_thread: Optional[threading.Thread] = None
@@ -164,7 +166,17 @@ class VideoRingBuffer:
         self._process_start_time: float = 0.0  # set in start() for the sweep
 
     def _configure_cameras(self) -> None:
-        """Apply v4l2 controls to cameras before recording starts."""
+        """Apply v4l2 controls to cameras before recording starts, verifying
+        each one actually took.
+
+        v4l2-ctl exits 0 even when the driver silently clamps or ignores a
+        value — an out-of-menu setting (e.g. the historic ``auto_exposure=2``,
+        which this camera's menu doesn't have), an out-of-range int, or an
+        inactive control (``exposure_time_absolute`` while in Aperture
+        Priority). So each control is read back and compared to what was
+        requested. A mismatch means the camera overrode us; it is logged loudly
+        rather than reported as a success.
+        """
         device_controls = [
             (self.device, self.camera_controls),
             (self.pip_device, self.pip_camera_controls),
@@ -174,7 +186,7 @@ class VideoRingBuffer:
                 continue
             for ctrl, value in controls.items():
                 try:
-                    subprocess.run(
+                    result = subprocess.run(
                         [
                             "v4l2-ctl", "--device", device,
                             "--set-ctrl", f"{ctrl}={value}",
@@ -182,10 +194,6 @@ class VideoRingBuffer:
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.PIPE,
                         timeout=5,
-                    )
-                    log.info(
-                        "camera_ctrl_set",
-                        device=device, ctrl=ctrl, value=value,
                     )
                 except FileNotFoundError:
                     log.warning(
@@ -198,6 +206,57 @@ class VideoRingBuffer:
                         "camera_ctrl_failed",
                         device=device, ctrl=ctrl, error=str(e),
                     )
+                    continue
+
+                if result.returncode != 0:
+                    log.warning(
+                        "camera_ctrl_rejected",
+                        device=device, ctrl=ctrl, value=value,
+                        error=result.stderr.decode(errors="replace").strip(),
+                    )
+                    continue
+
+                actual = self._read_ctrl(device, ctrl)
+                if actual is None:
+                    log.info(
+                        "camera_ctrl_set",
+                        device=device, ctrl=ctrl, value=value, verified=False,
+                    )
+                elif actual != value:
+                    log.warning(
+                        "camera_ctrl_mismatch",
+                        device=device, ctrl=ctrl,
+                        requested=value, actual=actual,
+                    )
+                else:
+                    log.info(
+                        "camera_ctrl_set",
+                        device=device, ctrl=ctrl, value=value, verified=True,
+                    )
+
+    def _read_ctrl(self, device: str, ctrl: str) -> Optional[int]:
+        """Read back a single v4l2 control, or None if it can't be read.
+
+        ``v4l2-ctl --get-ctrl <ctrl>`` prints ``<ctrl>: <value>``.
+        """
+        try:
+            result = subprocess.run(
+                ["v4l2-ctl", "--device", device, "--get-ctrl", ctrl],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+        except Exception:
+            return None
+        if result.returncode != 0:
+            return None
+        out = result.stdout.decode(errors="replace").strip()
+        if ":" not in out:
+            return None
+        try:
+            return int(out.split(":", 1)[1].strip())
+        except (ValueError, IndexError):
+            return None
 
     @property
     def is_running(self) -> bool:
@@ -1458,6 +1517,22 @@ class VideoRingBuffer:
 
         return copied
 
+    def _front_grade_filter(self, head_offset_s: float) -> str:
+        """Return the front-camera tone grade as an ffmpeg ``curves`` filter,
+        or ``""`` when no grade is configured.
+
+        Timeline-gated to ``head_offset_s`` (intro + slate duration) so the
+        branded intro and title slate render exactly as authored and only the
+        live footage is graded. The grade lifts crushed foreground shadows
+        while pinning white, so a bright sky cannot blow out.
+        """
+        if not self.front_grade:
+            return ""
+        gate = (
+            f":enable='gte(t,{head_offset_s:.3f})'" if head_offset_s > 0 else ""
+        )
+        return f"curves=master='{self.front_grade}'{gate}"
+
     def _build_concat_reencode_cmd(
         self,
         segments: list[Path],
@@ -1506,14 +1581,18 @@ class VideoRingBuffer:
         )
 
         logo_exists = Path(ol.LOGO_PATH).exists()
+        grade = self._front_grade_filter(head_offset_s)
+        grade_prefix = f"{grade}," if grade else ""
         if logo_exists:
             filter_complex = (
                 f"[1:v]format=rgba,colorchannelmixer=aa=0.4[logo];"
-                f"[0:v]ass={ass_path}[text];"
+                f"[0:v]{grade_prefix}ass={ass_path}[text];"
                 "[text][logo]overlay=10:10,format=yuv420p[out]"
             )
         else:
-            filter_complex = f"[0:v]ass={ass_path},format=yuv420p[out]"
+            filter_complex = (
+                f"[0:v]{grade_prefix}ass={ass_path},format=yuv420p[out]"
+            )
 
         cmd = [
             "ffmpeg", "-y",
@@ -1623,8 +1702,18 @@ class VideoRingBuffer:
         # Clamp PiP appearance to head_offset_s so it never overlaps the slate,
         # even when cabin_shift < head_offset_s (cabin started earlier than front).
         pip_enable_t = max(cabin_shift, head_offset_s)
+        # Grade the front stream to a named pad before compositing — overlay
+        # takes two inputs, so the grade can't be a mid-chain filter on [0:v].
+        grade = self._front_grade_filter(head_offset_s)
+        if grade:
+            front_grade_chain = f"[0:v]{grade}[fg];"
+            front_in = "[fg]"
+        else:
+            front_grade_chain = ""
+            front_in = "[0:v]"
         overlay_chain = (
-            f"[0:v][pip]overlay={x}:{y}:enable='gte(t,{pip_enable_t})'[base]"
+            f"{front_grade_chain}{front_in}[pip]"
+            f"overlay={x}:{y}:enable='gte(t,{pip_enable_t})'[base]"
         )
 
         # Audio must start at pip_enable_t (same moment the PiP video appears) so

@@ -729,6 +729,13 @@ class BatchSyncService:
                         reading.gas_resistance_ohms,
                         timestamp_ms,
                     ))
+                if reading.air_quality_score is not None:
+                    metrics.append((
+                        "shitbox_air_quality",
+                        labels,
+                        reading.air_quality_score,
+                        timestamp_ms,
+                    ))
 
             elif reading.sensor_type.value == "system":
                 if reading.cpu_temp_celsius is not None:

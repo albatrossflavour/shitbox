@@ -1,5 +1,6 @@
 """Environment data collector for BME680 sensor."""
 
+from collections import deque
 from typing import Callable, Optional
 
 from shitbox.collectors.base import BaseCollector
@@ -8,6 +9,45 @@ from shitbox.utils.config import EnvironmentConfig
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
+
+# Air-quality score constants (pimoroni indoor-air-quality approach, with a
+# rolling baseline instead of a one-shot burn-in mean so it tracks sensor drift
+# over a multi-day run). These are algorithm parameters, not field knobs.
+_HUM_BASELINE_PCT = 40.0   # ideal indoor relative humidity
+_HUM_WEIGHTING = 0.25      # humidity contributes 25% of the score, gas 75%
+_GAS_BASELINE_WINDOW = 120  # gas-resistance samples kept for the rolling baseline
+
+
+def compute_air_quality_score(
+    gas_ohms: float, humidity_pct: float, gas_baseline_ohms: float
+) -> float:
+    """Relative indoor-air-quality score, 0-100 (higher = cleaner).
+
+    Combines gas resistance against a rolling baseline (75%) with humidity's
+    deviation from an ideal 40% (25%). This is a *relative* score — "cleaner or
+    worse than the recent baseline" — not a calibrated Bosch IAQ index. Pure
+    function so it can be unit-tested without hardware.
+    """
+    gas_weighting = 1.0 - _HUM_WEIGHTING
+
+    # Humidity: full marks at 40%, tapering toward 0 at the dry/wet extremes.
+    hum_offset = humidity_pct - _HUM_BASELINE_PCT
+    if hum_offset > 0:
+        hum_frac = (100.0 - _HUM_BASELINE_PCT - hum_offset) / (100.0 - _HUM_BASELINE_PCT)
+    else:
+        hum_frac = (_HUM_BASELINE_PCT + hum_offset) / _HUM_BASELINE_PCT
+    hum_score = max(0.0, min(1.0, hum_frac)) * (_HUM_WEIGHTING * 100.0)
+
+    # Gas: full marks at or above baseline, scaling down as resistance drops
+    # below it (lower resistance = more VOCs = worse air).
+    if gas_baseline_ohms <= 0:
+        gas_score = gas_weighting * 100.0
+    elif gas_ohms < gas_baseline_ohms:
+        gas_score = (gas_ohms / gas_baseline_ohms) * (gas_weighting * 100.0)
+    else:
+        gas_score = gas_weighting * 100.0
+
+    return round(hum_score + gas_score, 1)
 
 
 class EnvironmentCollector(BaseCollector[EnvironmentReading]):
@@ -31,6 +71,10 @@ class EnvironmentCollector(BaseCollector[EnvironmentReading]):
         self.config = config
         self._sensor = None
         self._i2c = None
+        # Rolling window of recent gas-resistance readings for the air-quality
+        # baseline. In-memory only — resets on restart, so the score re-warms
+        # over the first ~2 min of samples (documented burn-in).
+        self._gas_history: "deque[float]" = deque(maxlen=_GAS_BASELINE_WINDOW)
 
     def setup(self) -> None:
         """Initialise BME680 hardware. Single attempt — supervisor's exponential
@@ -64,12 +108,21 @@ class EnvironmentCollector(BaseCollector[EnvironmentReading]):
             temperature = self._sensor.temperature
             gas = self._sensor.gas
 
+            # Derive the relative air-quality score against a rolling gas
+            # baseline. Skipped until gas is available.
+            air_quality = None
+            if gas is not None:
+                self._gas_history.append(gas)
+                gas_baseline = sum(self._gas_history) / len(self._gas_history)
+                air_quality = compute_air_quality_score(gas, humidity, gas_baseline)
+
             reading = EnvironmentReading(
                 timestamp=self.now_utc(),
                 pressure_hpa=pressure,
                 humidity_pct=humidity,
                 env_temp_celsius=temperature,
                 gas_resistance_ohms=gas,
+                air_quality_score=air_quality,
             )
 
             log.debug(
