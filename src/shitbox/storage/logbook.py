@@ -182,3 +182,43 @@ class LogbookStorage:
                 s["km_per_litre"] = None
 
         return stops
+
+    def create_breakdown(self, reason: Optional[str] = None) -> Dict[str, Any]:
+        """Insert a breakdown row (the car died here) and return its dict.
+
+        ``reason`` is optional — a breakdown still counts even if the driver
+        was too busy swearing to type why.
+        """
+        reason = (reason or "").strip() or None
+        lat, lng, stale, _ = self._resolve_gps()
+        ts = datetime.now(timezone.utc).isoformat()
+        with self.db.transaction() as conn:
+            cur = conn.execute(
+                "INSERT INTO breakdowns (timestamp_utc, reason, lat, lng, gps_stale) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (ts, reason, lat, lng, 1 if stale else 0),
+            )
+            breakdown_id = cur.lastrowid
+        log.info("breakdown_saved", breakdown_id=breakdown_id, gps_stale=stale)
+        return {
+            "id": breakdown_id,
+            "timestamp_utc": ts,
+            "reason": reason,
+            "lat": lat,
+            "lng": lng,
+            "gps_stale": stale,
+        }
+
+    def list_breakdowns(self) -> List[Dict[str, Any]]:
+        """Return all breakdowns ordered by timestamp ascending."""
+        with self.db.transaction() as conn:
+            rows = conn.execute(
+                "SELECT id, timestamp_utc, reason, lat, lng, gps_stale "
+                "FROM breakdowns ORDER BY timestamp_utc ASC"
+            ).fetchall()
+        cols = ["id", "timestamp_utc", "reason", "lat", "lng", "gps_stale"]
+        return [dict(zip(cols, r)) for r in rows]
+
+    def generate_breakdown_json(self) -> List[Dict[str, Any]]:
+        """Return breakdowns as a list of dicts suitable for JSON serialisation."""
+        return self.list_breakdowns()

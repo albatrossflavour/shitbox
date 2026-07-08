@@ -125,6 +125,10 @@
               style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
                      color: #e6edf3; font-size: 28px; font-weight: 700;
                      padding: 8px 14px; border-radius: 4px; min-height: 52px;">Fuel</button>
+      <button @click="openBreakdownModal()"
+              style="cursor: pointer; background: #161b22; border: 1px solid #6e3a1a;
+                     color: #d29922; font-size: 28px; font-weight: 700;
+                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">Breakdown</button>
       <button @click="openHardwareModal()"
               :class="hwBadgeClass()"
               :title="hwStatusTitle()"
@@ -301,6 +305,42 @@
                   ? 'background: #21262d; color: #8b949e; cursor: not-allowed; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px;'
                   : 'background: #1f6feb; color: #fff; cursor: pointer; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px; font-weight: 600;'"
                 x-text="savingNote ? 'Saving...' : 'Save Note'"></button>
+      </div>
+    </div>
+  </div>
+  </template>
+
+  <!-- Breakdown modal (full screen) — reason optional, one big Log button -->
+  <template x-if="showBreakdownModal">
+  <div @keydown.escape.window="showBreakdownModal = false"
+       style="position: fixed; inset: 0; background: #0d1117; z-index: 1000;
+              display: grid; grid-template-rows: auto 1fr auto; padding: 48px; gap: 24px;
+              box-sizing: border-box;">
+
+    <h2 style="font-size: 39px; font-weight: 600; margin: 0; color: #d29922;">Breakdown</h2>
+
+    <textarea x-model="breakdownReason" placeholder="What broke? (optional)"
+              style="width: 100%; height: 100%; background: #161b22; border: 1px solid #21262d;
+                     color: #e6edf3; border-radius: 8px; padding: 24px; box-sizing: border-box;
+                     font-size: 31px; font-family: inherit; resize: none;"></textarea>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+      <div style="font-size: 26px; font-weight: 600;">
+        <span x-show="gpsHasFix" style="color: #8b949e;">Location captured (3D fix)</span>
+        <span x-show="!gpsHasFix && gpsStaleMinutes > 0" style="color: #ca8a04;"
+              x-text="'Location from ' + gpsStaleMinutes + ' minutes ago'"></span>
+        <span x-show="!gpsHasFix && gpsStaleMinutes === 0" style="color: #ca8a04;">No GPS fix available</span>
+        <span x-show="errorMsg" x-text="errorMsg" style="color: #da3633; margin-left: 16px;"></span>
+      </div>
+      <div style="display: flex; gap: 16px;">
+        <button @click="showBreakdownModal = false"
+                style="background: #161b22; color: #8b949e; padding: 16px 32px; font-size: 35px;
+                       border: 1px solid #21262d; border-radius: 8px; cursor: pointer;">Close</button>
+        <button @click.prevent="saveBreakdown()" :disabled="savingBreakdown"
+                :style="savingBreakdown
+                  ? 'background: #21262d; color: #8b949e; cursor: not-allowed; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px;'
+                  : 'background: #b8860b; color: #fff; cursor: pointer; padding: 16px 32px; font-size: 35px; border: none; border-radius: 8px; font-weight: 600;'"
+                x-text="savingBreakdown ? 'Saving...' : 'Log Breakdown'"></button>
       </div>
     </div>
   </div>
@@ -533,15 +573,18 @@
         driverSelection: '',
         showNoteModal: false,
         showFuelModal: false,
+        showBreakdownModal: false,
         noteBody: '',
         noteEventId: '',
         fuelVolume: '',
         fuelCost: '',
         fuelOdo: '',
+        breakdownReason: '',
         gpsStaleMinutes: 0,
         gpsHasFix: true,
         savingNote: false,
         savingFuel: false,
+        savingBreakdown: false,
         errorMsg: '',
         successMsg: '',
         // Kiosk additions
@@ -810,6 +853,30 @@
           this.fuelOdo = '';
           await this.fetchGpsStatus();
           this.showFuelModal = true;
+        },
+        async openBreakdownModal() {
+          this.errorMsg = '';
+          this.breakdownReason = '';
+          await this.fetchGpsStatus();
+          this.showBreakdownModal = true;
+        },
+        async saveBreakdown() {
+          this.savingBreakdown = true;
+          this.errorMsg = '';
+          try {
+            const body = {};
+            if (this.breakdownReason.trim()) body.reason = this.breakdownReason.trim();
+            const r = await fetch('/api/breakdowns', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(body)
+            });
+            if (!r.ok) throw new Error('save failed');
+            this.showBreakdownModal = false;
+            this.flashSuccess('Breakdown logged');
+          } catch {
+            this.errorMsg = 'Could not save — try again';
+          } finally { this.savingBreakdown = false; }
         },
         async saveNote() {
           if (!this.noteBody.trim()) return;

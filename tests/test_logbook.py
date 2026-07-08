@@ -213,3 +213,60 @@ def test_api_gps_status(tmp_db):
     data = resp.json()
     assert data["has_fix"] is False
     assert data["gps_stale"] is True
+
+
+# ---------------------------------------------------------------------------
+# Breakdown logbook (v14)
+# ---------------------------------------------------------------------------
+
+
+def test_create_breakdown_with_reason(tmp_db):
+    from shitbox.storage.logbook import LogbookStorage
+
+    snap_fn = lambda: {"lat": -16.9, "lng": 145.7, "gps_fix_mode": 3}
+    storage = LogbookStorage(tmp_db, snapshot_fn=snap_fn)
+    result = storage.create_breakdown("fan belt let go")
+
+    assert result["reason"] == "fan belt let go"
+    assert result["lat"] == pytest.approx(-16.9)
+    assert result["gps_stale"] is False
+    with tmp_db.transaction() as conn:
+        row = conn.execute(
+            "SELECT * FROM breakdowns WHERE id = ?", (result["id"],)
+        ).fetchone()
+    assert row["reason"] == "fan belt let go"
+
+
+def test_create_breakdown_blank_reason_is_null(tmp_db):
+    from shitbox.storage.logbook import LogbookStorage
+
+    storage = LogbookStorage(tmp_db, snapshot_fn=lambda: {"gps_fix_mode": 0})
+    assert storage.create_breakdown(None)["reason"] is None
+    assert storage.create_breakdown("   ")["reason"] is None
+
+
+def test_generate_breakdown_json_orders_ascending(tmp_db):
+    from shitbox.storage.logbook import LogbookStorage
+
+    storage = LogbookStorage(tmp_db, snapshot_fn=lambda: {"gps_fix_mode": 0})
+    storage.create_breakdown("first")
+    storage.create_breakdown("second")
+    rows = storage.generate_breakdown_json()
+    assert [r["reason"] for r in rows] == ["first", "second"]
+    assert set(rows[0]) == {"id", "timestamp_utc", "reason", "lat", "lng", "gps_stale"}
+
+
+def test_api_create_breakdown_201(tmp_db):
+    app = _make_test_app(tmp_db)
+    with TestClient(app) as client:
+        resp = client.post("/api/breakdowns", json={"reason": "overheated"})
+    assert resp.status_code == 201
+    assert resp.json()["reason"] == "overheated"
+
+
+def test_api_create_breakdown_no_reason(tmp_db):
+    app = _make_test_app(tmp_db)
+    with TestClient(app) as client:
+        resp = client.post("/api/breakdowns", json={})
+    assert resp.status_code == 201
+    assert resp.json()["reason"] is None

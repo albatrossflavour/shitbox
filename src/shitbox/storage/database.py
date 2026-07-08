@@ -61,7 +61,7 @@ def _systemd_watchdog_keepalive(stop: threading.Event, interval_seconds: float) 
         _send_systemd_notify("WATCHDOG=1")
 
 # Database schema version for migrations
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 SCHEMA_SQL = """
 -- Main telemetry readings table
@@ -173,6 +173,16 @@ CREATE TABLE IF NOT EXISTS fuel_stops (
     created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS breakdowns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp_utc TEXT NOT NULL,
+    reason TEXT,
+    lat REAL,
+    lng REAL,
+    gps_stale BOOLEAN NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Indexes for efficient queries
 CREATE INDEX IF NOT EXISTS idx_readings_timestamp ON readings(timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_readings_sensor_type ON readings(sensor_type);
@@ -275,6 +285,9 @@ class Database:
 
         if current_version < 13:
             self._migrate_to_v13(conn)
+
+        if current_version < 14:
+            self._migrate_to_v14(conn)
 
         if current_version < SCHEMA_VERSION:
             conn.execute(
@@ -456,6 +469,24 @@ class Database:
             pass  # Column already exists
         conn.commit()
         log.info("migrated_to_v13", columns=["air_quality_score"])
+
+    def _migrate_to_v14(self, conn: sqlite3.Connection) -> None:
+        """Add breakdowns table — logbook of times the car died on us."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS breakdowns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp_utc TEXT NOT NULL,
+                reason TEXT,
+                lat REAL,
+                lng REAL,
+                gps_stale BOOLEAN NOT NULL DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.commit()
+        log.info("migrated_to_v14", tables=["breakdowns"])
 
     def _migrate_to_v11(self, conn: sqlite3.Connection) -> None:
         """Add tpms_readings table for Phase 28 TPMS integration.

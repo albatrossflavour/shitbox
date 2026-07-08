@@ -746,6 +746,9 @@ class UnifiedEngine:
             self.capture_sync.register_json_generator(
                 "fuel", self.logbook_storage.generate_fuel_json
             )
+            self.capture_sync.register_json_generator(
+                "breakdowns", self.logbook_storage.generate_breakdown_json
+            )
 
         # Driver storage — REST-only, idempotent (same pattern as LogbookStorage)
         self.driver_storage = DriverStorage(self.database)

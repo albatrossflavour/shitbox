@@ -49,6 +49,10 @@ class FuelRequest(BaseModel):
     odometer_km: Optional[float] = Field(None, ge=0)
 
 
+class BreakdownRequest(BaseModel):
+    reason: Optional[str] = None
+
+
 @router.post("/api/notes", status_code=201)
 def create_note(payload: NoteRequest) -> dict:
     """Create a new field note with GPS position captured at call time."""
@@ -73,6 +77,15 @@ def create_fuel(payload: FuelRequest) -> dict:
 def list_fuel() -> dict:
     """Return all fuel stops with per-stop and cumulative efficiency."""
     return _require_storage().list_fuel_stops()
+
+
+@router.post("/api/breakdowns", status_code=201)
+def create_breakdown(payload: BreakdownRequest) -> dict:
+    """Log a breakdown with GPS position and an optional reason."""
+    result = _require_storage().create_breakdown(payload.reason)
+    if _sync_trigger is not None:
+        _sync_trigger()
+    return result
 
 
 @router.get("/api/logbook/gps")

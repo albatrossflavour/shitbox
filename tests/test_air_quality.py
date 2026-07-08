@@ -88,7 +88,7 @@ def test_v13_migration_adds_column(tmp_path) -> None:
         version = conn.execute(
             "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
         ).fetchone()[0]
-        assert version == SCHEMA_VERSION == 13
+        assert version == SCHEMA_VERSION
     finally:
         db.close()
 
