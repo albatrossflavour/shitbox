@@ -992,6 +992,13 @@ class Database:
         ).fetchone()
         return row["cnt"]
 
+    def get_breakdowns_count(self) -> int:
+        """Return total number of logged breakdowns."""
+        row = self._get_connection().execute(
+            "SELECT COUNT(*) as cnt FROM breakdowns"
+        ).fetchone()
+        return row["cnt"]
+
     def get_active_driver_name(self) -> Optional[str]:
         """Return the name of the currently active driver, or None."""
         row = self._get_connection().execute(

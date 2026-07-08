@@ -367,6 +367,14 @@ class BatchSyncService:
             log.warning("summary_metrics_notes_error", error=str(e))
 
         try:
+            breakdowns_count = self.db.get_breakdowns_count()
+            metrics.append(
+                ("shitbox_breakdowns_total", labels, float(breakdowns_count), now_ms)
+            )
+        except Exception as e:
+            log.warning("summary_metrics_breakdowns_error", error=str(e))
+
+        try:
             # Trip distance gauges. Engine.py persists odometer_km + daily_km
             # to trip_state every 60s; we read them back here and emit as
             # gauges so the trip-summary dashboard's Distance tile lights up.
