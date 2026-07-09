@@ -118,17 +118,20 @@
                      color: #58a6ff; font-size: 28px; font-weight: 700;
                      padding: 8px 14px; border-radius: 4px; min-height: 52px;">Map</button>
       <button @click="openNoteModal()"
+              title="Add note"
               style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
-                     color: #e6edf3; font-size: 28px; font-weight: 700;
-                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">Note</button>
+                     color: #e6edf3; font-size: 30px; line-height: 1;
+                     padding: 8px 0; width: 60px; text-align: center; border-radius: 4px; min-height: 52px;">&#128221;</button>
       <button @click="openFuelModal()"
+              title="Log fuel stop"
               style="cursor: pointer; background: #161b22; border: 1px solid #30363d;
-                     color: #e6edf3; font-size: 28px; font-weight: 700;
-                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">Fuel</button>
+                     color: #e6edf3; font-size: 30px; line-height: 1;
+                     padding: 8px 0; width: 60px; text-align: center; border-radius: 4px; min-height: 52px;">&#9981;</button>
       <button @click="openBreakdownModal()"
+              title="Log breakdown"
               style="cursor: pointer; background: #161b22; border: 1px solid #6e3a1a;
-                     color: #d29922; font-size: 28px; font-weight: 700;
-                     padding: 8px 14px; border-radius: 4px; min-height: 52px;">Breakdown</button>
+                     color: #d29922; font-size: 30px; line-height: 1;
+                     padding: 8px 0; width: 60px; text-align: center; border-radius: 4px; min-height: 52px;">&#9888;&#65039;</button>
       <button @click="openHardwareModal()"
               :class="hwBadgeClass()"
               :title="hwStatusTitle()"
