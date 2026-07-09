@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from shitbox.events.detector import EventType
 from shitbox.events.storage import EventStorage
 from shitbox.storage.database import Database
 from shitbox.storage.models import Reading
@@ -408,11 +409,22 @@ class BatchSyncService:
         if self._event_storage is not None:
             try:
                 counts = self._event_storage.count_events_by_type()
-                for event_type, count in counts.items():
+                # Emit an explicit 0 for every known event type with no stored
+                # events, so a state reset pushes the type down to zero rather
+                # than leaving its last value frozen in Prometheus. The panel
+                # reads these with last_over_time(), which would otherwise
+                # resurrect a stale count until it aged out of the window.
+                all_types = {et.value for et in EventType} | set(counts.keys())
+                for event_type in sorted(all_types):
                     event_labels = dict(labels)
                     event_labels["type"] = event_type
                     metrics.append(
-                        ("shitbox_events_total", event_labels, float(count), now_ms)
+                        (
+                            "shitbox_events_total",
+                            event_labels,
+                            float(counts.get(event_type, 0)),
+                            now_ms,
+                        )
                     )
             except Exception as e:
                 log.warning("summary_metrics_events_error", error=str(e))
