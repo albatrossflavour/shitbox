@@ -17,8 +17,13 @@ simultaneously bright — that's the meter protecting the highlights at the
 road's expense. A genuinely shaded scene (tree tunnel) has a dark road AND a
 tame sky, and is a correct exposure. So the fault flag needs both conditions,
 learned from the 2026-07-09 shakedown:
-    CRUSHED  = road mean < 40  AND  sky bright (>=6% of sky pixels near-white)
-    balanced = anything else (including faithfully-dark shade shots)
+    CRUSHED  = road mean < 40  AND  sky mean >= 150 (a bright background the meter chases)
+    balanced = anything else, including faithfully-dark shade/dusk shots where the road
+               is dim but the sky is dim too (low light, nothing the AE can rescue)
+
+Sky brightness is measured by its MEAN, not by how much clips pure white. A hazy
+overcast sky sits uniformly bright (~200) while barely touching 250, and it still
+fools the meter — an earlier clipping-based test missed exactly that case.
 
 Reference frames (2026-07-09, all judged good by eye):
     timelapse_00119  open-ish, well lit   road ~well above 40
@@ -46,8 +51,8 @@ ROI = {
     "subject": (0.68, 0.76, 0.46, 0.55),  # car ahead / horizon of the lane
     "sky": (0.00, 0.35, 0.35, 0.65),      # canopy gap / open sky, centre top
 }
-ROAD_DARK = 40.0   # road mean below this is "dark"
-SKY_BRIGHT_PCT = 6.0  # >= this %% of sky pixels near-white means the meter has a bright target
+ROAD_DARK = 40.0    # road mean below this is "dark"
+SKY_BRIGHT = 150.0  # sky mean at/above this = a bright background the meter chases down
 
 
 def _box(a, roi):
@@ -60,12 +65,13 @@ def _measure(path):
     a = np.asarray(Image.open(path).convert("L"), dtype=np.uint8)
     m = {k: _box(a, roi) for k, roi in ROI.items()}
     road = float(m["road"].mean())
+    sky = float(m["sky"].mean())
     sky_wht = 100.0 * (m["sky"] >= 250).mean()
-    crushed = road < ROAD_DARK and sky_wht >= SKY_BRIGHT_PCT
+    crushed = road < ROAD_DARK and sky >= SKY_BRIGHT
     return {
         "road": road,
         "subject": float(m["subject"].mean()),
-        "sky": float(m["sky"].mean()),
+        "sky": sky,
         "sky_wht": sky_wht,
         "crushed": crushed,
     }
