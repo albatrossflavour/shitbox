@@ -84,10 +84,11 @@ def batch_report(paths, list_crushed=False):
     road = np.array([r["road"] for _, r in res])
     crushed = [p for p, r in res if r["crushed"]]
     print(f"\n{len(paths)} frames")
-    print(f"  road luma      mean {road.mean():5.1f}   min {road.min():5.1f}   max {road.max():5.1f}")
+    print(f"  road luma  mean {road.mean():5.1f}  min {road.min():5.1f}  max {road.max():5.1f}")
     print(f"  CRUSHED frames (road<{ROAD_DARK:.0f} & bright sky): {len(crushed)}/{len(res)}  "
           f"({100*len(crushed)/len(res):.0f}%)")
-    print(f"  reference: 00145 road ~55 = balanced dark; success = fewer crushed, higher road on open-sky frames")
+    print("  reference: 00145 road ~55 = balanced dark; "
+          "success = fewer crushed, higher road on open-sky frames")
     if list_crushed and crushed:
         print("\n  crushed frames:")
         for p in crushed:
