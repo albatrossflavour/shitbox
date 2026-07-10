@@ -32,7 +32,6 @@ class TimelapseCompiler:
     Gracefully skips days with no frames and days where the MP4 already exists.
     """
 
-    OUTPUT_FPS = 24
     MAX_SECONDS = 120
     TITLE_CARD_SECONDS = 2.5
 
@@ -44,7 +43,7 @@ class TimelapseCompiler:
         db_path: str = "",
     ) -> None:
         self._captures_dir = Path(captures_dir)
-        self._fps = fps  # kept for compatibility; dynamic fps overrides per compile
+        self._fps = fps  # playback fps: each timelapse frame holds ~1/fps seconds
         self._intro_video = intro_video
         self._db_path = db_path
         self._thread: Optional[threading.Thread] = None
@@ -260,13 +259,13 @@ class TimelapseCompiler:
 
         try:
             # Duration scales with frame count at OUTPUT_FPS; cap at MAX_SECONDS
-            duration_s = min(len(frames) / self.OUTPUT_FPS, self.MAX_SECONDS)
+            duration_s = min(len(frames) / self._fps, self.MAX_SECONDS)
             per_frame = duration_s / len(frames)
             log.info(
                 "timelapse_compiling",
                 date=day,
                 frame_count=len(frames),
-                fps=self.OUTPUT_FPS,
+                fps=self._fps,
                 duration_s=round(duration_s, 1),
             )
 
@@ -394,7 +393,7 @@ class TimelapseCompiler:
                 "timelapse_compiled",
                 date=day,
                 frame_count=len(frames),
-                fps=self.OUTPUT_FPS,
+                fps=self._fps,
                 duration_s=round(duration_s, 1),
                 output=str(output_path),
             )
