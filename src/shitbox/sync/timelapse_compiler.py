@@ -258,7 +258,7 @@ class TimelapseCompiler:
             return
 
         try:
-            # Duration scales with frame count at OUTPUT_FPS; cap at MAX_SECONDS
+            # Duration scales with frame count at compile_fps; cap at MAX_SECONDS
             duration_s = min(len(frames) / self._fps, self.MAX_SECONDS)
             per_frame = duration_s / len(frames)
             log.info(
