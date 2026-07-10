@@ -309,10 +309,12 @@ capture:
     enabled: true
     interval_seconds: 30
     min_speed_kmh: 5.0
-    compile_fps: 8   # playback fps for the assembled timelapse. Was hardcoded 24 =
-                     # frantic strobe of 30s-apart scenes; 8 lets each frame breathe
-                     # (~125ms). Lower = calmer, higher = faster. Note MAX_SECONDS=120
-                     # still caps very long days (>fps*120 frames re-compress faster).
+    compile_fps: 6   # playback fps for the assembled timelapse. Was hardcoded 24 =
+                     # frantic strobe of 30s-apart scenes; 6 lets each frame breathe
+                     # (~167ms). Lower = calmer, higher = faster.
+    max_seconds: 240 # cap on total timelapse length. At 6fps + 30s interval the true
+                     # pace holds to ~12h of moving (1440 frames) before it compresses;
+                     # an 8h day = ~2:40. Raise for longer days, lower for shorter clips.
   video_buffer:
     enabled: true
     device: /dev/camera-front # ELP 4K IMX317 (front-facing, D-13)

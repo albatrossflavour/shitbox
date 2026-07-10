@@ -402,6 +402,7 @@ class TimelapseConfig:
     interval_seconds: int = 60
     min_speed_kmh: float = 5.0
     compile_fps: int = 24
+    max_seconds: int = 120
 
 
 @dataclass
