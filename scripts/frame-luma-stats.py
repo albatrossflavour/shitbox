@@ -78,7 +78,11 @@ def _measure(path):
 
 
 def frame_report(path):
-    r = _measure(path)
+    try:
+        r = _measure(path)
+    except Exception as e:
+        print(f"\n{os.path.basename(path)}: unreadable ({type(e).__name__}) — skipped")
+        return
     verdict = "CRUSHED (AE fooled by sky)" if r["crushed"] else "ok / balanced"
     print(f"\n{os.path.basename(path)}: {verdict}")
     print(f"  road {r['road']:5.1f}   subject {r['subject']:5.1f}   "
@@ -86,10 +90,20 @@ def frame_report(path):
 
 
 def batch_report(paths, list_crushed=False):
-    res = [(p, _measure(p)) for p in paths]
+    res, skipped = [], []
+    for p in paths:
+        try:
+            res.append((p, _measure(p)))
+        except Exception:
+            skipped.append(p)
+    if not res:
+        print(f"\nno readable frames ({len(skipped)} unreadable)")
+        return
     road = np.array([r["road"] for _, r in res])
     crushed = [p for p, r in res if r["crushed"]]
-    print(f"\n{len(paths)} frames")
+    print(f"\n{len(res)} readable frames"
+          + (f"  ({len(skipped)} skipped unreadable: "
+             + ", ".join(os.path.basename(p) for p in skipped) + ")" if skipped else ""))
     print(f"  road luma  mean {road.mean():5.1f}  min {road.min():5.1f}  max {road.max():5.1f}")
     print(f"  CRUSHED frames (road<{ROAD_DARK:.0f} & bright sky): {len(crushed)}/{len(res)}  "
           f"({100*len(crushed)/len(res):.0f}%)")
