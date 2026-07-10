@@ -330,26 +330,26 @@ capture:
     intro_video: "/var/lib/shitbox/intro.mp4"
     camera_controls:
       # ELP IMX317 (D-13) — H.264 UVC, 1920x1080@30.
-      # Verified 2026-06-15 from `v4l2-ctl -L`: auto_exposure is a 2-entry menu,
-      # 1=Manual, 3=Aperture Priority. There is NO shutter-priority mode. The
-      # previous `auto_exposure: 2` was invalid, silently rejected, and left the
-      # camera in Aperture Priority (full auto). exposure_time_absolute only
-      # activates under auto_exposure: 1, so the 1/100s cap never applied.
-      # Kept in auto deliberately — it adapts across the rally's bright-sun-to-
-      # dusk range; a fixed manual shutter would be black by evening.
-      # Verified control ranges (this camera): brightness +-64, contrast 0-64,
-      # saturation 0-128, gamma 72-500, backlight_compensation 0-6.
-      # Foreground-dark fix is the save-time `front_grade` curve below. Camera-
-      # side levers to try on the 9th (both adapt with the AE): raise
-      # backlight_compensation (designed for bright-sky backlit scenes) and/or
-      # apply a positive brightness bias.
+      # Live `v4l2-ctl -L` 2026-07-10 (camera-diag) corrected the earlier notes,
+      # which had the CABIN camera's menu and ranges pasted in by mistake — which
+      # is how the invalid `auto_exposure: 3` ended up here. Actual FRONT body:
+      #   brightness -128..127, contrast 0-255, saturation 0-255, gamma 100-300,
+      #   backlight_compensation 0-9.
+      #   auto_exposure menu = 0:Auto, 2:Shutter Priority  (NO 1 or 3 — that's cabin)
+      # The old `auto_exposure: 3` was invalid, rejected every boot ("Invalid
+      # argument"), leaving the camera in plain Auto metering the bright sky.
+      # exposure_time_absolute only activates under auto_exposure: 2.
+      # Foreground-dark fix: save-time `front_grade` below (raw road 49 -> saved
+      # 88). Camera-side lever now in play — backlight_compensation, built for
+      # bright-sky backlit scenes. Measure raw road YAVG after changing it; if it
+      # doesn't move, pivot to auto_exposure: 2 (Shutter Priority) + a shutter cap.
       brightness: 0
       contrast: 32
       saturation: 60
       gamma: 230
-      auto_exposure: 3
-      # Inactive unless auto_exposure is set to 1 (Manual); kept for reference.
-      exposure_time_absolute: 100
+      backlight_compensation: 8   # 0-9; bias AE off the bright sky (was unset = 0)
+      auto_exposure: 0            # 0=Auto (valid). Was 3 = invalid on this body, rejected every boot.
+      # exposure_time_absolute only active under auto_exposure: 2 (Shutter Priority) — left off.
     # Save-time tone grade (ffmpeg curves master points: "in/out in/out ...").
     # Lifts the crushed foreground that the camera's sky-weighted metering
     # leaves dark, while pinning white so a bright sky can't blow. Front stream
