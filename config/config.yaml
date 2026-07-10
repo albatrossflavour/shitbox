@@ -347,7 +347,8 @@ capture:
       contrast: 32
       saturation: 60
       gamma: 230
-      backlight_compensation: 8   # 0-9; bias AE off the bright sky (was unset = 0)
+      backlight_compensation: 4   # 0-9. 8 worked but over-cooked bright scenes (saved road ~182,
+                                  # road brighter than sky). 4 = half the bias; re-measure raw road.
       auto_exposure: 0            # 0=Auto (valid). Was 3 = invalid on this body, rejected every boot.
       # exposure_time_absolute only active under auto_exposure: 2 (Shutter Priority) — left off.
     # Save-time tone grade (ffmpeg curves master points: "in/out in/out ...").
