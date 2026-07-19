@@ -130,33 +130,68 @@ def test_sse_slow_includes_active_driver(client):
 # ---------------------------------------------------------------------------
 
 
+def _add_stint(db: Database, name: str, started_at: str, ended_at: Optional[str]) -> None:
+    """Insert a driver stint directly, using the space-separated datetime('now')
+    format the app writes (deliberately different from the ISO reading format)."""
+    with db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO driver_stints (driver_name, started_at, ended_at, created_at) "
+            "VALUES (?, ?, ?, datetime('now'))",
+            (name, started_at, ended_at),
+        )
+
+
+def _add_gps(db: Database, ts_iso: str, speed_kmh: float, n: int = 1) -> None:
+    """Insert ``n`` GPS readings at an ISO-8601 (T + tz) timestamp and speed."""
+    with db.transaction() as conn:
+        conn.executemany(
+            "INSERT INTO readings (timestamp_utc, sensor_type, speed_kmh) VALUES (?, 'gps', ?)",
+            [(ts_iso, speed_kmh)] * n,
+        )
+
+
 def test_driver_stats(driver_storage, tmp_db: Database):
-    """DriverStorage.get_stats() returns list of {driver_name, total_seconds, pct}."""
-    driver_storage.set_driver("Tony")
-    time.sleep(0.01)
-    driver_storage.set_driver("Smithy")
+    """get_stats() attributes MOVING GPS samples to the active driver's stint.
+
+    Both stints fall on the same date and use the space-separated format, while
+    readings use ISO-8601 with a 'T'. A naive string compare would misattribute
+    (or zero) these; this asserts the julianday comparison gets it right and that
+    stationary samples (speed below threshold) are excluded.
+    """
+    _add_stint(tmp_db, "Tony", "2026-07-11 10:00:00", "2026-07-11 12:00:00")
+    _add_stint(tmp_db, "Steve", "2026-07-11 12:00:00", "2026-07-11 14:00:00")
+
+    _add_gps(tmp_db, "2026-07-11T10:30:00+00:00", 50.0, n=100)  # Tony, moving
+    _add_gps(tmp_db, "2026-07-11T10:40:00+00:00", 0.0, n=30)    # Tony, parked -> excluded
+    _add_gps(tmp_db, "2026-07-11T12:30:00+00:00", 60.0, n=40)   # Steve, moving
+    _add_gps(tmp_db, "2026-07-11T09:00:00+00:00", 80.0, n=99)   # before any stint -> unattributed
 
     stats = driver_storage.get_stats()
 
-    assert isinstance(stats, list)
     assert all(
         "driver_name" in r and "total_seconds" in r and "pct" in r for r in stats
     ), f"Stats rows missing required keys: {stats}"
-    total_pct = sum(r["pct"] for r in stats)
-    assert total_pct == pytest.approx(100.0, abs=0.5) or stats == []
+    by_name = {r["driver_name"]: r for r in stats}
+    assert by_name["Tony"]["total_seconds"] == 100
+    assert by_name["Steve"]["total_seconds"] == 40
+    assert by_name["Tony"]["pct"] == pytest.approx(71.4, abs=0.2)
+    assert sum(r["pct"] for r in stats) == pytest.approx(100.0, abs=0.5)
 
 
 def test_driver_stats_open_stint(driver_storage, tmp_db: Database):
-    """A stint with ended_at=NULL still counts live time via COALESCE."""
-    driver_storage.set_driver("Tony")  # open stint, never explicitly closed
+    """An open stint (ended_at=NULL) counts its moving samples, bounded to now().
+
+    Unlike the old wall-clock behaviour, an open stint cannot bleed time — it
+    only accrues seconds where moving GPS samples actually exist within it.
+    """
+    _add_stint(tmp_db, "Tony", "2026-07-11 10:00:00", None)  # open, never closed
+    _add_gps(tmp_db, "2026-07-11T10:30:00+00:00", 45.0, n=25)
 
     stats = driver_storage.get_stats()
 
     tony = next((r for r in stats if r["driver_name"] == "Tony"), None)
-    assert tony is not None, "Expected Tony in stats after set_driver"
-    assert tony["total_seconds"] >= 0, (
-        f"Expected non-negative total_seconds for open stint, got {tony['total_seconds']}"
-    )
+    assert tony is not None, "Expected Tony in stats for open stint with moving samples"
+    assert tony["total_seconds"] == 25
 
 
 def test_stint_switch_closes_previous(driver_storage, tmp_db: Database):

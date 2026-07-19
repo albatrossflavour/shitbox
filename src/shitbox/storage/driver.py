@@ -9,6 +9,10 @@ from shitbox.storage.database import Database
 
 log = structlog.get_logger(__name__)
 
+# Speed above which a GPS sample counts as "driving" (km/h). Filters out idling
+# at lights and stationary GPS jitter so hours reflect real time at the wheel.
+_MOVING_SPEED_KMH = 5.0
+
 
 class DriverStorage:
     def __init__(self, db: Database) -> None:
@@ -51,23 +55,46 @@ class DriverStorage:
         log.info("driver_cleared")
 
     def get_stats(self) -> List[Dict[str, Any]]:
-        """Return per-driver time + percentage, sorted by time descending.
+        """Return per-driver driving time + percentage, sorted by time descending.
 
-        Uses COALESCE so open stints count live time against now().
+        ``total_seconds`` is real time at the wheel: GPS samples moving faster
+        than ``_MOVING_SPEED_KMH`` attributed to whichever driver's stint was
+        active at the sample's timestamp. GPS logs at ~1 Hz, so one moving
+        sample counts as one second.
+
+        This deliberately does NOT use stint wall-clock. A stint runs from one
+        driver change to the next, so wall-clock counted overnight camps and
+        parked time — inflating a 7-day rally to ~240 h against ~56 h actually
+        driven. Bounding by moving GPS samples also makes an unclosed (open)
+        stint harmless: it can only accrue time while samples exist, not bleed
+        to now().
+
+        Stint windows are half-open ``[started_at, ended_at)`` so a sample on a
+        driver-change boundary is counted once, against the incoming driver.
+
+        Comparison is via ``julianday`` because the two columns store different
+        formats: stint bounds are ``YYYY-MM-DD HH:MM:SS`` (from datetime('now'))
+        while readings are ISO-8601 ``YYYY-MM-DDTHH:MM:SS+00:00``. A raw string
+        compare breaks at the 'T'-vs-space at index 10 and misattributes samples;
+        julianday parses both to real instants.
         """
         with self._db.transaction() as conn:
             rows = conn.execute(
                 """
                 SELECT
-                    driver_name,
-                    SUM(CAST(
-                        (julianday(COALESCE(ended_at, datetime('now'))) -
-                         julianday(started_at)) * 86400
-                    AS INTEGER)) AS total_seconds
-                FROM driver_stints
-                GROUP BY driver_name
+                    s.driver_name,
+                    COUNT(*) AS total_seconds
+                FROM readings r
+                JOIN driver_stints s
+                  ON julianday(r.timestamp_utc) >= julianday(s.started_at)
+                 AND julianday(r.timestamp_utc) <  julianday(
+                         COALESCE(s.ended_at, datetime('now')))
+                WHERE r.sensor_type = 'gps'
+                  AND r.speed_kmh > ?
+                GROUP BY s.driver_name
                 ORDER BY total_seconds DESC
-                """
+                """,
+                (_MOVING_SPEED_KMH,),
             ).fetchall()
         total = sum((r["total_seconds"] or 0) for r in rows)
         n = len(rows)
