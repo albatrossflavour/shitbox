@@ -15,8 +15,18 @@ _MOVING_SPEED_KMH = 5.0
 
 
 class DriverStorage:
-    def __init__(self, db: Database) -> None:
+    def __init__(
+        self,
+        db: Database,
+        rally_start_date: str = "",
+        rally_end_date: str = "",
+    ) -> None:
         self._db = db
+        # Sydney (UTC+10) dates "YYYY-MM-DD". When both are set, driving time is
+        # bounded to the rally proper so post-rally return-leg driving doesn't
+        # inflate the hours. Empty = no bound (counts all stints).
+        self._rally_start_date = rally_start_date
+        self._rally_end_date = rally_end_date
 
     def set_driver(self, name: str) -> Dict[str, Any]:
         """Close any open stint and open a new one for ``name``.
@@ -77,7 +87,19 @@ class DriverStorage:
         while readings are ISO-8601 ``YYYY-MM-DDTHH:MM:SS+00:00``. A raw string
         compare breaks at the 'T'-vs-space at index 10 and misattributes samples;
         julianday parses both to real instants.
+
+        When a rally window is configured, samples are bounded to Sydney
+        (UTC+10) dates in ``[rally_start_date, rally_end_date]`` inclusive, so
+        post-rally return-leg driving doesn't count toward the hours.
         """
+        params: list[Any] = [_MOVING_SPEED_KMH]
+        window_sql = ""
+        if self._rally_start_date and self._rally_end_date:
+            window_sql = (
+                "  AND date(r.timestamp_utc, '+10 hours') BETWEEN ? AND ?\n"
+            )
+            params += [self._rally_start_date, self._rally_end_date]
+
         with self._db.transaction() as conn:
             rows = conn.execute(
                 """
@@ -91,10 +113,13 @@ class DriverStorage:
                          COALESCE(s.ended_at, datetime('now')))
                 WHERE r.sensor_type = 'gps'
                   AND r.speed_kmh > ?
+                """
+                + window_sql
+                + """
                 GROUP BY s.driver_name
                 ORDER BY total_seconds DESC
                 """,
-                (_MOVING_SPEED_KMH,),
+                params,
             ).fetchall()
         total = sum((r["total_seconds"] or 0) for r in rows)
         n = len(rows)

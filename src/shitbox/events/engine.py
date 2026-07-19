@@ -268,6 +268,7 @@ class EngineConfig:
     rally_destination_lat: float = -37.819142
     rally_destination_lon: float = 144.960397
     rally_start_date: str = ""
+    rally_end_date: str = ""
 
     # OLED display
     oled_enabled: bool = False
@@ -439,7 +440,8 @@ class EngineConfig:
             rally_start_lon=config.sensors.gps.rally_start_lon,
             rally_destination_lat=config.sensors.gps.rally_destination_lat,
             rally_destination_lon=config.sensors.gps.rally_destination_lon,
-            rally_start_date=getattr(config.sensors.gps, "rally_start_date", ""),
+            rally_start_date=config.sensors.gps.rally_start_date,
+            rally_end_date=config.sensors.gps.rally_end_date,
             # OLED display
             oled_enabled=config.display.oled.enabled,
             oled_i2c_bus=config.display.oled.i2c_bus,
@@ -754,7 +756,11 @@ class UnifiedEngine:
             )
 
         # Driver storage — REST-only, idempotent (same pattern as LogbookStorage)
-        self.driver_storage = DriverStorage(self.database)
+        self.driver_storage = DriverStorage(
+            self.database,
+            rally_start_date=self.config.rally_start_date,
+            rally_end_date=self.config.rally_end_date,
+        )
         if self.capture_sync is not None:
             self.capture_sync.register_json_generator(
                 "driver-stats",

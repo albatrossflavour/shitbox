@@ -22,6 +22,7 @@ sensors:
     rally_destination_lat: -37.8679
     rally_destination_lon: 144.9743
     rally_start_date: "2026-07-11"  # Route map shows only today's drive before this date; full rally from this date onward
+    rally_end_date: "2026-07-17"    # Last rally day (Sydney date). Bounds driver hours to the rally proper; route map still runs past it.
     route:
       waypoints:
         - name: "Port Douglas"

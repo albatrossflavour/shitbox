@@ -178,6 +178,22 @@ def test_driver_stats(driver_storage, tmp_db: Database):
     assert sum(r["pct"] for r in stats) == pytest.approx(100.0, abs=0.5)
 
 
+def test_driver_stats_rally_window(tmp_db: Database):
+    """A configured rally window bounds hours to Sydney (UTC+10) dates in [start, end]."""
+    from shitbox.storage.driver import DriverStorage
+
+    _add_stint(tmp_db, "Tony", "2026-07-11 00:00:00", None)  # open, spans everything
+    _add_gps(tmp_db, "2026-07-12T03:00:00+00:00", 50.0, n=60)  # 07-12 Sydney -> in window
+    _add_gps(tmp_db, "2026-07-18T03:00:00+00:00", 50.0, n=99)  # 07-18 Sydney -> out
+    _add_gps(tmp_db, "2026-07-17T14:30:00+00:00", 50.0, n=7)   # 00:30 07-18 Sydney -> out (tz boundary)
+
+    ds = DriverStorage(tmp_db, rally_start_date="2026-07-11", rally_end_date="2026-07-17")
+    tony = next(r for r in ds.get_stats() if r["driver_name"] == "Tony")
+    assert tony["total_seconds"] == 60, (
+        f"Expected only the 60 in-window samples, got {tony['total_seconds']}"
+    )
+
+
 def test_driver_stats_open_stint(driver_storage, tmp_db: Database):
     """An open stint (ended_at=NULL) counts its moving samples, bounded to now().
 

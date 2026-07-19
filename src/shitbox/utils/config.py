@@ -38,6 +38,12 @@ class GPSConfig:
     rally_start_lon: float = 145.467250
     rally_destination_lat: float = -37.819142
     rally_destination_lon: float = 144.960397
+    # Rally window (Sydney/UTC+10 dates, "YYYY-MM-DD"). start gates the route map
+    # (today-only before it, full rally from it onward); start+end bound driver
+    # hours to the rally proper. Loader drops keys with no field here, so these
+    # MUST stay declared or the yaml values are silently ignored.
+    rally_start_date: str = ""
+    rally_end_date: str = ""
     route: RouteConfig = field(default_factory=RouteConfig)
 
 
