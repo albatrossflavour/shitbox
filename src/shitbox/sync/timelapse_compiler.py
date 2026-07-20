@@ -26,6 +26,29 @@ from shitbox.utils.logging import get_logger
 log = get_logger(__name__)
 
 
+def build_day_routes(waypoints: Any) -> dict[int, str]:
+    """Map rally day number -> "Start → End" route string from route waypoints.
+
+    Config lists each day's destination(s) in order; a day's start is carried
+    over from the previous day's final waypoint. Day 1 starts at its own first
+    waypoint (the rally origin). A single-name day with no prior day renders as
+    just that name.
+    """
+    by_day: dict[int, list[str]] = {}
+    for w in waypoints or []:
+        name = getattr(w, "name", "") or ""
+        if name:
+            by_day.setdefault(int(getattr(w, "day", 0)), []).append(name)
+
+    routes: dict[int, str] = {}
+    days = sorted(by_day)
+    for i, d in enumerate(days):
+        end = by_day[d][-1]
+        start = by_day[d][0] if i == 0 else by_day[days[i - 1]][-1]
+        routes[d] = f"{start} → {end}" if start != end else end
+    return routes
+
+
 class TimelapseCompiler:
     """Compile per-day timelapse frames into MP4 videos.
 
@@ -48,6 +71,7 @@ class TimelapseCompiler:
         db_path: str = "",
         rally_title: str = "",
         rally_start_date: str = "",
+        day_routes: Optional[dict[int, str]] = None,
     ) -> None:
         self._captures_dir = Path(captures_dir)
         self._fps = fps  # playback fps: each timelapse frame holds ~1/fps seconds
@@ -56,6 +80,7 @@ class TimelapseCompiler:
         self._db_path = db_path
         self._rally_title = rally_title
         self._rally_start_date = rally_start_date  # "YYYY-MM-DD" or "" — Day N origin
+        self._day_routes = day_routes or {}  # {day_number: "Start → End"}
         self._thread: Optional[threading.Thread] = None
         self._running = False
         self._geocoder: Any = None
@@ -182,12 +207,7 @@ class TimelapseCompiler:
         date_line = dt.strftime("%A, %-d %B %Y")
         day_num = self._day_number(day)
         day_line = f"Day {day_num} · {date_line}" if day_num is not None else date_line
-
-        location: Optional[str] = None
-        gps = self._first_gps_fix(day)
-        if gps is not None:
-            lat, lon, _ = gps
-            location = self._resolve_place_name(lat, lon)
+        route = self._day_routes.get(day_num) if day_num is not None else None
 
         filters = []
         if self._rally_title:
@@ -199,10 +219,10 @@ class TimelapseCompiler:
             "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(day_line) + "'"
             ":fontsize=51:fontcolor=0xc9d1d9:x=(w-text_w)/2:y=h/2-120"
         )
-        if location:
+        if route:
             filters.append(
-                "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(location) + "'"
-                ":fontsize=96:fontcolor=white:x=(w-text_w)/2:y=h/2+30"
+                "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(route) + "'"
+                ":fontsize=64:fontcolor=white:x=(w-text_w)/2:y=h/2+30"
             )
         filters.append(
             "drawtext=font=DejaVu Sans:text='shit-of-theseus.com'"
@@ -228,8 +248,9 @@ class TimelapseCompiler:
                     "timelapse_title_card_generated",
                     date=day,
                     day_number=day_num,
-                    location=location,
+                    route=route,
                 )
+                self._write_poster(day, output_dir, card_path)
                 return card_path
             stderr = r.stderr.decode()[-400:] if r.stderr else ""
             log.warning("timelapse_title_card_failed", date=day, stderr=stderr)
@@ -237,6 +258,23 @@ class TimelapseCompiler:
             log.error("timelapse_title_card_error", date=day, error=str(exc))
         card_path.unlink(missing_ok=True)
         return None
+
+    def _write_poster(self, day: str, output_dir: Path, card_path: Path) -> None:
+        """Save a still of the title card as the timelapse preview poster.
+
+        The site's archive day cards fall back to ``<date>/timelapse-poster.jpg``
+        and the inline player uses it as the ``<video poster>``. A frame of the
+        branded card is the natural thumbnail.
+        """
+        poster = output_dir / "timelapse-poster.jpg"
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", str(card_path), "-frames:v", "1", "-q:v", "2",
+                 str(poster)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30,
+            )
+        except Exception as exc:
+            log.debug("timelapse_poster_failed", date=day, error=str(exc))
 
     def _run(self) -> None:
         """Compile pending days at startup, then watch for day rollover."""
@@ -476,11 +514,14 @@ class TimelapseCompiler:
             frame_dir = self._captures_dir / "timelapse" / day
             frame_count = len(list(frame_dir.glob("timelapse_*.jpg"))) if frame_dir.exists() else 0
 
-            entries.append({
+            entry = {
                 "date": day,
                 "video_url": f"{video_base_url}/{day}/timelapse.mp4",
                 "frame_count": frame_count,
-            })
+            }
+            if (mp4.parent / "timelapse-poster.jpg").exists():
+                entry["poster_url"] = f"{video_base_url}/{day}/timelapse-poster.jpg"
+            entries.append(entry)
 
         entries.sort(key=lambda e: e["date"], reverse=True)
 

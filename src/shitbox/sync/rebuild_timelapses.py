@@ -94,6 +94,7 @@ def main() -> int:
         db_path=config.database_path,
         rally_title=config.timelapse_rally_title,
         rally_start_date=config.rally_start_date,
+        day_routes=config.timelapse_day_routes,
     )
 
     days = args.day if args.day else _discover_days(captures_dir)

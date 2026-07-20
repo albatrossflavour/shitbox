@@ -56,7 +56,7 @@ from shitbox.sync.capture_sync import CaptureSyncService
 from shitbox.sync.connection import ConnectionMonitor
 from shitbox.sync.grafana import GrafanaAnnotator
 from shitbox.sync.mqtt_publisher import MQTTPublisher
-from shitbox.sync.timelapse_compiler import TimelapseCompiler
+from shitbox.sync.timelapse_compiler import TimelapseCompiler, build_day_routes
 from shitbox.utils.config import (
     CaptureSyncConfig,
     Config,
@@ -199,6 +199,7 @@ class EngineConfig:
     timelapse_compile_fps: int = 24
     timelapse_max_seconds: int = 120
     timelapse_rally_title: str = "Shitbox Rally 2026 Autumn"
+    timelapse_day_routes: Dict[int, str] = field(default_factory=dict)
 
     # Video ring buffer (primary)
     video_buffer_enabled: bool = True
@@ -385,6 +386,7 @@ class EngineConfig:
             timelapse_compile_fps=config.capture.timelapse.compile_fps,
             timelapse_max_seconds=config.capture.timelapse.max_seconds,
             timelapse_rally_title=config.capture.timelapse.rally_title,
+            timelapse_day_routes=build_day_routes(config.sensors.gps.route.waypoints),
             # Video ring buffer (primary)
             video_buffer_enabled=config.capture.video_buffer.enabled,
             video_buffer_device=config.capture.video_buffer.device,
@@ -680,6 +682,7 @@ class UnifiedEngine:
                 db_path=config.database_path,
                 rally_title=config.timelapse_rally_title,
                 rally_start_date=config.rally_start_date,
+                day_routes=config.timelapse_day_routes,
             )
 
         # Capture sync (rsync to NAS)

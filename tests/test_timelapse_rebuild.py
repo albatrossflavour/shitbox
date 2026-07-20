@@ -1,11 +1,40 @@
 """Tests for timelapse rebuild helpers: Day-N derivation and corrupt-frame filtering."""
 
 import os
+from types import SimpleNamespace
 
 import pytest
 
 from shitbox.sync.rebuild_timelapses import _clear_outputs, _discover_days
-from shitbox.sync.timelapse_compiler import TimelapseCompiler
+from shitbox.sync.timelapse_compiler import TimelapseCompiler, build_day_routes
+
+
+def _wp(name, day):
+    return SimpleNamespace(name=name, day=day)
+
+
+class TestBuildDayRoutes:
+    def test_carry_over_start_from_previous_day(self):
+        wps = [
+            _wp("Port Douglas", 1), _wp("The Oasis Roadhouse", 1),
+            _wp("Aramac", 2),
+            _wp("Toompine", 3),
+        ]
+        routes = build_day_routes(wps)
+        assert routes[1] == "Port Douglas → The Oasis Roadhouse"
+        assert routes[2] == "The Oasis Roadhouse → Aramac"
+        assert routes[3] == "Aramac → Toompine"
+
+    def test_multi_destination_day_uses_last_as_end(self):
+        wps = [_wp("Melbourne", 7), _wp("Goulburn", 8), _wp("Camden", 8)]
+        assert build_day_routes(wps)[8] == "Melbourne → Camden"
+
+    def test_single_name_first_day_no_arrow(self):
+        assert build_day_routes([_wp("Port Douglas", 1)])[1] == "Port Douglas"
+
+    def test_empty(self):
+        assert build_day_routes([]) == {}
+        assert build_day_routes(None) == {}
 
 
 def _compiler(rally_start=""):
