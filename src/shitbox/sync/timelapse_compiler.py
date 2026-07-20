@@ -399,6 +399,7 @@ class TimelapseCompiler:
                 "-r", "24",
                 "-c:v", "libx264", "-pix_fmt", "yuv420p",
                 "-crf", "18", "-preset", "ultrafast",
+                "-movflags", "+faststart",  # moov atom up front so the browser can stream
                 str(tmp_frames),
             ]
             try:
@@ -485,6 +486,7 @@ class TimelapseCompiler:
                         "-filter_complex", concat_filter,
                         "-map", "[out]",
                         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast",
+                        "-movflags", "+faststart",  # moov atom up front for HTTP streaming
                         str(tmp_path),
                     ])
                     try:
