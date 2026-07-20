@@ -21,9 +21,23 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from PIL import Image, ImageDraw, ImageFont
+
 from shitbox.utils.logging import get_logger
 
 log = get_logger(__name__)
+
+# Match the event-video slates (title_card.py): Cinzel display face vendored
+# in-tree, DejaVu for glyphs Cinzel lacks (the "→" route arrow). Same palette.
+_CINZEL_DIR = Path(__file__).resolve().parent.parent / "capture" / "assets" / "cinzel"
+_FONT_BOLD = str(_CINZEL_DIR / "Cinzel-Bold.ttf")
+_FONT_REGULAR = str(_CINZEL_DIR / "Cinzel-Regular.ttf")
+_FONT_FALLBACK = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"  # has "→"
+_CARD_BG = (13, 17, 23)  # #0d1117
+_CARD_GOLD = (240, 219, 184)  # #f0dbb8
+_CARD_WHITE = (255, 255, 255)
+_CARD_SECONDARY = (201, 209, 217)  # #c9d1d9
+_CARD_MUTED = (139, 148, 158)  # #8b949e
 
 
 def build_day_routes(waypoints: Any) -> dict[int, str]:
@@ -192,13 +206,33 @@ class TimelapseCompiler:
             good.append(p)
         return good
 
+    @staticmethod
+    def _fit_font(draw: Any, segments: list, size: int, max_w: int) -> int:
+        """Largest font size (<= ``size``) at which ``segments`` fit within max_w.
+
+        ``segments`` is a list of (text, font_path) pairs measured side by side.
+        """
+        while size > 12:
+            total = sum(
+                draw.textlength(text, font=ImageFont.truetype(path, size))
+                for text, path in segments
+            )
+            if total <= max_w:
+                break
+            size -= 2
+        return size
+
     def _generate_title_card(self, day: str, output_dir: Path) -> Optional[Path]:
         """Render a rally-branded title card MP4 for the day. Returns path or None.
 
-        Layout (top to bottom): rally title, ``Day N · <date>`` (Day prefix only
-        for rally days), reverse-geocoded location, then the site footer.
+        Rendered with PIL to match the event-video slates: Cinzel display face,
+        arrow drawn from a fallback font Cinzel lacks. Layout (top to bottom):
+        rally title, ``Day N · <date>``, the day's route, then the site footer.
+        Also writes ``timelapse-poster.jpg`` (the card still) as the site preview.
         """
         card_path = output_dir / "timelapse.card.mp4"
+        png_path = output_dir / "timelapse.card.png"
+        poster_path = output_dir / "timelapse-poster.jpg"
 
         try:
             dt = datetime.strptime(day, "%Y-%m-%d")
@@ -209,72 +243,66 @@ class TimelapseCompiler:
         day_line = f"Day {day_num} · {date_line}" if day_num is not None else date_line
         route = self._day_routes.get(day_num) if day_num is not None else None
 
-        filters = []
-        if self._rally_title:
-            filters.append(
-                "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(self._rally_title) + "'"
-                ":fontsize=78:fontcolor=0xf0dbb8:x=(w-text_w)/2:y=h/2-255"
-            )
-        filters.append(
-            "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(day_line) + "'"
-            ":fontsize=51:fontcolor=0xc9d1d9:x=(w-text_w)/2:y=h/2-120"
-        )
-        if route:
-            filters.append(
-                "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(route) + "'"
-                ":fontsize=64:fontcolor=white:x=(w-text_w)/2:y=h/2+30"
-            )
-        filters.append(
-            "drawtext=font=DejaVu Sans:text='shit-of-theseus.com'"
-            ":fontsize=33:fontcolor=0x8b949e:x=(w-text_w)/2:y=h-90"
-        )
+        try:
+            W, H = self.TARGET_W, self.TARGET_H
+            max_w = W - 200  # keep a 100px margin each side
+            cx = W // 2
+            img = Image.new("RGB", (W, H), _CARD_BG)
+            draw = ImageDraw.Draw(img)
 
+            if self._rally_title:
+                size = self._fit_font(draw, [(self._rally_title, _FONT_BOLD)], 84, max_w)
+                draw.text((cx, 300), self._rally_title, font=ImageFont.truetype(_FONT_BOLD, size),
+                          fill=_CARD_GOLD, anchor="mm")
+
+            draw.text((cx, 430), day_line, font=ImageFont.truetype(_FONT_REGULAR, 46),
+                      fill=_CARD_SECONDARY, anchor="mm")
+
+            if route:
+                # Names in Cinzel, arrow from the fallback font (Cinzel has no →).
+                if " → " in route:
+                    a, b = route.split(" → ", 1)
+                    segs = [(a, _FONT_BOLD), (" → ", _FONT_FALLBACK), (b, _FONT_BOLD)]
+                else:
+                    segs = [(route, _FONT_BOLD)]
+                size = self._fit_font(draw, segs, 68, max_w)
+                fonts = [ImageFont.truetype(p, size) for _, p in segs]
+                total = sum(draw.textlength(t, font=f) for (t, _), f in zip(segs, fonts))
+                x = cx - total / 2
+                for (text, _), font in zip(segs, fonts):
+                    draw.text((x, 565), text, font=font, fill=_CARD_WHITE, anchor="lm")
+                    x += draw.textlength(text, font=font)
+
+            draw.text((cx, H - 90), "shit-of-theseus.com",
+                      font=ImageFont.truetype(_FONT_FALLBACK, 30), fill=_CARD_MUTED, anchor="mm")
+
+            img.save(str(poster_path), "JPEG", quality=90)
+            img.save(str(png_path))
+        except Exception as exc:
+            log.error("timelapse_title_card_render_error", date=day, error=str(exc))
+            return None
+
+        # Still → 2.5s clip. The concat pass re-normalises, so ultrafast is fine.
         cmd = [
-            "ffmpeg", "-y",
-            "-f", "lavfi",
-            "-i", f"color=0x0d1117:size={self.TARGET_W}x{self.TARGET_H}"
-            f":rate=24:duration={self.TITLE_CARD_SECONDS}",
-            "-vf", ",".join(filters),
-            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-            "-an",
+            "ffmpeg", "-y", "-loop", "1", "-t", str(self.TITLE_CARD_SECONDS),
+            "-i", str(png_path), "-r", "24",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-an",
             str(card_path),
         ]
         try:
-            r = subprocess.run(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=60
-            )
+            r = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=60)
+            png_path.unlink(missing_ok=True)
             if r.returncode == 0 and card_path.exists() and card_path.stat().st_size > 0:
-                log.info(
-                    "timelapse_title_card_generated",
-                    date=day,
-                    day_number=day_num,
-                    route=route,
-                )
-                self._write_poster(day, output_dir, card_path)
+                log.info("timelapse_title_card_generated", date=day, day_number=day_num,
+                         route=route)
                 return card_path
             stderr = r.stderr.decode()[-400:] if r.stderr else ""
             log.warning("timelapse_title_card_failed", date=day, stderr=stderr)
         except Exception as exc:
             log.error("timelapse_title_card_error", date=day, error=str(exc))
+        png_path.unlink(missing_ok=True)
         card_path.unlink(missing_ok=True)
         return None
-
-    def _write_poster(self, day: str, output_dir: Path, card_path: Path) -> None:
-        """Save a still of the title card as the timelapse preview poster.
-
-        The site's archive day cards fall back to ``<date>/timelapse-poster.jpg``
-        and the inline player uses it as the ``<video poster>``. A frame of the
-        branded card is the natural thumbnail.
-        """
-        poster = output_dir / "timelapse-poster.jpg"
-        try:
-            subprocess.run(
-                ["ffmpeg", "-y", "-i", str(card_path), "-frames:v", "1", "-q:v", "2",
-                 str(poster)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30,
-            )
-        except Exception as exc:
-            log.debug("timelapse_poster_failed", date=day, error=str(exc))
 
     def _run(self) -> None:
         """Compile pending days at startup, then watch for day rollover."""

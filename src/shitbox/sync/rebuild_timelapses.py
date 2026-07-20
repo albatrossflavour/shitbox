@@ -36,6 +36,7 @@ _STALE_NAMES = (
     "timelapse.tmp.mp4",
     "timelapse.intro.mp4",
     "timelapse.card.mp4",
+    "timelapse.card.png",
     "timelapse.lock",
 )
 
