@@ -244,7 +244,7 @@ sync:
 
   prometheus:
     enabled: true
-    remote_write_url: http://prometheus.albatrossflavour.com/api/v1/write
+    remote_write_url: http://shitbox-metrics.albatrossflavour.com/api/v1/write  # dedicated isolated Prometheus (10y retention); was prometheus.albatrossflavour.com (shared, 7d)
     batch_size: 2000
     batch_interval_seconds: 15
 
