@@ -1608,7 +1608,12 @@ class VideoRingBuffer:
             "-map", "[out]",
             "-map", "0:a?",
             "-c:v", "libx264", "-preset", "ultrafast",
-            "-c:a", "copy",
+            # Re-encode audio through aresample=async=1 rather than stream-copy:
+            # concatenated per-segment AAC has a degenerate packet burst at the
+            # seam that mutes playback until a seek. Rebuilding the timeline fixes
+            # it. Harmless no-op when 0:a? matches no audio (video-only clip).
+            "-filter:a", "aresample=async=1",
+            "-c:a", "aac", "-b:a", "128k",
             "-r", str(self.fps),
             "-movflags", "+faststart",
             str(tmp_mp4),
@@ -1725,15 +1730,25 @@ class VideoRingBuffer:
         # the early-audio window.
         audio_trim = pip_enable_t - cabin_shift  # >= 0 always
         audio_delay_ms = int(pip_enable_t * 1000)
+        # aresample=async=1 rebuilds a clean, continuous audio timeline as the
+        # final step. Concatenating the per-segment AAC leaves a burst of
+        # degenerate, near-overlapping packets at the segment seam; players
+        # (browsers AND standalone desktop players) choke on it and produce no
+        # sound until you seek past it. No first_pts=0 here — that would undo the
+        # adelay that holds cabin audio until the PiP appears.
         if audio_trim > 0.01:
             audio_chain = (
                 f"[1:a]atrim=start={audio_trim:.6f},"
                 f"asetpts=PTS-STARTPTS,"
                 f"adelay={audio_delay_ms}:all=1,"
-                f"highpass=f=200[a]"
+                f"highpass=f=200,"
+                f"aresample=async=1[a]"
             )
         else:
-            audio_chain = f"[1:a]adelay={audio_delay_ms}:all=1,highpass=f=200[a]"
+            audio_chain = (
+                f"[1:a]adelay={audio_delay_ms}:all=1,highpass=f=200,"
+                f"aresample=async=1[a]"
+            )
 
         if logo_exists:
             logo_input_idx = 2  # 0 = front concat, 1 = cabin concat, 2 = logo
