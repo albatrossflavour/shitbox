@@ -33,6 +33,11 @@ class TimelapseCompiler:
     """
 
     TITLE_CARD_SECONDS = 2.5
+    # Assembled timelapse resolution. Must match the capture frames (1920x1080)
+    # or the concat filter rejects the intro/card as size-mismatched and the
+    # whole thing silently falls back to frames-only (no intro, no title card).
+    TARGET_W = 1920
+    TARGET_H = 1080
 
     def __init__(
         self,
@@ -41,12 +46,16 @@ class TimelapseCompiler:
         max_seconds: int = 120,
         intro_video: str = "",
         db_path: str = "",
+        rally_title: str = "",
+        rally_start_date: str = "",
     ) -> None:
         self._captures_dir = Path(captures_dir)
         self._fps = fps  # playback fps: each timelapse frame holds ~1/fps seconds
         self._max_seconds = max_seconds  # cap on total assembled timelapse length
         self._intro_video = intro_video
         self._db_path = db_path
+        self._rally_title = rally_title
+        self._rally_start_date = rally_start_date  # "YYYY-MM-DD" or "" — Day N origin
         self._thread: Optional[threading.Thread] = None
         self._running = False
         self._geocoder: Any = None
@@ -120,10 +129,50 @@ class TimelapseCompiler:
         """Escape characters that are special to ffmpeg drawtext ``text=`` values."""
         return s.replace("\\", r"\\").replace(":", r"\:").replace("'", r"\'")
 
-    def _generate_title_card(
-        self, day: str, output_dir: Path, start_mtime: Optional[float]
-    ) -> Optional[Path]:
-        """Render a title card MP4 announcing the day's start. Returns path or None."""
+    def _day_number(self, day: str) -> Optional[int]:
+        """Rally day number for ``day`` (Day 1 == ``rally_start_date``).
+
+        Returns None when no start date is configured, the dates don't parse, or
+        ``day`` falls before the rally started (pre-rally shakedown footage).
+        """
+        if not self._rally_start_date:
+            return None
+        try:
+            start = datetime.strptime(self._rally_start_date, "%Y-%m-%d").date()
+            d = datetime.strptime(day, "%Y-%m-%d").date()
+        except ValueError:
+            return None
+        n = (d - start).days + 1
+        return n if n >= 1 else None
+
+    @staticmethod
+    def _valid_frames(day_dir: Path) -> list[Path]:
+        """Frames for a day in capture order, with empty/truncated JPEGs dropped.
+
+        A zero-byte or non-EOI-terminated JPEG is undecodable; feeding one to the
+        concat demuxer risks aborting the whole compile. Filter them here rather
+        than relying on ffmpeg to limp past bad input.
+        """
+        good: list[Path] = []
+        for p in sorted(day_dir.glob("timelapse_*.jpg"), key=lambda p: p.stat().st_mtime):
+            try:
+                if p.stat().st_size == 0:
+                    continue
+                with p.open("rb") as fh:
+                    fh.seek(-2, os.SEEK_END)
+                    if fh.read(2) != b"\xff\xd9":  # missing JPEG end-of-image marker
+                        continue
+            except OSError:
+                continue
+            good.append(p)
+        return good
+
+    def _generate_title_card(self, day: str, output_dir: Path) -> Optional[Path]:
+        """Render a rally-branded title card MP4 for the day. Returns path or None.
+
+        Layout (top to bottom): rally title, ``Day N · <date>`` (Day prefix only
+        for rally days), reverse-geocoded location, then the site footer.
+        """
         card_path = output_dir / "timelapse.card.mp4"
 
         try:
@@ -131,46 +180,40 @@ class TimelapseCompiler:
         except ValueError:
             return None
         date_line = dt.strftime("%A, %-d %B %Y")
+        day_num = self._day_number(day)
+        day_line = f"Day {day_num} · {date_line}" if day_num is not None else date_line
 
         location: Optional[str] = None
-        time_line: Optional[str] = None
         gps = self._first_gps_fix(day)
         if gps is not None:
-            lat, lon, ts = gps
+            lat, lon, _ = gps
             location = self._resolve_place_name(lat, lon)
-            try:
-                fix_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                time_line = fix_dt.astimezone().strftime("%H:%M")
-            except Exception:
-                pass
 
-        if time_line is None and start_mtime is not None:
-            time_line = datetime.fromtimestamp(start_mtime).strftime("%H:%M")
-
-        filters = [
-            "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(date_line) + "'"
-            ":fontsize=44:fontcolor=0xf0dbb8:x=(w-text_w)/2:y=h/2-120",
-        ]
+        filters = []
+        if self._rally_title:
+            filters.append(
+                "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(self._rally_title) + "'"
+                ":fontsize=78:fontcolor=0xf0dbb8:x=(w-text_w)/2:y=h/2-255"
+            )
+        filters.append(
+            "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(day_line) + "'"
+            ":fontsize=51:fontcolor=0xc9d1d9:x=(w-text_w)/2:y=h/2-120"
+        )
         if location:
             filters.append(
                 "drawtext=font=DejaVu Sans:text='" + self._escape_drawtext(location) + "'"
-                ":fontsize=72:fontcolor=white:x=(w-text_w)/2:y=h/2-40"
-            )
-        if time_line:
-            filters.append(
-                "drawtext=font=DejaVu Sans:text='"
-                + self._escape_drawtext("Started " + time_line)
-                + "':fontsize=36:fontcolor=0xc9d1d9:x=(w-text_w)/2:y=h/2+60"
+                ":fontsize=96:fontcolor=white:x=(w-text_w)/2:y=h/2+30"
             )
         filters.append(
             "drawtext=font=DejaVu Sans:text='shit-of-theseus.com'"
-            ":fontsize=22:fontcolor=0x8b949e:x=(w-text_w)/2:y=h-60"
+            ":fontsize=33:fontcolor=0x8b949e:x=(w-text_w)/2:y=h-90"
         )
 
         cmd = [
             "ffmpeg", "-y",
             "-f", "lavfi",
-            "-i", f"color=0x0d1117:size=1280x720:rate=24:duration={self.TITLE_CARD_SECONDS}",
+            "-i", f"color=0x0d1117:size={self.TARGET_W}x{self.TARGET_H}"
+            f":rate=24:duration={self.TITLE_CARD_SECONDS}",
             "-vf", ",".join(filters),
             "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
             "-an",
@@ -184,8 +227,8 @@ class TimelapseCompiler:
                 log.info(
                     "timelapse_title_card_generated",
                     date=day,
+                    day_number=day_num,
                     location=location,
-                    time=time_line,
                 )
                 return card_path
             stderr = r.stderr.decode()[-400:] if r.stderr else ""
@@ -239,10 +282,14 @@ class TimelapseCompiler:
     def _compile_day(self, day: str) -> None:
         """Compile all frames for a single day into an MP4."""
         day_dir = self._captures_dir / "timelapse" / day
-        frames = sorted(day_dir.glob("timelapse_*.jpg"), key=lambda p: p.stat().st_mtime)
+        all_frames = sorted(day_dir.glob("timelapse_*.jpg"))
+        frames = self._valid_frames(day_dir)
         if not frames:
             log.info("timelapse_no_frames", date=day)
             return
+        dropped = len(all_frames) - len(frames)
+        if dropped:
+            log.warning("timelapse_frames_dropped", date=day, dropped=dropped, kept=len(frames))
 
         output_dir = self._captures_dir / day
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -310,14 +357,17 @@ class TimelapseCompiler:
                 return
 
             # Pass 2: prepend intro if available.
-            # Pre-transcode intro to match timelapse specs (1280x720, 24fps, yuv420p)
-            # before concatenating — avoids resolution/fps mismatch in the concat filter.
+            # Pre-transcode intro to the assembled resolution (1920x1080, 24fps,
+            # yuv420p). The concat filter below re-normalises every input anyway,
+            # but matching here keeps the intermediate clean.
             intro = Path(self._intro_video) if self._intro_video else None
             if intro and intro.exists() and intro.stat().st_size > 0:
                 tmp_intro = output_dir / "timelapse.intro.mp4"
                 intro_cmd = [
                     "ffmpeg", "-y", "-i", str(intro),
-                    "-vf", "scale=1280:720,fps=24,format=yuv420p",
+                    "-vf", f"scale={self.TARGET_W}:{self.TARGET_H}:force_original_aspect_ratio="
+                    f"decrease,pad={self.TARGET_W}:{self.TARGET_H}:(ow-iw)/2:(oh-ih)/2,"
+                    "fps=24,format=yuv420p",
                     "-c:v", "libx264", "-preset", "ultrafast",
                     "-an",
                     str(tmp_intro),
@@ -341,17 +391,26 @@ class TimelapseCompiler:
                 if intro_ok:
                     # Title card — sits between the static intro and the live footage
                     # so the viewer lands gently with a date/location/time marker.
-                    first_frame_mtime = frames[0].stat().st_mtime if frames else None
-                    tmp_card = self._generate_title_card(day, output_dir, first_frame_mtime)
+                    tmp_card = self._generate_title_card(day, output_dir)
 
                     clips = [tmp_intro]
                     if tmp_card is not None:
                         clips.append(tmp_card)
                     clips.append(tmp_frames)
                     n = len(clips)
-                    concat_filter = (
-                        "".join(f"[{i}:v]" for i in range(n)) + f"concat=n={n}:v=1[out]"
+                    # Normalise every input to the target size/SAR/fps before concat.
+                    # concat requires identical params; the frames are 1920x1080 while
+                    # the intro/card may differ, so scale-pad each input to match.
+                    norm = (
+                        f"scale={self.TARGET_W}:{self.TARGET_H}:force_original_aspect_ratio="
+                        f"decrease,pad={self.TARGET_W}:{self.TARGET_H}:(ow-iw)/2:(oh-ih)/2,"
+                        "setsar=1,fps=24"
                     )
+                    chains = [f"[{i}:v]{norm}[v{i}]" for i in range(n)]
+                    chains.append(
+                        "".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1[out]"
+                    )
+                    concat_filter = ";".join(chains)
 
                     cmd = ["ffmpeg", "-y"]
                     for clip in clips:

@@ -198,6 +198,7 @@ class EngineConfig:
     timelapse_min_speed_kmh: float = 5.0
     timelapse_compile_fps: int = 24
     timelapse_max_seconds: int = 120
+    timelapse_rally_title: str = "Shitbox Rally 2026 Autumn"
 
     # Video ring buffer (primary)
     video_buffer_enabled: bool = True
@@ -383,6 +384,7 @@ class EngineConfig:
             timelapse_min_speed_kmh=config.capture.timelapse.min_speed_kmh,
             timelapse_compile_fps=config.capture.timelapse.compile_fps,
             timelapse_max_seconds=config.capture.timelapse.max_seconds,
+            timelapse_rally_title=config.capture.timelapse.rally_title,
             # Video ring buffer (primary)
             video_buffer_enabled=config.capture.video_buffer.enabled,
             video_buffer_device=config.capture.video_buffer.device,
@@ -676,6 +678,8 @@ class UnifiedEngine:
                 max_seconds=config.timelapse_max_seconds,
                 intro_video=config.video_buffer_intro_video,
                 db_path=config.database_path,
+                rally_title=config.timelapse_rally_title,
+                rally_start_date=config.rally_start_date,
             )
 
         # Capture sync (rsync to NAS)

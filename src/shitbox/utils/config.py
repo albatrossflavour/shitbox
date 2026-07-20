@@ -409,6 +409,7 @@ class TimelapseConfig:
     min_speed_kmh: float = 5.0
     compile_fps: int = 24
     max_seconds: int = 120
+    rally_title: str = "Shitbox Rally 2026 Autumn"  # top line of the timelapse title card
 
 
 @dataclass
